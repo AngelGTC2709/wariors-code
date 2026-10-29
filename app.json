@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "FamilyWellnessApp",
+    "name": "NutriBot Familiar",
     "slug": "FamilyWellnessApp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "familywellnessapp",
+    "scheme": "warriorkids",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
@@ -13,7 +13,7 @@
     "android": {
       "package": "com.familywellnessapp.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFF7F8",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -29,7 +29,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#FFF7F8",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }

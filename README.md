@@ -1,98 +1,47 @@
-# Family Wellness App
+#
 
-Aplicación móvil creada con Expo + React Native para acompañar hábitos saludables de una persona y su familia.
+Prototipo móvil en español de México para acompañar hábitos saludables en familia. Se ejecuta con Expo SDK 57, React Native y Expo Router; el chat de NutriBot responde localmente y no usa una API externa.
 
-## Propósito
+## Ejecutar en Expo Go
 
-La app centraliza una experiencia de bienestar con:
-
-- avatar personalizado
-- registro de ánimo diario
-- progreso de salud y hábitos (agua, pasos, sueño, frutas)
-- misiones del día con XP
-- dieta familiar semanal
-- asistente NutriBot con apoyo emocional y respuestas sobre salud
-
-## Stack
-
-- Expo SDK 57
-- React Native 0.86
-- TypeScript
-- Expo Router
-
-## Estructura principal
-
-- [src/app](./src/app): pantallas y enrutamiento
-- [src/components](./src/components): componentes visuales reutilizables
-- [src/constants](./src/constants): datos estáticos y configuración del dominio
-- [src/hooks](./src/hooks): hooks compartidos
-
-## Cómo correrla
-
-1. Instala dependencias:
+1. Instala Node.js y las dependencias desde la raíz del proyecto:
 
    ```bash
    npm install
    ```
 
-2. Inicia la app:
+2. Inicia Expo:
 
    ```bash
    npx expo start
    ```
 
-3. Desde la terminal selecciona una opción:
-   - Android emulator
-   - iOS simulator
-   - Expo Go
-   - navegador web
+3. Escanea el código QR con Expo Go en Android. Ambos dispositivos deben estar en una red que permita la conexión.
 
-## Crear un APK para Android
+## Generar APK para Android
 
-El perfil `preview` de [eas.json](./eas.json) genera un APK instalable directamente en un dispositivo Android.
-
-1. Inicia sesión o crea una cuenta gratuita en [Expo](https://expo.dev/signup):
-
-   ```bash
-   npx eas-cli@latest login
-   ```
-
-2. Configura el proyecto con EAS la primera vez:
-
-   ```bash
-   npx eas-cli@latest build:configure
-   ```
-
-3. Inicia la compilación del APK:
-
-   ```bash
-   npm run build:android:apk
-   ```
-
-EAS compila la app en la nube. Cuando termine, abre el enlace que muestra la terminal para descargar el APK e instalarlo en Android. Este proceso requiere conexión a internet y una cuenta de Expo.
-
-El identificador Android configurado para esta aplicación es `com.familywellnessapp.mobile`. Conviene mantenerlo estable después de publicar la app, ya que Google Play lo utiliza para identificarla.
-
-## Desarrollo
-
-- La lógica de negocio y los datos iniciales de la app se mantienen en [src/constants/family-wellness.ts](./src/constants/family-wellness.ts) para facilitar la documentación y reutilización.
-- La pantalla principal en [src/app/index.tsx](./src/app/index.tsx) contiene la UI y los modales del flujo principal.
-- Si quieres mantener el proyecto fácil de documentar, conviene seguir separando:
-  - datos
-  - componentes visuales
-  - lógica de pantalla
-  - utilidades compartidas
-
-## Scripts
+Instala EAS CLI, inicia sesión con tu cuenta de Expo y ejecuta el perfil de distribución interna:
 
 ```bash
-npm start
-npm run android
-npm run ios
-npm run web
-npm run lint
+npm install --global eas-cli
+eas login
+npm run build:android:apk
 ```
 
-## Nota
+El APK se genera en EAS Build y el comando muestra un enlace para descargarlo. La compilación en la nube carga el código del proyecto a Expo.
 
-El proyecto usa Expo Router y está orientado a una app móvil con enfoque de UX clara y experiencia emocional. La estructura actual ya está preparada para crecer sin mezclar demasiada lógica en una sola pantalla.
+## Flujos disponibles
+
+- La pantalla principal reproduce el diseño de NutriBot Familiar: acceso y registro local, tema rosa o azul, panel infantil y panel de padre/tutor.
+- El tutor puede crear y editar fichas con nombre, género, peso, altura, alergias y alimentos que no gustan; el plan semanal muestra alertas relacionadas con esas fichas.
+- El panel infantil incluye avatar personalizable, ánimo, XP, estadísticas, historial semanal, misiones y logros.
+- Incluye un plan semanal basado en el Plato del Buen Comer, rutinas de ejercicios para niños y un chat local con respuestas guiadas.
+- La versión anterior Warrior Kids permanece disponible desde la pantalla de acceso y en la ruta `/familiar`.
+
+## Datos, privacidad y límites
+
+Las cuentas locales y las fichas familiares de NutriBot Familiar se guardan en este dispositivo mediante AsyncStorage. La sesión no permanece abierta al cerrar la app. La versión anterior conserva sus propios datos locales.
+
+No hay sincronización en la nube, cuentas verificadas, contraseñas, recuperación de acceso, notificaciones del sistema ni administración remota. El correo solo identifica la cuenta local y no es una barrera de seguridad. Los datos de fichas infantiles pueden incluir información sensible y quedan legibles para quien tenga acceso al dispositivo; usa datos ficticios durante las pruebas.
+
+NutriBot ofrece respuestas predefinidas en el dispositivo; no es un servicio de IA ni brinda diagnósticos o consejos médicos. La actividad física es recreativa y debe contar con supervisión adulta. Los menús son ideas educativas, no dietas médicas; revisa siempre los ingredientes y las etiquetas para confirmar alergias. Las pruebas con menores requieren las autorizaciones y el consentimiento del tutor, además del asentimiento del menor cuando corresponda.

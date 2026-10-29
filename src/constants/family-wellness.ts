@@ -173,7 +173,7 @@ export const PALABRAS_TRISTES = [
 export const detectarAnimo = (texto: string): boolean =>
   PALABRAS_TRISTES.some((palabra) => texto.toLowerCase().includes(palabra));
 
-export const TABS_AVATAR: Array<{ id: AvatarKey; label: string; icon: string }> = [
+export const TABS_AVATAR: { id: AvatarKey; label: string; icon: string }[] = [
   { id: 'piel', label: 'Piel', icon: '✋' },
   { id: 'cabello', label: 'Cabello', icon: '💇‍♀️' },
   { id: 'ropa', label: 'Ropa', icon: '👗' },
