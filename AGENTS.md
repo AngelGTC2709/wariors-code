@@ -1,41 +1,55 @@
-This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
+# FamilyWellnessApp / NutriBot Familiar
+
+Expo SDK 57 + React Native 0.86 + Expo Router mobile app. All user-facing copy is Spanish (Mexico); keep new strings in Spanish and match the existing tone. `README.md` is the Spanish product overview.
 
 ## Expo has changed — do not trust your training data
 
-Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:
+Before writing code that touches an Expo, EAS, or React Native API:
 
-1. Read the major version of the `expo` package in `package.json`.
-2. Fetch the matching versioned docs: `https://docs.expo.dev/versions/v<major>.0.0/`
-3. For anything else, fetch https://docs.expo.dev/llms.txt — an index of all Expo docs with corrections to common LLM misconceptions. Follow its links to the specific page you need; never answer from memory.
+1. Read the `expo` major version in `package.json` (currently 57).
+2. Fetch the matching docs: `https://docs.expo.dev/versions/v57.0.0/`
+3. For anything else, start at https://docs.expo.dev/llms.txt (index + common LLM corrections) and follow the specific page. Never answer from memory.
 
 ## Commands
 
-Use `bunx` instead of `npx` if the project uses bun (`bun.lock` present).
+npm is the package manager (`package-lock.json`; no `bun.lock`/`yarn.lock`).
 
 ```bash
-npx expo install <package>  # ALWAYS use instead of npm/yarn/pnpm/bun add — resolves SDK-compatible versions
-npx expo start              # start the dev server
-npx expo lint               # lint
-npx tsc --noEmit            # typecheck
-npx expo-doctor             # diagnose dependency and config issues
-npx expo install --fix      # fix incompatible package versions
+npm install                 # install deps
+npm start                   # expo start (also regenerates .expo/types)
+npm run android|ios|web     # start on a platform
+npm run lint                # expo lint; slow on first run (minutes) — use a generous timeout
+npx tsc --noEmit            # typecheck (strict mode)
+npx expo install <pkg>      # ALWAYS use instead of npm install for Expo/RN deps
+npx expo-doctor             # dependency/config diagnostics
+npm run build:android:apk   # EAS preview build -> internal APK
 ```
 
-Run lint and typecheck before declaring any task done.
+There is **no test script, test framework, or CI**. Do not invent tests or claim they ran; verify with `npm run lint` + `npx tsc --noEmit`. Lint baseline is 0 errors and 3 known warnings (array-type in `familiar.tsx`, unused vars in `use-color-scheme.web.ts`) — don't chase them unless the task touches those files.
 
-## Navigation & Routing
+## Architecture
 
-- Use **Expo Router** for all navigation. Routes live in `src/app/` — every file there is a screen, `_layout.tsx` files define navigators. Keep non-route code (components, hooks, utils) outside `src/app/`.
-- Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
-- Docs: https://docs.expo.dev/router/introduction.md
+- `src/app/index.tsx` (~1.9k lines) is the **entire** NutriBot Familiar app: login/register, tutor panel, child panel, avatar builder, chat, and all styles. Subcomponents and theme/styles live in the same file; there is no component library, global store, or API layer.
+- `src/app/familiar.tsx` (~1.1k lines) is the legacy "Warrior Kids" app served at `/familiar`. It is independent of `index.tsx` — different data model, styles, and storage.
+- `src/app/_layout.tsx` is a headerless `Stack` with `ThemeProvider`; the only routes are `/` and `/familiar`. No tabs are mounted.
+- `src/components/app-tabs*.tsx` are unused template leftovers and reference a non-existent `explore` route. Don't wire them up without creating those routes.
+- Path aliases: `@/*` → `src/*`, `@/assets/*` → `assets/*`.
+- No NativeWind/Tailwind — styling is `StyleSheet.create` factories keyed by a theme object (`crearEstilos(T)` in `index.tsx`, memoized through `TemaContext`/`useEstilos`). `src/global.css` only defines web font variables and is imported from `src/constants/theme.ts`.
+- Platform forks use `.web.tsx` files (`animated-icon`, `app-tabs`, `use-color-scheme`); mirror that pattern for web-specific behavior.
 
-## Building with EAS
+## Local persistence (easy to break)
 
-Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
-Docs: https://docs.expo.dev/eas/index.md
+- Two independent, versioned AsyncStorage keys: `nutribot-familiar-local-v1` (`index.tsx`) and `warrior-kids-local-v1` (`familiar.tsx`). Don't merge or migrate them casually.
+- Parsed JSON is validated by hand-written type guards (`isStoredAppData`, `isAppData`). Any new persisted field must be added to its guard, or existing installs will hit the "No se pudieron cargar los datos locales" alert.
+- `index.tsx` only starts writing after `datosCargados` and serializes writes through the `escrituras` promise ref. Preserve that gate/ordering so the initial load isn't overwritten.
+- Sessions are intentionally not persisted: closing the app logs the user out. Chat responses are local/predefined — there is no external AI/API.
 
-## Rules
+## Config & native
 
-- If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
-- Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
-- Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+- `ios/` and `android/` are gitignored and generated (CNG). Configure native behavior in `app.json` and config plugins; never create or edit them by hand.
+- `experiments.typedRoutes` and `experiments.reactCompiler` are enabled. New routes must exist before route strings typecheck; `npm start` regenerates `.expo/types`.
+- `SplashScreen.preventAutoHideAsync()` runs in `_layout.tsx` and `AnimatedSplashOverlay` hides it. Don't add a second hide call.
+- `react-native-reanimated.d.ts` is an intentional untyped module stub — don't delete it.
+- `eas.json` has only the `preview` profile (internal-distribution APK); there is no production profile. Run EAS as `npx eas-cli@latest <command>`.
+- Expo Go only bundles its own native modules. After adding a native library, use a dev build: `npx expo run:ios|android` or `eas build --profile development`.
+- Prefer official Expo modules over third-party libraries; check available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
