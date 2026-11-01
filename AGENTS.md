@@ -1,13 +1,13 @@
 # FamilyWellnessApp / NutriBot Familiar
 
-Expo SDK 57 + React Native 0.86 + Expo Router mobile app. All user-facing copy is Spanish (Mexico); keep new strings in Spanish and match the existing tone. `README.md` is the Spanish product overview.
+Expo SDK 58 + React Native 0.88 + Expo Router mobile app. All user-facing copy is Spanish (Mexico); keep new strings in Spanish and match the existing tone. `README.md` is the Spanish product overview.
 
 ## Expo has changed — do not trust your training data
 
 Before writing code that touches an Expo, EAS, or React Native API:
 
-1. Read the `expo` major version in `package.json` (currently 57).
-2. Fetch the matching docs: `https://docs.expo.dev/versions/v57.0.0/`
+1. Read the `expo` major version in `package.json` (currently 58).
+2. Fetch the matching docs: `https://docs.expo.dev/versions/v58.0.0/`
 3. For anything else, start at https://docs.expo.dev/llms.txt (index + common LLM corrections) and follow the specific page. Never answer from memory.
 
 ## Commands

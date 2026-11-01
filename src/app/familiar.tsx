@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import type { ReactNode } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import UnifiedApp from '@/features/unified/screen';
 
 import {
   ACTIVITIES,
@@ -212,7 +213,7 @@ function Field({
   );
 }
 
-export default function HomeScreen() {
+export function WarriorKidsLegacyApp() {
   const [data, setData] = useState<AppData | null>(null);
   const dataRef = useRef<AppData | null>(null);
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
@@ -1170,4 +1171,8 @@ const createStyles = (COLORS: AppPalette) => StyleSheet.create({
 function usePaletteStyles() {
   const palette = useContext(PaletteContext);
   return useMemo(() => createStyles(palette), [palette]);
+}
+
+export default function FamiliarRoute() {
+  return <UnifiedApp />;
 }

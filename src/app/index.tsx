@@ -5,10 +5,12 @@ import {
     ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet,
     Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import UnifiedApp from '@/features/unified/screen';
 
 
 type TemaId = 'nina' | 'nino';
@@ -871,7 +873,7 @@ function ModalNutriBot({
 
   const [msgs, setMsgs] = useState<ChatMessage[]>([{ rol: 'bot', texto: saludo() }]);
   const [input, setInput]     = useState('');
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance | null>(null);
 
   const enviar = () => {
     if (!input.trim()) return;
@@ -2005,7 +2007,7 @@ const crearEstilos = (T: Tema) => StyleSheet.create({
 });
 
 // ─── RAÍZ: decide entre login y app, y provee el tema ────────────────────────
-export default function App() {
+export function NutriBotLegacyApp() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [sesion, setSesion]     = useState<Usuario | null>(null);
   const [temaId, setTemaId]     = useState<TemaId>('nina');
@@ -2112,4 +2114,8 @@ export default function App() {
       )}
     </TemaContext.Provider>
   );
+}
+
+export default function App() {
+  return <UnifiedApp />;
 }

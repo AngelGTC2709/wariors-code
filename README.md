@@ -1,47 +1,36 @@
-#
+# Warrior Kids
 
-Prototipo móvil en español de México para acompañar hábitos saludables en familia. Se ejecuta con Expo SDK 57, React Native y Expo Router; el chat de NutriBot responde localmente y no usa una API externa.
+Aplicación móvil en español de México para acompañar hábitos saludables en familia. Usa Expo SDK 58, React Native y Expo Router. La ruta principal `/` y el alias `/familiar` muestran la misma experiencia.
 
-## Ejecutar en Expo Go
-
-1. Instala Node.js y las dependencias desde la raíz del proyecto:
-
-   ```bash
-   npm install
-   ```
-
-2. Inicia Expo:
-
-   ```bash
-   npx expo start
-   ```
-
-3. Escanea el código QR con Expo Go en Android. Ambos dispositivos deben estar en una red que permita la conexión.
-
-## Generar APK para Android
-
-Instala EAS CLI, inicia sesión con tu cuenta de Expo y ejecuta el perfil de distribución interna:
+## Ejecutar
 
 ```bash
-npm install --global eas-cli
-eas login
+npm install
+npx expo start
+```
+
+Para generar un APK de distribución interna:
+
+```bash
+npx eas-cli@latest login
 npm run build:android:apk
 ```
 
-El APK se genera en EAS Build y el comando muestra un enlace para descargarlo. La compilación en la nube carga el código del proyecto a Expo.
+## Experiencia
 
-## Flujos disponibles
+- Perfiles locales para niñas y niños y panel de acompañamiento para personas tutoras.
+- Alta y edición de perfiles infantiles en cinco fases, con avatar ilustrado, edad, medidas, alergias, alimentos a prevenir y confirmación de datos.
+- Navegación por rol: el menú semanal aparece en el espacio tutor y la niñez tiene un apartado dedicado a sus logros; las personas tutoras pueden revisar puntos e insignias.
+- Registro de agua, grupos de alimentos, ánimo, descanso, movimiento y evidencia fotográfica opcional.
+- Aprobación local de actividades, puntos, retos y personalización de avatar con iconos vectoriales.
+- Catálogo de recetas, búsqueda y filtros, menú semanal de desayuno, comida y cena, y plan educativo del Plato del Buen Comer.
+- Preferencias de alergias y alimentos que se prefieren evitar, preguntas frecuentes y respuestas predefinidas de NutriBot.
+- Vinculación manual de perfiles de NutriBot Familiar y Warrior Kids. Los valores diferentes y sus fuentes se conservan.
 
-- La pantalla principal reproduce el diseño de NutriBot Familiar: acceso y registro local, tema rosa o azul, panel infantil y panel de padre/tutor.
-- El tutor puede crear y editar fichas con nombre, género, peso, altura, alergias y alimentos que no gustan; el plan semanal muestra alertas relacionadas con esas fichas.
-- El panel infantil incluye avatar personalizable, ánimo, XP, estadísticas, historial semanal, misiones y logros.
-- Incluye un plan semanal basado en el Plato del Buen Comer, rutinas de ejercicios para niños y un chat local con respuestas guiadas.
-- La versión anterior Warrior Kids permanece disponible desde la pantalla de acceso y en la ruta `/familiar`.
+## Datos y privacidad
 
-## Datos, privacidad y límites
+La aplicación migra una copia de los datos existentes al espacio `familywellness-unified-local-v1`. Los almacenes `nutribot-familiar-local-v1` y `warrior-kids-local-v1` se mantienen intactos; no se vinculan perfiles por nombre. Los perfiles se pueden vincular manualmente, separar u ocultar sin borrar sus datos.
 
-Las cuentas locales y las fichas familiares de NutriBot Familiar se guardan en este dispositivo mediante AsyncStorage. La sesión no permanece abierta al cerrar la app. La versión anterior conserva sus propios datos locales.
+Los datos, el PIN y las fotos de evidencia se guardan en el dispositivo. No hay sincronización en la nube, cuentas verificadas, contraseñas, recuperación de acceso, administración remota ni notificaciones del sistema. El correo solo identifica el acceso local; el PIN no está cifrado y no sustituye una contraseña ni protege el almacenamiento del dispositivo.
 
-No hay sincronización en la nube, cuentas verificadas, contraseñas, recuperación de acceso, notificaciones del sistema ni administración remota. El correo solo identifica la cuenta local y no es una barrera de seguridad. Los datos de fichas infantiles pueden incluir información sensible y quedan legibles para quien tenga acceso al dispositivo; usa datos ficticios durante las pruebas.
-
-NutriBot ofrece respuestas predefinidas en el dispositivo; no es un servicio de IA ni brinda diagnósticos o consejos médicos. La actividad física es recreativa y debe contar con supervisión adulta. Los menús son ideas educativas, no dietas médicas; revisa siempre los ingredientes y las etiquetas para confirmar alergias. Las pruebas con menores requieren las autorizaciones y el consentimiento del tutor, además del asentimiento del menor cuando corresponda.
+Las recetas y el plan son ideas educativas, no indicaciones médicas ni menús personalizados. Revisa ingredientes, etiquetas y posibles contaminaciones cruzadas; consulta a profesionales de salud ante alergias o dudas. Las actividades físicas son recreativas y deben contar con supervisión adulta. NutriBot utiliza respuestas predefinidas, no es un servicio de IA ni brinda diagnósticos.
