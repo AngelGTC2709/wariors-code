@@ -454,6 +454,41 @@ function accountsFromSources(nutri: NutriData, warrior: WarriorData): LocalAccou
   return accounts;
 }
 
+export function createEmptyUnifiedData(account: LocalAccount): UnifiedData {
+  const nutribot: NutriData = {
+    ...EMPTY_NUTRI_DATA,
+    usuarios: [{ nombre: account.name, correo: account.email, rol: 'tutor' }],
+  };
+  const warriorKids: WarriorData = {
+    ...EMPTY_WARRIOR_DATA,
+    tutor: { name: account.name, email: account.email },
+  };
+
+  return {
+    version: 1,
+    nutribot,
+    warriorKids,
+    accounts: [account],
+    profileLinks: [],
+    archivedProfiles: [],
+    weeklyMeals: initialWeeklyMeals(warriorKids),
+    avatarSelections: {},
+    dailyLogs: {},
+    childProgress: {},
+    missionClaims: {},
+    tutorPin: null,
+    progressSharingEnabled: true,
+  };
+}
+
+export async function clearLegacyLocalData(): Promise<void> {
+  await AsyncStorage.multiRemove([
+    NUTRI_STORAGE_KEY,
+    WARRIOR_STORAGE_KEY,
+    UNIFIED_STORAGE_KEY,
+  ]);
+}
+
 export async function loadUnifiedData(): Promise<{ data: UnifiedData; migrated: boolean }> {
   const existing = await AsyncStorage.getItem(UNIFIED_STORAGE_KEY);
   if (existing !== null) {

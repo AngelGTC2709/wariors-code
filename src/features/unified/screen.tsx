@@ -11,8 +11,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import { File, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
+import type { User } from '@supabase/supabase-js';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import {
@@ -45,10 +45,8 @@ import {
   FOOD_OPTIONS,
 } from '@/features/unified/constants';
 import {
-  loadUnifiedData,
-  saveUnifiedData,
+  clearLegacyLocalData,
   type AccountRole,
-  type AccountSource,
   type ChildProgress,
   type LocalAccount,
   type NutriChild,
@@ -58,6 +56,16 @@ import {
   type WarriorChild,
   type WeeklyMeals,
 } from '@/features/unified/model';
+import {
+  accountFromUser,
+  deleteEvidence,
+  loadCloudData,
+  saveCloudData,
+  subscribeToCloudData,
+  uploadEvidence,
+} from '@/features/unified/cloud-data';
+import { EvidencePhoto } from '@/features/unified/evidence-photo';
+import { getSupabaseClient } from '@/lib/supabase';
 import {
   AvatarIllustration,
   Button,
@@ -75,7 +83,6 @@ import {
 type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Logros' | 'Ajustes' | 'Ayuda';
 type PhotoDraft = {
   uri: string;
-  base64?: string | null;
   mimeType?: string | null;
   fileName?: string | null;
 };
@@ -326,16 +333,6 @@ function getLinkedWarrior(data: UnifiedData, warriorId: string): boolean {
   return data.profileLinks.some(link => link.warriorId === warriorId);
 }
 
-function getAccountRole(account: LocalAccount): AccountRole {
-  return account.role;
-}
-
-function getAccountSourceLabel(source: AccountSource): string {
-  if (source === 'nutribot') return 'NutriBot Familiar';
-  if (source === 'warrior-kids') return 'Warrior Kids';
-  return 'Warrior Kids';
-}
-
 function emptyProfileDraft(): ProfileDraft {
   return {
     name: '',
@@ -371,22 +368,26 @@ export default function UnifiedApp() {
   const [loadError, setLoadError] = useState('');
   const [storageError, setStorageError] = useState('');
   const [session, setSession] = useState<LocalAccount | null>(null);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const dataVersion = useRef(0);
+  const nextWriteVersion = useRef(0);
+  const pendingWrites = useRef(0);
+  const writesBlocked = useRef(false);
+  const loadGeneration = useRef(0);
+  const authUserId = useRef<string | null>(null);
   const [role, setRole] = useState<AccountRole>('tutor');
   const [selectedProfileKey, setSelectedProfileKey] = useState<string | null>(null);
   const [tab, setTab] = useState<AppTab>('Familia');
   const [profileStep, setProfileStep] = useState(0);
 
   const [registerMode, setRegisterMode] = useState(false);
-  const [authRole, setAuthRole] = useState<AccountRole>('tutor');
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [accountChoices, setAccountChoices] = useState<LocalAccount[]>([]);
-  const [pendingAccount, setPendingAccount] = useState<LocalAccount | null>(null);
-  const [pinEmail, setPinEmail] = useState('');
-  const [pinMode, setPinMode] = useState<'login' | 'setup' | 'change' | 'new' | null>(null);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
 
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [editingProfile, setEditingProfile] = useState<UnifiedProfile | null>(null);
@@ -423,49 +424,165 @@ export default function UnifiedApp() {
   const [notice, setNotice] = useState('');
 
   const loadData = useCallback(async () => {
+    if (!authUser) return null;
+    const generation = ++loadGeneration.current;
     try {
-      const loaded = await loadUnifiedData();
-      if (loaded.migrated) await saveUnifiedData(loaded.data);
+      const account = accountFromUser(authUser);
+      const loaded = await loadCloudData(authUser, account);
+      await clearLegacyLocalData();
+      if (generation !== loadGeneration.current) return null;
       setLoadError('');
+      dataVersion.current = loaded.version;
+      nextWriteVersion.current = loaded.version;
+      writesBlocked.current = false;
       dataRef.current = loaded.data;
       setData(loaded.data);
+      setSession(account);
+      setRole('tutor');
       setStorageError('');
+      return loaded;
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'No se pudieron cargar los datos locales.');
+      if (generation === loadGeneration.current) {
+        setLoadError(error instanceof Error ? error.message : 'No se pudieron cargar los datos de Supabase.');
+      }
+      return null;
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
-  }, []);
+  }, [authUser]);
 
   useEffect(() => {
     let active = true;
-    void Promise.resolve().then(() => {
-      if (active) return loadData();
-      return undefined;
-    });
+    let unsubscribe: (() => void) | null = null;
+    const applyAuthUser = (user: User | null) => {
+      if (authUserId.current !== (user?.id ?? null)) {
+        authUserId.current = user?.id ?? null;
+        loadGeneration.current += 1;
+        dataRef.current = null;
+        dataVersion.current = 0;
+        nextWriteVersion.current = 0;
+        writesBlocked.current = false;
+        setData(null);
+        setSession(null);
+        setStorageError('');
+        setLoadError('');
+        setLoading(Boolean(user));
+      } else if (!user) {
+        setLoading(false);
+      }
+      setAuthUser(user);
+    };
+    try {
+      const supabase = getSupabaseClient();
+      const { data: authListener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+        if (active) applyAuthUser(currentSession?.user ?? null);
+      });
+      unsubscribe = () => authListener.subscription.unsubscribe();
+      void Promise.resolve()
+        .then(() => supabase.auth.getSession())
+        .then(({ data: sessionData, error }) => {
+          if (!active) return;
+          if (error) throw error;
+          applyAuthUser(sessionData.session?.user ?? null);
+          setAuthReady(true);
+        })
+        .catch(error => {
+          if (!active) return;
+          setLoadError(error instanceof Error ? error.message : 'No se pudo restaurar la sesión de Supabase.');
+          setLoading(false);
+          setAuthReady(true);
+        });
+    } catch (error) {
+      void Promise.resolve().then(() => {
+        if (!active) return;
+        setLoadError(error instanceof Error ? error.message : 'No se pudo configurar Supabase.');
+        setLoading(false);
+        setAuthReady(true);
+      });
+    }
     return () => {
       active = false;
+      unsubscribe?.();
     };
-  }, [loadData]);
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!authUser) {
+      loadGeneration.current += 1;
+      dataRef.current = null;
+      dataVersion.current = 0;
+      nextWriteVersion.current = 0;
+      writesBlocked.current = false;
+      return;
+    }
+
+    let active = true;
+    let channel: ReturnType<typeof subscribeToCloudData> | null = null;
+
+    void loadData().then(snapshot => {
+      if (!active || !snapshot) return;
+      try {
+        channel = subscribeToCloudData(
+          authUser.id,
+          nextSnapshot => {
+            if (!active || pendingWrites.current > 0 || nextSnapshot.version <= dataVersion.current) return;
+            dataVersion.current = nextSnapshot.version;
+            nextWriteVersion.current = nextSnapshot.version;
+            dataRef.current = nextSnapshot.data;
+            setData(nextSnapshot.data);
+          },
+          error => {
+            if (active) setStorageError(error.message);
+          },
+        );
+      } catch (error) {
+        setStorageError(error instanceof Error ? error.message : 'No se pudo iniciar la sincronización en tiempo real.');
+      }
+    });
+
+    return () => {
+      active = false;
+      loadGeneration.current += 1;
+      if (channel) void getSupabaseClient().removeChannel(channel);
+    };
+  }, [authReady, authUser, loadData]);
 
   const updateData = (update: (current: UnifiedData) => UnifiedData) => {
     const current = dataRef.current;
-    if (!current) {
+    if (!current || !authUser) {
       setStorageError('Los datos todavía no están listos. Intenta de nuevo en un momento.');
+      return;
+    }
+    if (writesBlocked.current) {
+      setStorageError('No se guardarán más cambios hasta volver a cargar los datos de Supabase.');
       return;
     }
     const next = update(current);
     dataRef.current = next;
     setData(next);
-    const pendingWrite = writeQueue.current.then(
-      () => saveUnifiedData(next),
-      () => saveUnifiedData(next),
-    );
+    const userId = authUser.id;
+    const expectedVersion = nextWriteVersion.current;
+    nextWriteVersion.current += 1;
+    pendingWrites.current += 1;
+    const pendingWrite = writeQueue.current.catch(() => undefined).then(async () => {
+      const version = await saveCloudData(userId, next, expectedVersion);
+      if (authUserId.current === userId) dataVersion.current = version;
+    });
     writeQueue.current = pendingWrite;
     void pendingWrite.then(
-      () => setStorageError(''),
-      error => setStorageError(error instanceof Error ? error.message : 'No se pudieron guardar los cambios en este dispositivo.'),
-    );
+      () => {
+        if (authUserId.current === userId) setStorageError('');
+      },
+      error => {
+        if (authUserId.current === userId) {
+          writesBlocked.current = true;
+          setStorageError(error instanceof Error ? error.message : 'No se pudieron guardar los cambios en Supabase.');
+        }
+      },
+    ).finally(() => {
+      pendingWrites.current -= 1;
+    });
   };
 
   const profiles = useMemo(() => (data ? buildProfiles(data) : []), [data]);
@@ -478,141 +595,62 @@ export default function UnifiedApp() {
     ? unique([...selectedProfile.nutri.noGusta, selectedProfile.nutri.otrosNoGusta].filter(Boolean))
     : [];
 
-  const startSession = (account: LocalAccount) => {
-    if (account.role === 'tutor') {
-      setPendingAccount(account);
-      setPinEmail(account.email);
-      setPinMode(data?.tutorPin ? 'login' : 'setup');
-      setPinInput('');
-      setPinError('');
-      return;
-    }
-    setSession(account);
-    setRegisterMode(false);
-    setRole(getAccountRole(account));
-    const exactMatches = profiles.filter(profile => cleanText(profile.name) === cleanText(account.name));
-    setSelectedProfileKey(exactMatches.length === 1 ? exactMatches[0].key : null);
-    setTab('Familia');
+  const submitAuth = async () => {
     setAuthError('');
-  };
-
-  const submitAuth = () => {
-    setAuthError('');
+    setAuthNotice('');
     const email = authEmail.trim().toLocaleLowerCase('es-MX');
     if (!email || !email.includes('@')) {
-      setAuthError('Escribe un correo válido para encontrar tus datos locales.');
+      setAuthError('Escribe un correo electrónico válido.');
       return;
     }
     if (registerMode) {
       const name = authName.trim();
       if (name.length < 2) {
-        setAuthError('Escribe tu nombre para crear el acceso local.');
+        setAuthError('Escribe tu nombre para crear tu cuenta.');
         return;
       }
-      if (data?.accounts.some(account => account.email.toLocaleLowerCase('es-MX') === email)) {
-        setAuthError('Ese correo ya tiene un acceso local. Inicia sesión para continuar.');
-        return;
-      }
-      const account: LocalAccount = {
-        id: createId('account'),
-        name,
-        email,
-        role: authRole,
-        source: 'unified',
-      };
-      updateData(current => ({
-        ...current,
-        accounts: [...current.accounts, account],
-        nutribot: {
-          ...current.nutribot,
-          usuarios: [
-            ...current.nutribot.usuarios,
-            { nombre: name, correo: email, rol: authRole === 'child' ? 'menor' : 'tutor' },
-          ],
-        },
-        warriorKids: authRole === 'tutor' && !current.warriorKids.tutor
-          ? { ...current.warriorKids, tutor: { name, email } }
-          : current.warriorKids,
-      }));
-      startSession(account);
+    }
+    if (authPassword.length < 6) {
+      setAuthError('La contraseña debe tener al menos 6 caracteres.');
       return;
     }
 
-    const matches = data?.accounts.filter(account =>
-      account.email.toLocaleLowerCase('es-MX') === email && account.role === authRole,
-    ) ?? [];
-    if (matches.length === 0) {
-      setAuthError('No encontramos un acceso local con ese correo y tipo de cuenta.');
-      return;
-    }
-    if (matches.length === 1) {
-      startSession(matches[0]);
-      return;
-    }
-    setAccountChoices(matches);
-  };
+    setAuthBusy(true);
+    try {
+      const supabase = getSupabaseClient();
+      if (registerMode) {
+        const { data: result, error } = await supabase.auth.signUp({
+          email,
+          password: authPassword,
+          options: { data: { name: authName.trim() } },
+        });
+        if (error) throw error;
+        if (!result.session) {
+          setRegisterMode(false);
+          setAuthPassword('');
+          setAuthNotice('Cuenta creada. Revisa tu correo para confirmar la dirección y después inicia sesión.');
+        } else {
+          setAuthNotice('Tu cuenta se creó correctamente. Cargando tu espacio familiar…');
+        }
+        return;
+      }
 
-  const completePinAction = () => {
-    const value = pinInput.trim();
-    if (pinMode === 'login') {
-      const email = pinEmail.trim().toLocaleLowerCase('es-MX');
-      const tutorAccount = data?.accounts.find(account =>
-        account.role === 'tutor' && account.email.toLocaleLowerCase('es-MX') === email,
-      );
-      if (!email || !tutorAccount) {
-        setPinError('No encontramos una cuenta tutora con ese correo en este dispositivo.');
-        return;
+      const { error } = await supabase.auth.signInWithPassword({ email, password: authPassword });
+      if (error) throw error;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error desconocido.';
+      const normalized = message.toLocaleLowerCase('es-MX');
+      if (normalized.includes('invalid login credentials')) {
+        setAuthError('El correo o la contraseña no coinciden.');
+      } else if (normalized.includes('email not confirmed')) {
+        setAuthError('Confirma tu correo desde el mensaje que te enviamos antes de iniciar sesión.');
+      } else if (normalized.includes('already registered') || normalized.includes('user already')) {
+        setAuthError('Ese correo ya tiene una cuenta. Inicia sesión.');
+      } else {
+        setAuthError(`No se pudo completar el acceso con Supabase: ${message}`);
       }
-      if (value !== data?.tutorPin) {
-        setPinError('El PIN no coincide. Inténtalo otra vez.');
-        return;
-      }
-      const account = pendingAccount?.email.toLocaleLowerCase('es-MX') === email
-        ? pendingAccount
-        : tutorAccount;
-      setSession(account);
-      setRegisterMode(false);
-      setRole('tutor');
-      const exactMatches = profiles.filter(profile => cleanText(profile.name) === cleanText(account.name));
-      setSelectedProfileKey(exactMatches.length === 1 ? exactMatches[0].key : null);
-      setTab('Familia');
-      setPendingAccount(null);
-      setPinMode(null);
-      setPinEmail('');
-      setPinInput('');
-      setPinError('');
-      return;
-    }
-    if (pinMode === 'setup' || pinMode === 'new') {
-      if (!/^\d{4,6}$/.test(value)) {
-        setPinError('El PIN debe tener entre 4 y 6 números.');
-        return;
-      }
-      updateData(current => ({ ...current, tutorPin: value }));
-      if (pendingAccount) {
-        setSession(pendingAccount);
-        setRegisterMode(false);
-        setRole('tutor');
-        const exactMatches = profiles.filter(profile => cleanText(profile.name) === cleanText(pendingAccount.name));
-        setSelectedProfileKey(exactMatches.length === 1 ? exactMatches[0].key : null);
-        setTab('Familia');
-      }
-      setPendingAccount(null);
-      setPinMode(null);
-      setPinEmail('');
-      setPinInput('');
-      setPinError('');
-      setNotice('El PIN local quedó actualizado. No sustituye una contraseña ni protege el almacenamiento del dispositivo.');
-      return;
-    }
-    if (pinMode === 'change') {
-      if (value !== data?.tutorPin) {
-        setPinError('El PIN actual no coincide.');
-        return;
-      }
-      setPinMode('new');
-      setPinInput('');
-      setPinError('');
+    } finally {
+      setAuthBusy(false);
     }
   };
 
@@ -730,7 +768,7 @@ export default function UnifiedApp() {
     setEditingProfile(null);
     setSelectedProfileKey(updatedKey || null);
     setTab('Familia');
-    setNotice(editingProfile ? 'El perfil se actualizó sin modificar las copias originales.' : 'Perfil infantil creado en este dispositivo.');
+    setNotice(editingProfile ? 'El perfil se actualizó en tu espacio familiar.' : 'Perfil infantil creado en tu espacio familiar.');
   };
 
   const toggleProfileFood = (field: 'allergies' | 'noLikes', value: string) => {
@@ -751,7 +789,7 @@ export default function UnifiedApp() {
     }));
     if (selectedProfileKey === key) setSelectedProfileKey(null);
     setProfileToArchive(null);
-    setNotice('El perfil se ocultó de la aplicación. Sus datos locales no se borraron.');
+    setNotice('El perfil se ocultó de la aplicación. Sus datos se conservaron en tu espacio familiar.');
   };
 
   const unlinkProfile = (profile: UnifiedProfile) => {
@@ -806,12 +844,6 @@ export default function UnifiedApp() {
     setSelectedProfileKey(`linked:${id}`);
     setShowLinkEditor(false);
     setNotice('Perfiles vinculados manualmente. Los datos distintos de cada origen se conservaron.');
-  };
-
-  const openPinSetup = () => {
-    setPinMode(data?.tutorPin ? 'change' : 'setup');
-    setPinInput('');
-    setPinError('');
   };
 
   const updateDailyLog = (
@@ -906,7 +938,7 @@ export default function UnifiedApp() {
     }
     updateDailyLog(selectedProfile, todayKey(), log => ({ ...log, sleepHours: hours }));
     setSleepInput('');
-    setNotice('Tu registro de sueño quedó guardado en este dispositivo.');
+    setNotice('Tu registro de sueño quedó guardado en tu espacio familiar.');
   };
 
   const submitActivity = async () => {
@@ -936,23 +968,13 @@ export default function UnifiedApp() {
       setActivityError('');
       setNotice('Actividad enviada a la persona tutora para revisión.');
     } catch (error) {
-      setActivityError(error instanceof Error ? error.message : 'No se pudo guardar la evidencia en este dispositivo.');
+      setActivityError(error instanceof Error ? error.message : 'No se pudo guardar la evidencia en Supabase.');
     }
   };
 
   const storeEvidence = async (photo: PhotoDraft): Promise<string> => {
-    if (Platform.OS === 'web') {
-      if (!photo.base64) throw new Error('No se pudo preparar la foto para guardarla localmente.');
-      if (photo.base64.length > 700_000) {
-        throw new Error('La foto pesa demasiado para guardarse en el navegador. Elige una imagen más pequeña.');
-      }
-      const mimeType = photo.mimeType || 'image/jpeg';
-      return `data:${mimeType};base64,${photo.base64}`;
-    }
-    const extension = photo.fileName?.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'jpg';
-    const destination = new File(Paths.document, `actividad-${createId('evidencia')}.${extension}`);
-    new File(photo.uri).copy(destination);
-    return destination.uri;
+    if (!session) throw new Error('Inicia sesión para guardar la evidencia.');
+    return uploadEvidence(session.id, photo.uri, photo.fileName, photo.mimeType);
   };
 
   const pickActivityPhoto = async (source: 'camera' | 'library') => {
@@ -976,7 +998,6 @@ export default function UnifiedApp() {
         mediaTypes: ['images'],
         allowsEditing: true,
         quality: 0.6,
-        base64: Platform.OS === 'web',
       };
       const result = source === 'camera'
         ? await ImagePicker.launchCameraAsync(options)
@@ -989,7 +1010,6 @@ export default function UnifiedApp() {
       }
       setActivityPhoto({
         uri: asset.uri,
-        base64: asset.base64,
         mimeType: asset.mimeType,
         fileName: asset.fileName,
       });
@@ -1018,8 +1038,7 @@ export default function UnifiedApp() {
     }
     if (activity.evidenceUri && !activity.evidenceUri.startsWith('data:')) {
       try {
-        const evidence = new File(activity.evidenceUri);
-        if (evidence.exists) evidence.delete();
+        await deleteEvidence(activity.evidenceUri);
       } catch (error) {
         setNotice(error instanceof Error
           ? `No se eliminó la foto, así que el registro se conservó: ${error.message}`
@@ -1032,7 +1051,7 @@ export default function UnifiedApp() {
       delete activities[activityId];
       return { ...current, activities };
     });
-    setNotice('Se pidió volver a registrar la actividad. La evidencia local se eliminó.');
+    setNotice('Se pidió volver a registrar la actividad. La evidencia se eliminó de Supabase.');
   };
 
   const claimMission = (missionId: string, points: number) => {
@@ -1121,20 +1140,48 @@ export default function UnifiedApp() {
     });
   };
 
-  const logout = () => {
-    setSession(null);
-    setRegisterMode(false);
-    setAuthName('');
-    setAuthEmail('');
-    setSelectedProfileKey(null);
-    setAccountChoices([]);
+  const logout = async () => {
     setAuthError('');
-    setPendingAccount(null);
-    setPinMode(null);
-    setPinEmail('');
-    setPinInput('');
-    setPinError('');
-    setTab('Familia');
+    try {
+      const { error } = await getSupabaseClient().auth.signOut();
+      if (error) throw error;
+      setLoadError('');
+      setRegisterMode(false);
+      setAuthName('');
+      setAuthEmail('');
+      setAuthPassword('');
+      setAuthNotice('');
+      setSelectedProfileKey(null);
+      setTab('Familia');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo cerrar la sesión de Supabase.';
+      setAuthError(message);
+      setStorageError(message);
+    }
+  };
+
+  const retryConnection = () => {
+    setLoadError('');
+    if (authUser) {
+      setLoading(true);
+      void loadData();
+      return;
+    }
+    setLoading(true);
+    try {
+      void getSupabaseClient().auth.getSession().then(({ data: sessionData, error }) => {
+        if (error) throw error;
+        setAuthUser(sessionData.session?.user ?? null);
+        setAuthReady(true);
+        setLoading(false);
+      }).catch(error => {
+        setLoadError(error instanceof Error ? error.message : 'No se pudo restaurar la sesión de Supabase.');
+        setLoading(false);
+      });
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'No se pudo configurar Supabase.');
+      setLoading(false);
+    }
   };
 
   const renderBrand = () => (
@@ -1158,29 +1205,10 @@ export default function UnifiedApp() {
           <Text style={styles.authTitle}>{registerMode ? '¡Qué gusto conocerte!' : 'Hola de nuevo'}</Text>
           <Text style={styles.authSubtitle}>
             {registerMode
-              ? 'Crea un acceso local para continuar con tu familia.'
-              : 'Entra para ver los hábitos y retos de tu familia.'}
+              ? 'Crea una cuenta para guardar el espacio de tu familia.'
+              : 'Inicia sesión para ver los perfiles de tu familia.'}
           </Text>
           <View style={styles.authCard}>
-            <View style={styles.roleRow}>
-              {([
-                { id: 'tutor' as const, label: 'Persona tutora', icon: 'tutor' as const },
-                { id: 'child' as const, label: 'Niña o niño', icon: 'child' as const },
-              ]).map(option => (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: authRole === option.id }}
-                  key={option.id}
-                  onPress={() => setAuthRole(option.id)}
-                  style={[styles.roleChoice, authRole === option.id && styles.roleChoiceActive]}
-                >
-                  <Icon name={option.icon} size={18} color={authRole === option.id ? COLORS.blueDeep : COLORS.muted} />
-                  <Text style={[styles.roleChoiceText, authRole === option.id && styles.roleChoiceTextActive]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
             {registerMode ? (
               <Field
                 autoCapitalize="words"
@@ -1198,31 +1226,44 @@ export default function UnifiedApp() {
               label="Correo electrónico"
               onChangeText={setAuthEmail}
               placeholder="familia@ejemplo.com"
-              returnKeyType="done"
+              returnKeyType="next"
               value={authEmail}
+            />
+            <Field
+              autoCapitalize="none"
+              autoComplete={registerMode ? 'new-password' : 'current-password'}
+              label="Contraseña"
+              onChangeText={setAuthPassword}
               onSubmitEditing={submitAuth}
+              returnKeyType="done"
+              secureTextEntry
+              value={authPassword}
             />
             {authError ? <Text accessibilityRole="alert" style={styles.errorText}>{authError}</Text> : null}
+            {authNotice ? <Text accessibilityRole="alert" style={styles.authNotice}>{authNotice}</Text> : null}
             <Button
-              title={registerMode ? 'Crear acceso local' : 'Continuar'}
+              title={authBusy ? 'Conectando…' : registerMode ? 'Crear cuenta' : 'Iniciar sesión'}
               icon={registerMode ? 'add' : 'logout'}
+              disabled={authBusy}
               onPress={submitAuth}
             />
             <Pressable
               accessibilityRole="button"
+              disabled={authBusy}
               onPress={() => {
                 setRegisterMode(value => !value);
                 setAuthError('');
+                setAuthNotice('');
               }}
               style={styles.linkButton}
             >
               <Text style={styles.linkText}>
-                {registerMode ? 'Ya tengo un acceso local' : 'Crear una cuenta local'}
+                {registerMode ? 'Ya tengo una cuenta' : 'Crear una cuenta de tutor'}
               </Text>
             </Pressable>
           </View>
           <Text style={styles.authNotice}>
-            El correo solo identifica datos guardados en este dispositivo. No se verifica identidad ni se sincroniza con internet.
+            Cada cuenta tutora tiene su propio espacio familiar. Los datos se sincronizan con Supabase y no se comparten con otras cuentas.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -1251,19 +1292,6 @@ export default function UnifiedApp() {
               accessibilityState={{ selected: role === option.id }}
               key={option.id}
               onPress={() => {
-                if (option.id === 'tutor') {
-                  if (role === 'tutor') return;
-                  if (!data?.tutorPin) {
-                    setNotice('Para configurar el PIN, cierra sesión e inicia con el correo de una persona tutora.');
-                    return;
-                  }
-                  setPendingAccount(null);
-                  setPinEmail('');
-                  setPinInput('');
-                  setPinError('');
-                  setPinMode('login');
-                  return;
-                }
                 setRole(option.id);
                 if (option.id === 'child' && !selectedProfileKey && profiles.length === 1) {
                   setSelectedProfileKey(profiles[0].key);
@@ -1745,7 +1773,7 @@ export default function UnifiedApp() {
           <Card style={{ backgroundColor: COLORS.paleOrange, borderColor: '#FEEBC8' }}>
             <Text style={styles.cardTitle}>Compartir progreso está desactivado</Text>
             <Text style={styles.noticeText}>
-              Los detalles de hábitos, ánimo y actividades no se muestran aquí. Puedes cambiar esta preferencia en Ajustes; todo sigue siendo local a este dispositivo.
+              Los detalles de hábitos, ánimo y actividades no se muestran aquí. Puedes cambiar esta preferencia en Ajustes; el cambio se guarda en tu espacio familiar.
             </Text>
           </Card>
         ) : (
@@ -1765,7 +1793,7 @@ export default function UnifiedApp() {
                     </View>
                   </View>
                   {item.activity.evidenceUri ? (
-                    <Image source={{ uri: item.activity.evidenceUri }} style={{ width: '100%', height: 150, borderRadius: 12 }} resizeMode="cover" />
+                    <EvidencePhoto path={item.activity.evidenceUri} />
                   ) : <Text style={styles.muted}>Sin foto adjunta.</Text>}
                   <View style={styles.horizontal}>
                     <Button
@@ -2122,7 +2150,7 @@ export default function UnifiedApp() {
             </Pressable>
           ))}
         </View>
-        <Text style={styles.footer}>El avatar se guarda solo en este dispositivo.</Text>
+        <Text style={styles.footer}>El avatar se guarda en el espacio privado de tu cuenta.</Text>
       </Card>
     );
   };
@@ -2196,7 +2224,7 @@ export default function UnifiedApp() {
         </Card>
 
         <Card>
-          <SectionTitle title="Preferencias de bienestar" subtitle="Ajustes locales que puedes cambiar cuando quieras." />
+          <SectionTitle title="Preferencias de bienestar" subtitle="Ajustes de tu espacio familiar." />
           <View style={[styles.between, { paddingVertical: 4 }]}>
             <View style={styles.flex}>
               <Text style={styles.inputLabel}>Meta diaria de agua</Text>
@@ -2224,7 +2252,7 @@ export default function UnifiedApp() {
           <View style={styles.between}>
             <View style={styles.flex}>
               <Text style={styles.inputLabel}>Recordatorios</Text>
-              <Text style={styles.muted}>Preferencia local; no programa alertas del sistema.</Text>
+              <Text style={styles.muted}>Preferencia guardada en la nube; no programa alertas del sistema.</Text>
             </View>
             <Switch
               accessibilityLabel="Activar preferencia de recordatorios"
@@ -2265,20 +2293,14 @@ export default function UnifiedApp() {
         </Card>
 
         <Card>
-          <SectionTitle title="Privacidad y PIN local" subtitle="El PIN es una confirmación visual, no seguridad de cuenta." />
+          <SectionTitle title="Seguridad de la cuenta" subtitle="Inicio de sesión protegido por Supabase Auth." />
           <Text style={styles.body}>
-            Se solicita el correo de la persona tutora y el PIN para entrar a su espacio. Los datos y las fotos viven en este dispositivo; el PIN se guarda sin cifrado y no sustituye una contraseña ni protege el almacenamiento.
+            La contraseña no se guarda en la tabla de padres. Cada tutor solo puede consultar y actualizar los datos asociados a su cuenta.
           </Text>
-          <Button
-            title={data.tutorPin ? 'Cambiar PIN' : 'Configurar PIN'}
-            icon="pin"
-            variant="secondary"
-            onPress={openPinSetup}
-          />
         </Card>
 
         <Card>
-          <SectionTitle title="Compartir avances en este dispositivo" />
+          <SectionTitle title="Mostrar avances en el espacio tutor" />
           <View style={styles.between}>
             <Text style={[styles.body, styles.flex]}>
               {data.progressSharingEnabled
@@ -2286,13 +2308,13 @@ export default function UnifiedApp() {
                 : 'Los detalles no se muestran en el espacio tutor.'}
             </Text>
             <Switch
-              accessibilityLabel="Compartir progreso con tutor en este dispositivo"
+              accessibilityLabel="Mostrar progreso en el espacio tutor"
               value={data.progressSharingEnabled}
               onValueChange={toggleSharing}
               trackColor={{ true: COLORS.blue }}
             />
           </View>
-          <Text style={styles.footer}>Esta opción no envía datos ni fotos a internet.</Text>
+          <Text style={styles.footer}>Esta preferencia se sincroniza con Supabase.</Text>
         </Card>
       </>
     );
@@ -2302,7 +2324,7 @@ export default function UnifiedApp() {
     if (!data) return null;
     return (
       <>
-        {renderPageIntro('TU ESPACIO', 'Ajustes y privacidad', 'Configura la experiencia local de Warrior Kids.')}
+        {renderPageIntro('TU ESPACIO', 'Ajustes y privacidad', 'Configura tu espacio familiar privado.')}
         {role === 'child' ? (
           <>
             {renderAvatarEditor()}
@@ -2316,11 +2338,11 @@ export default function UnifiedApp() {
           </>
         ) : renderTutorSettings()}
         <Card>
-          <SectionTitle title="Tus datos locales" />
+          <SectionTitle title="Tus datos en la nube" />
           <Text style={styles.body}>
-            Warrior Kids usa un espacio compartido nuevo. Los datos originales de NutriBot y Warrior Kids se conservan sin sobrescribir.
+            Tus perfiles y avances se guardan en el espacio privado de tu cuenta de Supabase.
           </Text>
-          <Text style={styles.muted}>Correo: {session?.email ?? 'sin sesión'} · acceso solo en este dispositivo.</Text>
+          <Text style={styles.muted}>Correo: {session?.email ?? 'sin sesión'}</Text>
           <Button title="Cerrar sesión" icon="logout" variant="outline" onPress={logout} />
         </Card>
       </>
@@ -2345,7 +2367,7 @@ export default function UnifiedApp() {
       <Card>
         <Text style={styles.cardTitle}>¿Qué pasa con mis datos anteriores?</Text>
         <Text style={styles.body}>
-          La app mantiene las dos fuentes originales como respaldo y trabaja en un espacio local nuevo. Los perfiles solo se vinculan cuando la persona tutora lo indica.
+          Cada cuenta tutora tiene un espacio privado en la nube. Los perfiles y avances solo son visibles para la cuenta que los creó.
         </Text>
       </Card>
       <Text style={styles.footer}>Warrior Kids · Hecho para acompañar hábitos saludables con cariño.</Text>
@@ -2453,7 +2475,7 @@ export default function UnifiedApp() {
                     style={styles.flex}
                   />
                 </View>
-                <Text style={styles.footer}>Estos datos son opcionales, solo locales y no sirven para diagnóstico médico.</Text>
+                <Text style={styles.footer}>Estos datos son opcionales y solo están disponibles en tu cuenta. No sirven para diagnóstico médico.</Text>
               </>
             ) : null}
 
@@ -2537,7 +2559,7 @@ export default function UnifiedApp() {
                       .filter(Boolean).join(', ') || 'Ninguno registrado'}
                   </Text>
                 </Card>
-                <Text style={styles.footer}>La información se guarda localmente en este dispositivo.</Text>
+                <Text style={styles.footer}>La información se guarda en el espacio privado de tu cuenta.</Text>
               </>
             ) : null}
 
@@ -2710,7 +2732,7 @@ export default function UnifiedApp() {
                 <>
                   <Image source={{ uri: activityPhoto.uri }} style={styles.imagePreview} resizeMode="cover" />
                   <View style={styles.between}>
-                    <Text style={styles.muted}>Foto opcional · solo en este dispositivo.</Text>
+                    <Text style={styles.muted}>Foto opcional · guardada en el espacio privado de tu cuenta.</Text>
                     <Pressable accessibilityRole="button" onPress={() => setActivityPhoto(null)}>
                       <Text style={styles.linkText}>Quitar</Text>
                     </Pressable>
@@ -2869,132 +2891,6 @@ export default function UnifiedApp() {
     </Modal>
   );
 
-  const renderPinModal = () => (
-    <Modal
-      animationType="fade"
-      onRequestClose={() => {
-        setPinMode(null);
-        setPendingAccount(null);
-        setPinEmail('');
-        setPinInput('');
-        setPinError('');
-      }}
-      transparent
-      visible={Boolean(pinMode)}
-    >
-      <View style={[styles.overlay, { justifyContent: 'center', padding: 18 }]}>
-        <View style={[styles.modalCard, { borderRadius: 22, maxHeight: '80%' }]}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
-              {pinMode === 'login' ? 'Acceso de persona tutora' : pinMode === 'change' ? 'Cambiar PIN' : 'Configurar PIN'}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Cerrar"
-              onPress={() => {
-                setPinMode(null);
-                setPendingAccount(null);
-                setPinEmail('');
-                setPinInput('');
-                setPinError('');
-              }}
-              style={styles.close}
-            >
-              <Icon name="close" size={18} color={COLORS.ink} />
-            </Pressable>
-          </View>
-          <View style={{ gap: 12 }}>
-            <Text style={styles.body}>
-              {pinMode === 'login'
-                ? 'Para entrar al espacio tutor, confirma el correo de la persona tutora y su PIN.'
-                : pinMode === 'change'
-                  ? 'Primero confirma el PIN actual.'
-                  : pinMode === 'new'
-                    ? 'Escribe un PIN nuevo de 4 a 6 números.'
-                    : 'Crea un PIN local de 4 a 6 números para proteger el acceso tutor.'}
-            </Text>
-            {pinMode === 'login' ? (
-              <Field
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                label="Correo de la persona tutora"
-                onChangeText={value => {
-                  setPinEmail(value);
-                  setPinError('');
-                }}
-                placeholder="familia@ejemplo.com"
-                returnKeyType="next"
-                value={pinEmail}
-              />
-            ) : null}
-            <Field
-              autoComplete="off"
-              keyboardType="number-pad"
-              label={pinMode === 'change' ? 'PIN actual' : 'PIN local'}
-              maxLength={6}
-              onChangeText={value => {
-                setPinInput(value.replace(/\D/g, '').slice(0, 6));
-                setPinError('');
-              }}
-              secureTextEntry
-              value={pinInput}
-            />
-            {pinError ? <Text accessibilityRole="alert" style={styles.errorText}>{pinError}</Text> : null}
-            <Button
-              title={pinMode === 'login' ? 'Entrar al espacio tutor' : pinMode === 'change' ? 'Verificar PIN' : 'Guardar PIN'}
-              onPress={completePinAction}
-            />
-            <Text style={styles.footer}>
-              El correo solo se compara con los datos guardados en este dispositivo. El PIN se guarda sin cifrado.
-            </Text>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  const renderAccountChoices = () => (
-    <Modal
-      animationType="slide"
-      onRequestClose={() => setAccountChoices([])}
-      transparent
-      visible={accountChoices.length > 1}
-    >
-      <View style={styles.overlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Elige el acceso local</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setAccountChoices([])} style={styles.close}>
-              <Icon name="close" size={18} color={COLORS.ink} />
-            </Pressable>
-          </View>
-          <Text style={styles.body}>Hay más de un registro con este correo. Elige el que quieras abrir.</Text>
-          {accountChoices.map(account => (
-            <Pressable
-              accessibilityRole="button"
-              key={account.id}
-              onPress={() => {
-                setAccountChoices([]);
-                startSession(account);
-              }}
-              style={[styles.profileRow, { paddingHorizontal: 5 }]}
-            >
-              <View style={styles.profileAvatar}>
-                <Icon name={account.role === 'tutor' ? 'tutor' : 'child'} size={20} color={COLORS.blueDeep} />
-              </View>
-              <View style={styles.flex}>
-                <Text style={styles.inputLabel}>{account.name}</Text>
-                <Text style={styles.muted}>{account.role === 'tutor' ? 'Persona tutora' : 'Niña o niño'} · {getAccountSourceLabel(account.source)}</Text>
-              </View>
-              <Icon name="next" size={18} color={COLORS.blue} />
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    </Modal>
-  );
-
   const renderArchiveModal = () => (
     <Modal
       animationType="fade"
@@ -3066,32 +2962,25 @@ export default function UnifiedApp() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.loading}>
           <Icon name="warning" size={34} color={COLORS.orange} />
-          <Text style={styles.cardTitle}>No se pudieron cargar los datos locales</Text>
+          <Text style={styles.cardTitle}>No se pudo conectar con tu espacio familiar</Text>
           <Text style={[styles.body, { textAlign: 'center' }]}>{loadError}</Text>
-          <Button title="Intentar de nuevo" onPress={() => { setLoading(true); setLoadError(''); void loadData(); }} />
+          <Button title="Intentar de nuevo" onPress={retryConnection} />
+          {authUser ? <Button title="Cerrar sesión" variant="outline" onPress={logout} /> : null}
         </View>
       </SafeAreaView>
     );
   }
+
+  if (!session) return renderLogin();
 
   if (!data) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.loading}>
-          <Text style={styles.cardTitle}>No hay datos disponibles</Text>
+          <Text style={styles.cardTitle}>No hay datos disponibles en tu espacio familiar</Text>
           <Button title="Volver a intentar" onPress={() => { setLoading(true); void loadData(); }} />
         </View>
       </SafeAreaView>
-    );
-  }
-
-  if (!session) {
-    return (
-      <>
-        {renderLogin()}
-        {renderPinModal()}
-        {renderAccountChoices()}
-      </>
     );
   }
 
@@ -3105,8 +2994,14 @@ export default function UnifiedApp() {
           showsVerticalScrollIndicator={false}
         >
           {storageError ? (
-            <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: '#FFF5F5', borderColor: '#FED7D7' }]}>
+            <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: '#FFF5F5', borderColor: '#FED7D7', gap: 8 }]}>
               <Text style={[styles.noticeText, { color: COLORS.error }]}>No se guardó el último cambio: {storageError}</Text>
+              <Button
+                title="Recargar datos de Supabase"
+                small
+                variant="outline"
+                onPress={() => { void loadData(); }}
+              />
             </View>
           ) : null}
           {notice ? (
@@ -3141,8 +3036,6 @@ export default function UnifiedApp() {
       {renderRecipeModal()}
       {renderMenuPickerModal()}
       {renderChatModal()}
-      {renderPinModal()}
-      {renderAccountChoices()}
       {renderArchiveModal()}
     </SafeAreaView>
   );

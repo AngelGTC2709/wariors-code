@@ -18,19 +18,26 @@ npm run build:android:apk
 
 ## Experiencia
 
-- Perfiles locales para niñas y niños y panel de acompañamiento para personas tutoras.
+- Perfiles infantiles privados por cuenta tutora, con sincronización entre dispositivos.
 - Alta y edición de perfiles infantiles en cinco fases, con avatar ilustrado, edad, medidas, alergias, alimentos a prevenir y confirmación de datos.
 - Navegación por rol: el menú semanal aparece en el espacio tutor y la niñez tiene un apartado dedicado a sus logros; las personas tutoras pueden revisar puntos e insignias.
 - Registro de agua, grupos de alimentos, ánimo, descanso, movimiento y evidencia fotográfica opcional.
-- Aprobación local de actividades, puntos, retos y personalización de avatar con iconos vectoriales.
+- Aprobación de actividades, puntos, retos y personalización de avatar con iconos vectoriales.
 - Catálogo de recetas, búsqueda y filtros, menú semanal de desayuno, comida y cena, y plan educativo del Plato del Buen Comer.
 - Preferencias de alergias y alimentos que se prefieren evitar, preguntas frecuentes y respuestas predefinidas de NutriBot.
 - Vinculación manual de perfiles de NutriBot Familiar y Warrior Kids. Los valores diferentes y sus fuentes se conservan.
 
-## Datos y privacidad
+## Configuración de Supabase
 
-La aplicación migra una copia de los datos existentes al espacio `familywellness-unified-local-v1`. Los almacenes `nutribot-familiar-local-v1` y `warrior-kids-local-v1` se mantienen intactos; no se vinculan perfiles por nombre. Los perfiles se pueden vincular manualmente, separar u ocultar sin borrar sus datos.
+1. En Supabase, abre **SQL Editor** y ejecuta [`supabase/setup.sql`](./supabase/setup.sql). Esto enlaza cada cuenta de Supabase Auth con una fila de `padres`, agrega `datos_app` para el estado actual de la app y configura políticas de acceso privado.
+2. En la autenticación del proyecto, habilita **Email**. Si está activa la confirmación de correo, cada persona debe confirmar su dirección antes de iniciar sesión.
+3. La raíz del proyecto debe tener `.env.local` con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_ANON_KEY`. No uses una clave `service_role` o `sb_secret_` en la app; estas variables públicas terminan incluidas en el bundle.
+4. Ejecuta `npx expo start` para volver a cargar la configuración.
 
-Los datos, el PIN y las fotos de evidencia se guardan en el dispositivo. No hay sincronización en la nube, cuentas verificadas, contraseñas, recuperación de acceso, administración remota ni notificaciones del sistema. El correo solo identifica el acceso local; el PIN no está cifrado y no sustituye una contraseña ni protege el almacenamiento del dispositivo.
+La app usa Supabase Auth para las cuentas de tutor. Los perfiles infantiles no tienen credenciales propias: cada tutor inicia sesión y cambia entre los perfiles de su familia. Por privacidad, la sesión no se conserva al cerrar la app. La app guarda el estado actual de la experiencia en `padres.datos_app`; las demás tablas del esquema se mantienen sin acceso desde el cliente hasta que se conecten a funciones específicas. La columna antigua `padres.contrasena` no se usa y queda fuera de los permisos del cliente.
+
+Los cambios se sincronizan en tiempo real. Si dos dispositivos guardan cambios al mismo tiempo, la app detecta el conflicto y evita sobrescribir silenciosamente los datos. Las fotos de evidencia se guardan en el bucket privado `activity-evidence` y se restringen a la cuenta propietaria.
+
+En el primer inicio de sesión correcto, se crea un espacio vacío para esa cuenta y se eliminan del dispositivo las claves locales antiguas de NutriBot y Warrior Kids. No se importan los datos locales anteriores. Los datos de otras cuentas de Supabase no se modifican.
 
 Las recetas y el plan son ideas educativas, no indicaciones médicas ni menús personalizados. Revisa ingredientes, etiquetas y posibles contaminaciones cruzadas; consulta a profesionales de salud ante alergias o dudas. Las actividades físicas son recreativas y deben contar con supervisión adulta. NutriBot utiliza respuestas predefinidas, no es un servicio de IA ni brinda diagnósticos.
