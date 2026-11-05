@@ -25,6 +25,7 @@ import {
   PlusJakartaSans_700Bold,
   PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
+import * as Linking from 'expo-linking';
 
 import {
   ACTIVITIES,
@@ -79,6 +80,7 @@ import {
   TYPE,
   type AppIconName,
 } from '@/features/unified/ui';
+import { cleanText, unique } from '@/features/unified/utils';
 
 type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Logros' | 'Ajustes' | 'Ayuda';
 type PhotoDraft = {
@@ -265,14 +267,6 @@ function todayLabel(): string {
   }).format(new Date());
 }
 
-function cleanText(value: string): string {
-  return value
-    .trim()
-    .toLocaleLowerCase('es-MX')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
 function canonicalFoodGroup(value: string): string {
   const text = cleanText(value);
   if (text.includes('fruta') || text.includes('verdura') || text.includes('vegetal')) return 'frutas-verduras';
@@ -300,10 +294,6 @@ function getProgress(data: UnifiedData, profile: UnifiedProfile): ChildProgress 
     ? { points: profile.warrior.points, badges: profile.warrior.badges }
     : { points: 0, badges: [] };
   return data.childProgress[profile.progressKey] ?? imported;
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)];
 }
 
 function recipeCategory(recipe: Recipe): 'desayuno' | 'comida' | 'colacion' {
@@ -649,6 +639,30 @@ export default function UnifiedApp() {
       } else {
         setAuthError(`No se pudo completar el acceso con Supabase: ${message}`);
       }
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const requestPasswordReset = async () => {
+    setAuthError('');
+    setAuthNotice('');
+    const email = authEmail.trim().toLocaleLowerCase('es-MX');
+    if (!email || !email.includes('@')) {
+      setAuthError('Escribe un correo electrónico válido.');
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      const { error } = await getSupabaseClient().auth.resetPasswordForEmail(email, {
+        redirectTo: Linking.createURL('reset-password'),
+      });
+      if (error) throw error;
+      setAuthNotice('Si existe una cuenta con ese correo, recibirás instrucciones para restablecer tu contraseña.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error desconocido.';
+      setAuthError(`No se pudo enviar el correo de recuperación: ${message}`);
     } finally {
       setAuthBusy(false);
     }
@@ -1247,6 +1261,16 @@ export default function UnifiedApp() {
               disabled={authBusy}
               onPress={submitAuth}
             />
+            {!registerMode ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={authBusy}
+                onPress={requestPasswordReset}
+                style={styles.linkButton}
+              >
+                <Text style={styles.linkText}>¿Olvidaste tu contraseña?</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               disabled={authBusy}

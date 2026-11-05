@@ -32,7 +32,15 @@ npm run build:android:apk
 1. En Supabase, abre **SQL Editor** y ejecuta [`supabase/setup.sql`](./supabase/setup.sql). Esto enlaza cada cuenta de Supabase Auth con una fila de `padres`, agrega `datos_app` para el estado actual de la app y configura políticas de acceso privado.
 2. En la autenticación del proyecto, habilita **Email**. Si está activa la confirmación de correo, cada persona debe confirmar su dirección antes de iniciar sesión.
 3. La raíz del proyecto debe tener `.env.local` con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_ANON_KEY`. No uses una clave `service_role` o `sb_secret_` en la app; estas variables públicas terminan incluidas en el bundle.
-4. Ejecuta `npx expo start` para volver a cargar la configuración.
+4. En **Authentication → URL Configuration → Redirect URLs**, agrega `warriorkids://reset-password` para las builds instaladas de la app. Para Expo Go, agrega la URL de desarrollo que construye Expo, con el segmento `--/reset-password` (por ejemplo, `exp://<host>:<puerto>/--/reset-password`); la dirección cambia según el servidor. En web, agrega también el callback de desarrollo o el dominio publicado que uses.
+5. En **Authentication → Email Templates → Reset Password**, ajusta el enlace para entregar a la app el token hash de recuperación:
+
+   ```html
+   <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&amp;type=recovery">Restablecer contraseña</a>
+   ```
+
+   El flujo de la app verifica ese token como tipo `recovery` antes de permitir el cambio de contraseña. El callback enviado por la app es `warriorkids://reset-password`; para builds instaladas, el esquema `warriorkids` ya está configurado en `app.json`.
+6. Ejecuta `npx expo start` para volver a cargar la configuración.
 
 La app usa Supabase Auth para las cuentas de tutor. Los perfiles infantiles no tienen credenciales propias: cada tutor inicia sesión y cambia entre los perfiles de su familia. Por privacidad, la sesión no se conserva al cerrar la app. La app guarda el estado actual de la experiencia en `padres.datos_app`; las demás tablas del esquema se mantienen sin acceso desde el cliente hasta que se conecten a funciones específicas. La columna antigua `padres.contrasena` no se usa y queda fuera de los permisos del cliente.
 

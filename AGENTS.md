@@ -25,7 +25,7 @@ npx expo-doctor             # diagnóstico de dependencias/configuración
 npm run build:android:apk   # compilación EAS preview -> APK interno
 ```
 
-- **No hay script de pruebas, framework de pruebas ni CI**. No inventes pruebas ni afirmes que se ejecutaron; verifica con `npm run lint` + `npx tsc --noEmit`. La línea base es 0 errores y 3 advertencias (array-type en `familiar.tsx`, variables sin usar en `use-color-scheme.web.ts`); no las corrijas salvo que la tarea toque esos archivos.
+- **No hay script de pruebas, framework de pruebas ni CI**. No inventes pruebas ni afirmes que se ejecutaron; verifica con `npm run lint` + `npx tsc --noEmit`. La línea base es 0 errores y 2 advertencias (variables sin usar en `use-color-scheme.web.ts`); no las corrijas salvo que la tarea toque ese archivo.
 - **Nunca ejecutes `npm run reset-project`**: el script de plantilla mueve/reemplaza `src` y `scripts`.
 - EAS no es una dependencia del repo. Haz login con `npx eas-cli@latest login` y luego `npm run build:android:apk`; ese script llama directamente a `eas`, así que tenlo en PATH o ejecuta `npx eas-cli@latest build --platform android --profile preview`. `eas.json` solo tiene el perfil `preview` (no hay producción).
 
@@ -40,7 +40,7 @@ npm run build:android:apk   # compilación EAS preview -> APK interno
 ## Arquitectura
 
 - **App activa**: tanto `/` (`src/app/index.tsx`) como `/familiar` (`src/app/familiar.tsx`) renderizan `<UnifiedApp />` desde `src/features/unified/screen.tsx` (~3k líneas). Ahí viven la UI actual, las pestañas, formularios, modales y el estado de sesión.
-- La mayor parte de cada archivo de ruta es código legacy muerto: `NutriBotLegacyApp` (`index.tsx`) y `WarriorKidsLegacyApp` (`familiar.tsx`) se exportan pero nunca se montan. Cambiar pantallas/estilos legacy no cambia la app en ejecución.
+- `src/app/index.tsx` y `src/app/familiar.tsx` solo hacen `export { default } from '@/features/unified/screen'`. No vuelvas a poner lógica de pantalla en los archivos de ruta.
 - En `src/features/unified/`: `screen.tsx` es la UI/estado; `cloud-data.ts` concentra lecturas, escrituras, Realtime y Storage de Supabase; `evidence-photo.tsx` resuelve URLs firmadas; `model.ts` define tipos, validación y datos iniciales; `ui.tsx` tiene primitivas/iconos/estilos; `constants.ts` tiene catálogos estáticos.
 - `src/lib/supabase.ts` es el único cliente Supabase (singleton), lee las variables `EXPO_PUBLIC_*` y define el tipo `Database`. Importa `react-native-url-polyfill/auto`; no lo quites.
 - Catálogos de contenido: `src/constants/warrior-kids.ts` (actividades, recetas, avatares) y `src/constants/family-wellness.ts` (opciones de avatar, plan de dieta).
