@@ -1,6 +1,6 @@
 # Warrior Kids
 
-Aplicación móvil en español de México para acompañar hábitos saludables en familia. Usa Expo SDK 58, React Native y Expo Router. La ruta principal `/` y el alias `/familiar` muestran la misma experiencia.
+Aplicación móvil en español de México para acompañar hábitos saludables en familia. Usa Expo SDK 58, React Native y Expo Router. La ruta principal `/` y el alias `/familiar` muestran la misma experiencia; `/reset-password` atiende la recuperación de contraseña.
 
 ## Ejecutar
 

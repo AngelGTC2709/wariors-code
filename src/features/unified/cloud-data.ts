@@ -28,6 +28,18 @@ export function accountFromUser(user: User): LocalAccount {
   return { id: user.id, name, email, role: 'tutor', source: 'unified' };
 }
 
+export async function verifyTutorPassword(
+  email: string,
+  password: string,
+  expectedUserId: string,
+): Promise<void> {
+  const { data, error } = await getSupabaseClient().auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  if (data.user?.id !== expectedUserId) {
+    throw new Error('La cuenta verificada no coincide con la sesión actual.');
+  }
+}
+
 export async function loadCloudData(
   user: User,
   account: LocalAccount,

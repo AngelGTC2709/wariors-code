@@ -64,6 +64,7 @@ import {
   saveCloudData,
   subscribeToCloudData,
   uploadEvidence,
+  verifyTutorPassword,
 } from '@/features/unified/cloud-data';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { getSupabaseClient } from '@/lib/supabase';
@@ -378,6 +379,13 @@ export default function UnifiedApp() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authNotice, setAuthNotice] = useState('');
+  const [showTutorGate, setShowTutorGate] = useState(false);
+  const [tutorGatePassword, setTutorGatePassword] = useState('');
+  const [tutorGateBusy, setTutorGateBusy] = useState(false);
+  const [tutorGateError, setTutorGateError] = useState('');
+  const [tutorGateLockUntil, setTutorGateLockUntil] = useState<number | null>(null);
+  const [tutorGateLockRemaining, setTutorGateLockRemaining] = useState(0);
+  const tutorGateFailedAttempts = useRef(0);
 
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [editingProfile, setEditingProfile] = useState<UnifiedProfile | null>(null);
@@ -428,7 +436,6 @@ export default function UnifiedApp() {
       dataRef.current = loaded.data;
       setData(loaded.data);
       setSession(account);
-      setRole('tutor');
       setStorageError('');
       return loaded;
     } catch (error) {
@@ -445,8 +452,9 @@ export default function UnifiedApp() {
     let active = true;
     let unsubscribe: (() => void) | null = null;
     const applyAuthUser = (user: User | null) => {
-      if (authUserId.current !== (user?.id ?? null)) {
-        authUserId.current = user?.id ?? null;
+      const userId = user?.id ?? null;
+      if (authUserId.current !== userId) {
+        authUserId.current = userId;
         loadGeneration.current += 1;
         dataRef.current = null;
         dataVersion.current = 0;
@@ -457,10 +465,17 @@ export default function UnifiedApp() {
         setStorageError('');
         setLoadError('');
         setLoading(Boolean(user));
+        setAuthUser(user);
+        tutorGateFailedAttempts.current = 0;
+        setTutorGateLockUntil(null);
+        setTutorGateLockRemaining(0);
+        setShowTutorGate(false);
+        setTutorGatePassword('');
+        setTutorGateError('');
+        if (user) setRole('tutor');
       } else if (!user) {
         setLoading(false);
       }
-      setAuthUser(user);
     };
     try {
       const supabase = getSupabaseClient();
@@ -495,6 +510,22 @@ export default function UnifiedApp() {
       unsubscribe?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (tutorGateLockUntil === null) return;
+    const updateRemaining = () => {
+      const seconds = Math.max(0, Math.ceil((tutorGateLockUntil - Date.now()) / 1000));
+      setTutorGateLockRemaining(seconds);
+      if (seconds === 0) {
+        tutorGateFailedAttempts.current = 0;
+        setTutorGateLockUntil(null);
+        setTutorGateError('');
+      }
+    };
+    updateRemaining();
+    const timer = setInterval(updateRemaining, 1000);
+    return () => clearInterval(timer);
+  }, [tutorGateLockUntil]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -669,6 +700,7 @@ export default function UnifiedApp() {
   };
 
   const createOrEditProfile = (profile: UnifiedProfile | null) => {
+    if (role !== 'tutor') return;
     setEditingProfile(profile);
     setProfileStep(0);
     setProfileError('');
@@ -690,6 +722,7 @@ export default function UnifiedApp() {
   };
 
   const saveProfile = () => {
+    if (role !== 'tutor') return;
     const name = profileDraft.name.trim();
     if (name.length < 2) {
       setProfileError('Escribe un nombre de al menos dos letras.');
@@ -795,7 +828,7 @@ export default function UnifiedApp() {
   };
 
   const archiveProfile = () => {
-    if (!profileToArchive) return;
+    if (role !== 'tutor' || !profileToArchive) return;
     const key = profileToArchive.key;
     updateData(current => ({
       ...current,
@@ -807,7 +840,7 @@ export default function UnifiedApp() {
   };
 
   const unlinkProfile = (profile: UnifiedProfile) => {
-    if (!profile.link) return;
+    if (role !== 'tutor' || !profile.link) return;
     updateData(current => ({
       ...current,
       profileLinks: current.profileLinks.filter(link => link.id !== profile.link?.id),
@@ -817,7 +850,7 @@ export default function UnifiedApp() {
   };
 
   const openLinkEditor = () => {
-    if (!data) return;
+    if (role !== 'tutor' || !data) return;
     const nutri = data.nutribot.ninos.find(child => !getLinkedNutri(data, child.id));
     const warrior = data.warriorKids.children.find(child => !getLinkedWarrior(data, child.id));
     setSelectedNutriId(nutri?.id ?? '');
@@ -829,6 +862,7 @@ export default function UnifiedApp() {
   };
 
   const saveProfileLink = () => {
+    if (role !== 'tutor') return;
     if (!data || !selectedNutriId || !selectedWarriorId) {
       setLinkError('Elige un perfil de cada lista para vincularlos.');
       return;
@@ -1033,6 +1067,7 @@ export default function UnifiedApp() {
   };
 
   const reviewActivity = async (profile: UnifiedProfile, date: string, activityId: string, approve: boolean) => {
+    if (role !== 'tutor') return;
     const log = data?.dailyLogs[profile.progressKey]?.[date];
     const activity = log?.activities[activityId];
     if (!activity || activity.status !== 'pending') return;
@@ -1092,6 +1127,7 @@ export default function UnifiedApp() {
   };
 
   const assignRecipe = (day: string, meal: keyof WeeklyMeals, recipeId: string | null) => {
+    if (role !== 'tutor') return;
     updateData(current => ({
       ...current,
       weeklyMeals: {
@@ -1119,10 +1155,12 @@ export default function UnifiedApp() {
   };
 
   const toggleSharing = (value: boolean) => {
+    if (role !== 'tutor') return;
     updateData(current => ({ ...current, progressSharingEnabled: value }));
   };
 
   const changeWaterGoal = (amount: number) => {
+    if (role !== 'tutor') return;
     updateData(current => ({
       ...current,
       warriorKids: {
@@ -1133,6 +1171,7 @@ export default function UnifiedApp() {
   };
 
   const toggleReminder = (value: boolean) => {
+    if (role !== 'tutor') return;
     updateData(current => ({
       ...current,
       warriorKids: { ...current.warriorKids, remindersEnabled: value },
@@ -1155,6 +1194,7 @@ export default function UnifiedApp() {
   };
 
   const logout = async () => {
+    if (role !== 'tutor') return;
     setAuthError('');
     try {
       const { error } = await getSupabaseClient().auth.signOut();
@@ -1166,11 +1206,99 @@ export default function UnifiedApp() {
       setAuthPassword('');
       setAuthNotice('');
       setSelectedProfileKey(null);
+      setRole('tutor');
       setTab('Familia');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo cerrar la sesión de Supabase.';
       setAuthError(message);
       setStorageError(message);
+    }
+  };
+
+  const closeTutorGate = () => {
+    if (tutorGateBusy) return;
+    setShowTutorGate(false);
+    setTutorGatePassword('');
+    setTutorGateError('');
+  };
+
+  const requestRoleChange = (nextRole: AccountRole) => {
+    if (nextRole === role) return;
+    if (nextRole === 'child') {
+      setRole('child');
+      setTab('Familia');
+      setShowProfileEditor(false);
+      setProfileToArchive(null);
+      setShowLinkEditor(false);
+      setMenuPicker(null);
+      if (!selectedProfileKey && profiles.length === 1) {
+        setSelectedProfileKey(profiles[0].key);
+      }
+      return;
+    }
+
+    if (tutorGateLockUntil !== null && Date.now() < tutorGateLockUntil) {
+      setTutorGateLockRemaining(Math.max(1, Math.ceil((tutorGateLockUntil - Date.now()) / 1000)));
+      setTutorGateError('');
+    } else {
+      setTutorGateLockRemaining(0);
+      setTutorGateError('');
+    }
+    setTutorGatePassword('');
+    setShowTutorGate(true);
+  };
+
+  const confirmTutorGate = async () => {
+    if (role !== 'child' || tutorGateBusy) return;
+    if (tutorGateLockUntil !== null && Date.now() < tutorGateLockUntil) {
+      setTutorGateLockRemaining(Math.max(1, Math.ceil((tutorGateLockUntil - Date.now()) / 1000)));
+      return;
+    }
+    if (tutorGateLockUntil !== null) {
+      tutorGateFailedAttempts.current = 0;
+      setTutorGateLockUntil(null);
+      setTutorGateLockRemaining(0);
+    }
+    const email = session?.email.trim();
+    const userId = authUser?.id;
+    if (!email || !userId) {
+      setTutorGateError('No encontramos una sesión tutora activa para verificar.');
+      setTutorGatePassword('');
+      return;
+    }
+    if (!tutorGatePassword) {
+      setTutorGateError('Escribe la contraseña de la cuenta tutora.');
+      return;
+    }
+
+    setTutorGateBusy(true);
+    setTutorGateError('');
+    try {
+      await verifyTutorPassword(email, tutorGatePassword, userId);
+      tutorGateFailedAttempts.current = 0;
+      setRole('tutor');
+      setTab('Familia');
+      setShowTutorGate(false);
+      setTutorGateError('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (/network|fetch|timeout|offline|aborted/i.test(message)) {
+        setTutorGateError('No se pudo verificar la contraseña. Revisa tu conexión a internet e inténtalo de nuevo.');
+        return;
+      }
+      tutorGateFailedAttempts.current += 1;
+      if (tutorGateFailedAttempts.current >= 5) {
+        setTutorGateLockUntil(Date.now() + 30_000);
+        setTutorGateLockRemaining(30);
+        setTutorGateError('');
+      } else if (/invalid login credentials|invalid credentials/i.test(message)) {
+        setTutorGateError('La contraseña no es correcta. Inténtalo de nuevo.');
+      } else {
+        setTutorGateError('No se pudo verificar la contraseña con Supabase. Inténtalo de nuevo.');
+      }
+    } finally {
+      setTutorGateBusy(false);
+      setTutorGatePassword('');
     }
   };
 
@@ -1315,13 +1443,7 @@ export default function UnifiedApp() {
               accessibilityRole="button"
               accessibilityState={{ selected: role === option.id }}
               key={option.id}
-              onPress={() => {
-                setRole(option.id);
-                if (option.id === 'child' && !selectedProfileKey && profiles.length === 1) {
-                  setSelectedProfileKey(profiles[0].key);
-                }
-                setTab('Familia');
-              }}
+              onPress={() => requestRoleChange(option.id)}
               style={[styles.roleSwitchItem, role === option.id && styles.roleSwitchActive]}
             >
               <Text style={[styles.roleSwitchText, role === option.id && styles.roleSwitchTextActive]}>
@@ -2345,22 +2467,11 @@ export default function UnifiedApp() {
   };
 
   const renderSettings = () => {
-    if (!data) return null;
+    if (!data || role !== 'tutor') return null;
     return (
       <>
         {renderPageIntro('TU ESPACIO', 'Ajustes y privacidad', 'Configura tu espacio familiar privado.')}
-        {role === 'child' ? (
-          <>
-            {renderAvatarEditor()}
-            <Card>
-              <Text style={styles.cardTitle}>Hábitos de la familia</Text>
-              <Text style={styles.body}>
-                Meta de agua: {data.warriorKids.waterGoal} vasos · tiempo de pantalla sugerido: {data.warriorKids.screenLimitMinutes} minutos.
-              </Text>
-              <Text style={styles.muted}>Pídele a la persona tutora que ajuste estas preferencias.</Text>
-            </Card>
-          </>
-        ) : renderTutorSettings()}
+        {renderTutorSettings()}
         <Card>
           <SectionTitle title="Tus datos en la nube" />
           <Text style={styles.body}>
@@ -2372,6 +2483,13 @@ export default function UnifiedApp() {
       </>
     );
   };
+
+  const renderChildAvatarSettings = () => (
+    <>
+      {renderPageIntro('TU AVATAR', 'Personaliza tu avatar', 'Elige los detalles de tu personaje.')}
+      {renderAvatarEditor()}
+    </>
+  );
 
   const renderHelp = () => (
     <>
@@ -2403,7 +2521,7 @@ export default function UnifiedApp() {
       animationType="slide"
       onRequestClose={() => setShowProfileEditor(false)}
       transparent
-      visible={showProfileEditor}
+      visible={role === 'tutor' && showProfileEditor}
     >
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
@@ -2632,7 +2750,7 @@ export default function UnifiedApp() {
         animationType="slide"
         onRequestClose={() => setShowLinkEditor(false)}
         transparent
-        visible={showLinkEditor}
+        visible={role === 'tutor' && showLinkEditor}
       >
         <View style={styles.overlay}>
           <View style={styles.modalCard}>
@@ -2815,7 +2933,7 @@ export default function UnifiedApp() {
       animationType="slide"
       onRequestClose={() => setMenuPicker(null)}
       transparent
-      visible={Boolean(menuPicker)}
+      visible={role === 'tutor' && Boolean(menuPicker)}
     >
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
@@ -2920,7 +3038,7 @@ export default function UnifiedApp() {
       animationType="fade"
       onRequestClose={() => setProfileToArchive(null)}
       transparent
-      visible={Boolean(profileToArchive)}
+      visible={role === 'tutor' && Boolean(profileToArchive)}
     >
       <View style={[styles.overlay, { justifyContent: 'center', padding: 18 }]}>
         <View style={[styles.modalCard, { borderRadius: 22 }]}>
@@ -2931,6 +3049,78 @@ export default function UnifiedApp() {
           <View style={styles.horizontal}>
             <Button title="Cancelar" variant="outline" style={styles.flex} onPress={() => setProfileToArchive(null)} />
             <Button title="Ocultar perfil" variant="danger" style={styles.flex} onPress={archiveProfile} />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderTutorGateModal = () => (
+    <Modal
+      animationType="fade"
+      onRequestClose={closeTutorGate}
+      transparent
+      visible={role === 'child' && showTutorGate}
+    >
+      <View style={[styles.overlay, { justifyContent: 'center', padding: 18 }]}>
+        <View style={[styles.modalCard, { borderRadius: 22 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Acceso al espacio tutor</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cerrar"
+              disabled={tutorGateBusy}
+              onPress={closeTutorGate}
+              style={styles.close}
+            >
+              <Icon name="close" size={18} color={COLORS.ink} />
+            </Pressable>
+          </View>
+          <Text style={[styles.body, { marginBottom: 12 }]}>
+            Confirma la contraseña de la cuenta tutora para continuar.
+          </Text>
+          <Field
+            autoCapitalize="none"
+            autoComplete="current-password"
+            autoCorrect={false}
+            editable={!tutorGateBusy && tutorGateLockRemaining === 0}
+            label="Contraseña"
+            onChangeText={value => {
+              setTutorGatePassword(value);
+              setTutorGateError('');
+            }}
+            onSubmitEditing={() => void confirmTutorGate()}
+            returnKeyType="done"
+            secureTextEntry
+            value={tutorGatePassword}
+          />
+          {tutorGateLockRemaining > 0 ? (
+            <Text accessibilityRole="alert" style={styles.errorText}>
+              Demasiados intentos. Espera {tutorGateLockRemaining} segundos para volver a intentar.
+            </Text>
+          ) : tutorGateError ? (
+            <Text accessibilityRole="alert" style={styles.errorText}>{tutorGateError}</Text>
+          ) : null}
+          {tutorGateBusy ? (
+            <View style={[styles.horizontal, { justifyContent: 'center', marginBottom: 12 }]}>
+              <ActivityIndicator size="small" color={COLORS.blue} />
+              <Text style={styles.muted}>Verificando contraseña…</Text>
+            </View>
+          ) : null}
+          <View style={styles.horizontal}>
+            <Button
+              title="Cancelar"
+              variant="outline"
+              style={styles.flex}
+              disabled={tutorGateBusy}
+              onPress={closeTutorGate}
+            />
+            <Button
+              title="Confirmar"
+              style={styles.flex}
+              disabled={tutorGateBusy || tutorGateLockRemaining > 0 || !tutorGatePassword}
+              onPress={() => void confirmTutorGate()}
+            />
           </View>
         </View>
       </View>
@@ -2948,7 +3138,7 @@ export default function UnifiedApp() {
       case 'Logros':
         return role === 'child' ? renderAchievements() : renderTutorHome();
       case 'Ajustes':
-        return renderSettings();
+        return role === 'tutor' ? renderSettings() : renderChildAvatarSettings();
       case 'Ayuda':
         return renderHelp();
       default:
@@ -2989,7 +3179,7 @@ export default function UnifiedApp() {
           <Text style={styles.cardTitle}>No se pudo conectar con tu espacio familiar</Text>
           <Text style={[styles.body, { textAlign: 'center' }]}>{loadError}</Text>
           <Button title="Intentar de nuevo" onPress={retryConnection} />
-          {authUser ? <Button title="Cerrar sesión" variant="outline" onPress={logout} /> : null}
+          {authUser && role === 'tutor' ? <Button title="Cerrar sesión" variant="outline" onPress={logout} /> : null}
         </View>
       </SafeAreaView>
     );
@@ -3038,7 +3228,7 @@ export default function UnifiedApp() {
         <View style={styles.nav}>
           {(role === 'tutor'
             ? NAV_ITEMS
-            : NAV_ITEMS.map(item => item.id === 'Menú'
+            : NAV_ITEMS.filter(item => item.id !== 'Ajustes').map(item => item.id === 'Menú'
               ? { ...item, id: 'Logros' as const, icon: 'achievements' as const, label: 'Logros' }
               : item)).map(item => (
             <Pressable
@@ -3061,6 +3251,7 @@ export default function UnifiedApp() {
       {renderMenuPickerModal()}
       {renderChatModal()}
       {renderArchiveModal()}
+      {renderTutorGateModal()}
     </SafeAreaView>
   );
 }
