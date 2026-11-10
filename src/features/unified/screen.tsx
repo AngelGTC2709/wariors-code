@@ -369,6 +369,7 @@ export default function UnifiedApp() {
   const authUserId = useRef<string | null>(null);
   const [role, setRole] = useState<AccountRole>('tutor');
   const [selectedProfileKey, setSelectedProfileKey] = useState<string | null>(null);
+  const [showChildProfilePicker, setShowChildProfilePicker] = useState(false);
   const [tab, setTab] = useState<AppTab>('Familia');
   const [profileStep, setProfileStep] = useState(0);
 
@@ -1225,15 +1226,15 @@ export default function UnifiedApp() {
   const requestRoleChange = (nextRole: AccountRole) => {
     if (nextRole === role) return;
     if (nextRole === 'child') {
-      setRole('child');
-      setTab('Familia');
-      setShowProfileEditor(false);
-      setProfileToArchive(null);
-      setShowLinkEditor(false);
-      setMenuPicker(null);
-      if (!selectedProfileKey && profiles.length === 1) {
-        setSelectedProfileKey(profiles[0].key);
+      if (profiles.length === 0) {
+        setNotice('Primero crea un perfil infantil.');
+        return;
       }
+      if (profiles.length > 1) {
+        setShowChildProfilePicker(true);
+        return;
+      }
+      enterChildMode(profiles[0].key);
       return;
     }
 
@@ -1246,6 +1247,21 @@ export default function UnifiedApp() {
     }
     setTutorGatePassword('');
     setShowTutorGate(true);
+  };
+
+  const enterChildMode = (profileKey: string) => {
+    setSelectedProfileKey(profileKey);
+    setRole('child');
+    setTab('Familia');
+    setShowChildProfilePicker(false);
+    setShowProfileEditor(false);
+    setProfileToArchive(null);
+    setShowLinkEditor(false);
+    setMenuPicker(null);
+  };
+
+  const cancelChildProfilePicker = () => {
+    setShowChildProfilePicker(false);
   };
 
   const confirmTutorGate = async () => {
@@ -1453,10 +1469,10 @@ export default function UnifiedApp() {
           ))}
         </View>
       </View>
-      {profiles.length > 0 ? (
+      {(role === 'tutor' ? profiles : selectedProfile ? [selectedProfile] : []).length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
           <View style={styles.profileStrip}>
-            {profiles.map(profile => (
+            {(role === 'tutor' ? profiles : selectedProfile ? [selectedProfile] : []).map(profile => role === 'tutor' ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ selected: selectedProfile?.key === profile.key }}
@@ -1471,6 +1487,15 @@ export default function UnifiedApp() {
                 />
                 <Text style={styles.profileChipText}>{profile.name}</Text>
               </Pressable>
+            ) : (
+              <View key={profile.key} style={[styles.profileChip, styles.profileChipActive]}>
+                <AvatarIllustration
+                  theme={profile.theme}
+                  selection={data?.avatarSelections[profile.key]}
+                  size="small"
+                />
+                <Text style={styles.profileChipText}>{profile.name}</Text>
+              </View>
             ))}
             {role === 'tutor' ? (
               <Pressable
@@ -1509,9 +1534,15 @@ export default function UnifiedApp() {
     <Card>
       <View style={styles.emptyState}>
         <Icon name="child" size={34} color={COLORS.blue} />
-        <Text style={styles.cardTitle}>Todavía no hay un perfil infantil</Text>
+        <Text style={styles.cardTitle}>
+          {role === 'child' && selectedProfileKey
+            ? 'Este perfil ya no está disponible.'
+            : 'Todavía no hay un perfil infantil'}
+        </Text>
         <Text style={[styles.body, { textAlign: 'center' }]}>
-          Crea un perfil para llevar el registro de hábitos y actividades de tu familia.
+          {role === 'child' && selectedProfileKey
+            ? 'Pide a la persona tutora que elija otro.'
+            : 'Crea un perfil para llevar el registro de hábitos y actividades de tu familia.'}
         </Text>
         {role === 'tutor' ? (
           <Button title="Crear perfil infantil" icon="add" onPress={() => createOrEditProfile(null)} />
@@ -1885,7 +1916,9 @@ export default function UnifiedApp() {
                   title={selectedProfile?.key === profile.key ? 'Seleccionado' : 'Ver perfil'}
                   small
                   variant={selectedProfile?.key === profile.key ? 'secondary' : 'outline'}
-                  onPress={() => setSelectedProfileKey(profile.key)}
+                  onPress={() => {
+                    if (role === 'tutor') setSelectedProfileKey(profile.key);
+                  }}
                 />
               </View>
               <View style={{ gap: 5 }}>
@@ -3127,6 +3160,58 @@ export default function UnifiedApp() {
     </Modal>
   );
 
+  const renderChildProfilePickerModal = () => (
+    <Modal
+      animationType="fade"
+      onRequestClose={cancelChildProfilePicker}
+      transparent
+      visible={role === 'tutor' && showChildProfilePicker}
+    >
+      <View style={[styles.overlay, { justifyContent: 'center', padding: 18 }]}>
+        <View style={[styles.modalCard, { borderRadius: 22 }]}>
+          <Text style={styles.modalTitle}>¿Quién va a usar la app?</Text>
+          <Text style={[styles.body, { marginTop: 6, marginBottom: 12 }]}>
+            Elige el perfil infantil para esta sesión.
+          </Text>
+          <View style={{ gap: 8 }}>
+            {profiles.map(profile => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedProfileKey === profile.key }}
+                key={profile.key}
+                onPress={() => {
+                  if (role === 'tutor' && profiles.some(item => item.key === profile.key)) {
+                    enterChildMode(profile.key);
+                  }
+                }}
+                style={[
+                  styles.profileChip,
+                  { minHeight: 58, justifyContent: 'flex-start' },
+                  selectedProfileKey === profile.key && styles.profileChipActive,
+                ]}
+              >
+                <AvatarIllustration
+                  theme={profile.theme}
+                  selection={data?.avatarSelections[profile.key]}
+                  size="small"
+                />
+                <Text style={styles.profileChipText}>{profile.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={[styles.horizontal, { marginTop: 14 }]}>
+            <Button
+              title="Cancelar"
+              variant="outline"
+              style={styles.flex}
+              onPress={cancelChildProfilePicker}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const renderTabContent = () => {
     switch (tab) {
       case 'Familia':
@@ -3252,6 +3337,7 @@ export default function UnifiedApp() {
       {renderChatModal()}
       {renderArchiveModal()}
       {renderTutorGateModal()}
+      {renderChildProfilePickerModal()}
     </SafeAreaView>
   );
 }
