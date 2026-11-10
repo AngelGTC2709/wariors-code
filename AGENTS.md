@@ -31,10 +31,10 @@ npm run build:android:apk   # compilación EAS preview -> APK interno
 
 ## Supabase (obligatorio)
 
-- Antes de `npm start`, ejecuta `supabase/setup.sql` en el SQL Editor. El script asume que `public.padres` ya existe; agrega `auth_user_id`, `datos_app`, `datos_app_version`, el trigger de alta de tutores, RLS, la publicación de Realtime y el bucket privado `activity-evidence`. Las cuentas de Auth creadas antes del trigger necesitan su fila en `padres`.
+- Antes de `npm start`, ejecuta `supabase/setup.sql` en el SQL Editor. El script asume que `public.padres` ya existe con `id_padre uuid` como FK a `auth.users(id)`; agrega `datos_app` y `datos_app_version`, crea perfiles de tutor con un trigger al registrar usuarios y completa los perfiles faltantes. También configura RLS y grants de `padres`, agrega `padres` a Realtime y crea el bucket privado `activity-evidence` con políticas por carpeta de usuario.
 - Crea `.env.local` en la raíz con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_ANON_KEY`. Nunca uses una `service_role`/`sb_secret_` en la app: las variables `EXPO_PUBLIC_*` terminan en el bundle. `.env.local` ya está ignorado por git; reinicia `npm start` después de cambiarlo.
 - Habilita Email en Supabase Auth. Si la confirmación de correo está activa, el registro no inicia sesión hasta confirmar la dirección.
-- El cliente solo puede leer y actualizar su propia fila de `padres`; las demás tablas del esquema quedan sin permisos desde el cliente. Si cambias el esquema, actualiza `supabase/setup.sql` y el tipo `Database` de `src/lib/supabase.ts`.
+- El cliente solo puede leer y actualizar su propia fila de `padres`, identificada por `id_padre = auth.uid()`. El esquema también contiene `hijos`, `cat_tipo_deporte`, `cat_intensidad`, `cat_materia`, `retos`, `actividades_fisicas`, `actividades_didacticas`, `hijo_reto`, `recompensas`, `canjes_recompensa`, `planes_alimenticios`, `recetas` y `plan_receta`; todavía no se usan desde la app cliente. Sus políticas RLS existentes se conservan; no amplíes su acceso sin revisar la propiedad por tutor. Si cambias el esquema, actualiza `supabase/setup.sql` y el tipo `Database` de `src/lib/supabase.ts`.
 - Sin `.env.local` o sin red, la app no carga datos: no hay modo offline ni respaldo local activo.
 
 ## Arquitectura
@@ -44,7 +44,7 @@ npm run build:android:apk   # compilación EAS preview -> APK interno
 - En `src/features/unified/`: `screen.tsx` es la UI/estado; `cloud-data.ts` concentra lecturas, escrituras, Realtime y Storage de Supabase; `evidence-photo.tsx` resuelve URLs firmadas; `model.ts` define tipos, validación y datos iniciales; `ui.tsx` tiene primitivas/iconos/estilos; `constants.ts` tiene catálogos estáticos.
 - `src/lib/supabase.ts` es el único cliente Supabase (singleton), lee las variables `EXPO_PUBLIC_*` y define el tipo `Database`. Importa `react-native-url-polyfill/auto`; no lo quites.
 - Catálogos de contenido: `src/constants/warrior-kids.ts` (actividades, recetas, avatares) y `src/constants/family-wellness.ts` (opciones de avatar, plan de dieta).
-- `src/app/_layout.tsx` es un `Stack` sin encabezado con `ThemeProvider`; las únicas rutas son `/` y `/familiar`. No hay pestañas montadas. `src/components/app-tabs*.tsx` son restos de plantilla sin usar que referencian una ruta `explore` inexistente; no los conectes sin crear esas rutas.
+- `src/app/_layout.tsx` es un `Stack` sin encabezado con `ThemeProvider`; las rutas activas son `/`, `/familiar` y `/reset-password`. No hay pestañas montadas. `src/components/app-tabs*.tsx` son restos de plantilla sin usar que referencian una ruta `explore` inexistente; no los conectes sin crear esas rutas.
 - Alias de rutas: `@/*` → `src/*`, `@/assets/*` → `assets/*`.
 - No hay NativeWind/Tailwind. La UI activa usa `StyleSheet.create` con `COLORS`/`TYPE` en el módulo unificado; el patrón legacy `crearEstilos(T)`/`TemaContext` solo aplica al código legacy muerto. `src/global.css` solo define variables de fuentes para web y se importa desde `src/constants/theme.ts`.
 - Las variantes por plataforma usan archivos `.web.tsx` (`animated-icon`, `app-tabs`, `use-color-scheme`); sigue ese patrón para comportamiento específico de web.
@@ -52,7 +52,7 @@ npm run build:android:apk   # compilación EAS preview -> APK interno
 
 ## Datos y sincronización (fácil de romper)
 
-- Los datos viven en `public.padres.datos_app` (JSONB), una fila por usuario de Supabase Auth, con RLS que impide leer/escribir la fila de otra cuenta. No hay persistencia local activa.
+- Los datos viven en `public.padres.datos_app` (JSONB), una fila por usuario de Supabase Auth; `padres.id_padre` es el UUID de `auth.users.id` y RLS permite leer/actualizar solo cuando `id_padre = (select auth.uid())`. No hay persistencia local activa.
 - `loadCloudData()` carga la fila; si `datos_app` es `null`, crea el espacio vacío con `createEmptyUnifiedData()` y lo guarda. Después de cargar, `clearLegacyLocalData()` borra las claves locales antiguas (NutriBot, Warrior Kids y la unificada); no se importan datos locales.
 - `UnifiedData` + `isUnifiedData` en `model.ts` son el esquema. Cualquier campo nuevo debe agregarse a ambos; `saveCloudData()` valida antes de escribir y `createEmptyUnifiedData()` debe inicializarlo. `loadUnifiedData()`/`saveUnifiedData()` siguen en `model.ts` pero ya no los usa la app activa.
 - Todas las escrituras pasan por `updateData`: actualiza `dataRef` de forma optimista, serializa con `writeQueue` y llama a `saveCloudData()` con la versión esperada. No escribas directo en Supabase ni en `dataRef`.

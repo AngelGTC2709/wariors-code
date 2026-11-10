@@ -15,20 +15,26 @@ type Database = {
     Tables: {
       padres: {
         Row: {
-          id_padre: number;
-          auth_user_id: string | null;
+          id_padre: string;
+          primer_nombre: string;
+          apellido_paterno: string;
+          apellido_materno: string | null;
           datos_app: Json | null;
           datos_app_version: number;
         };
         Insert: {
-          id_padre?: number;
-          auth_user_id?: string | null;
+          id_padre?: string;
+          primer_nombre: string;
+          apellido_paterno: string;
+          apellido_materno?: string | null;
           datos_app?: Json | null;
           datos_app_version?: number;
         };
         Update: {
-          id_padre?: number;
-          auth_user_id?: string | null;
+          id_padre?: string;
+          primer_nombre?: string;
+          apellido_paterno?: string;
+          apellido_materno?: string | null;
           datos_app?: Json | null;
           datos_app_version?: number;
         };

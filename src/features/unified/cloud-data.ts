@@ -36,7 +36,7 @@ export async function loadCloudData(
   const { data: parent, error } = await supabase
     .from('padres')
     .select('datos_app, datos_app_version')
-    .eq('auth_user_id', user.id)
+    .eq('id_padre', user.id)
     .maybeSingle();
 
   if (error) throw new Error(`No se pudieron cargar los datos de Supabase: ${error.message}`);
@@ -67,7 +67,7 @@ export async function saveCloudData(
   const { data: updated, error } = await getSupabaseClient()
     .from('padres')
     .update({ datos_app: JSON.parse(JSON.stringify(data)) as Json })
-    .eq('auth_user_id', userId)
+    .eq('id_padre', userId)
     .eq('datos_app_version', expectedVersion)
     .select('datos_app_version')
     .maybeSingle();
@@ -92,7 +92,7 @@ export function subscribeToCloudData(
         event: 'UPDATE',
         schema: 'public',
         table: 'padres',
-        filter: `auth_user_id=eq.${userId}`,
+        filter: `id_padre=eq.${userId}`,
       },
       payload => {
         const row = payload.new;

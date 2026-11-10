@@ -1,13 +1,10 @@
--- Configuración inicial de autenticación y datos privados de Warrior Kids.
--- Ejecutar una sola vez en Supabase > SQL Editor.
+-- Configura el perfil de tutor, el estado unificado de la app y la evidencia.
+-- Ejecutar en Supabase > SQL Editor. public.padres y las tablas del nuevo
+-- esquema deben existir antes de ejecutar este script.
 
 alter table public.padres
-  add column if not exists auth_user_id uuid references auth.users (id) on delete cascade,
   add column if not exists datos_app jsonb,
   add column if not exists datos_app_version integer not null default 0;
-
-create unique index if not exists padres_auth_user_id_uidx
-  on public.padres (auth_user_id);
 
 create or replace function public.crear_perfil_tutor()
 returns trigger
@@ -16,14 +13,17 @@ security definer
 set search_path = ''
 as $$
 begin
-  insert into public.padres (auth_user_id, primer_nombre, correo_electronico)
+  -- apellido_paterno es NOT NULL; se usa '' cuando Auth no proporciona el dato.
+  insert into public.padres (id_padre, primer_nombre, apellido_paterno)
   values (
     new.id,
-    coalesce(nullif(trim(new.raw_user_meta_data ->> 'name'), ''), split_part(new.email, '@', 1)),
-    new.email
+    coalesce(
+      nullif(pg_catalog.btrim(new.raw_user_meta_data ->> 'name'), ''),
+      pg_catalog.split_part(coalesce(new.email, ''), '@', 1)
+    ),
+    coalesce(nullif(pg_catalog.btrim(new.raw_user_meta_data ->> 'apellido_paterno'), ''), '')
   )
-  on conflict (auth_user_id) do update
-    set correo_electronico = excluded.correo_electronico;
+  on conflict (id_padre) do nothing;
   return new;
 end;
 $$;
@@ -32,6 +32,19 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.crear_perfil_tutor();
+
+insert into public.padres (id_padre, primer_nombre, apellido_paterno)
+select
+  u.id,
+  coalesce(
+    nullif(pg_catalog.btrim(u.raw_user_meta_data ->> 'name'), ''),
+    pg_catalog.split_part(coalesce(u.email, ''), '@', 1)
+  ),
+  coalesce(nullif(pg_catalog.btrim(u.raw_user_meta_data ->> 'apellido_paterno'), ''), '')
+from auth.users u
+left join public.padres p on p.id_padre = u.id
+where p.id_padre is null
+on conflict (id_padre) do nothing;
 
 create or replace function public.actualizar_version_datos_app()
 returns trigger
@@ -51,35 +64,16 @@ create trigger padres_datos_app_version
   before update of datos_app on public.padres
   for each row execute function public.actualizar_version_datos_app();
 
-do $$
-declare
-  table_name text;
-  app_tables text[] := array[
-    'padres',
-    'hijos',
-    'retos',
-    'recompensas',
-    'actividad_fisica',
-    'actividad_didactica',
-    'plan_alimenticio',
-    'recetas',
-    'asignan_recompensas',
-    'obtienen_recompensas',
-    'realizan_retos'
-  ];
-begin
-  foreach table_name in array app_tables loop
-    execute format('alter table public.%I enable row level security', table_name);
-    execute format('revoke all on table public.%I from public, anon, authenticated', table_name);
-  end loop;
-end;
-$$;
+revoke all on function public.crear_perfil_tutor() from public, anon, authenticated;
+revoke all on function public.actualizar_version_datos_app() from public, anon, authenticated;
 
 grant usage on schema public to authenticated;
-grant select (id_padre, auth_user_id, datos_app, datos_app_version)
+
+revoke all on public.padres from anon, authenticated;
+grant select (id_padre, primer_nombre, apellido_paterno, apellido_materno, datos_app, datos_app_version)
   on public.padres to authenticated;
-grant update (datos_app)
-  on public.padres to authenticated;
+grant update (datos_app) on public.padres to authenticated;
+alter table public.padres enable row level security;
 
 do $$
 declare
@@ -87,26 +81,56 @@ declare
 begin
   for policy_name in
     select policyname
-    from pg_policies
+    from pg_catalog.pg_policies
     where schemaname = 'public'
       and tablename = 'padres'
   loop
-    execute format('drop policy %I on public.padres', policy_name);
+    execute pg_catalog.format('drop policy %I on public.padres', policy_name);
   end loop;
 end;
 $$;
 
 create policy padres_ver_solo_propio
   on public.padres for select to authenticated
-  using (auth_user_id = (select auth.uid()));
+  using (id_padre = (select auth.uid()));
 
 create policy padres_actualizar_solo_propio
   on public.padres for update to authenticated
-  using (auth_user_id = (select auth.uid()))
-  with check (auth_user_id = (select auth.uid()));
+  using (id_padre = (select auth.uid()))
+  with check (id_padre = (select auth.uid()));
 
-revoke all on function public.crear_perfil_tutor() from public;
-revoke all on function public.actualizar_version_datos_app() from public;
+do $$
+declare
+  table_name text;
+  app_tables text[] := array[
+    'hijos',
+    'cat_tipo_deporte',
+    'cat_intensidad',
+    'cat_materia',
+    'retos',
+    'actividades_fisicas',
+    'actividades_didacticas',
+    'hijo_reto',
+    'recompensas',
+    'canjes_recompensa',
+    'planes_alimenticios',
+    'recetas',
+    'plan_receta'
+  ];
+begin
+  foreach table_name in array app_tables loop
+    execute pg_catalog.format('alter table public.%I enable row level security', table_name);
+    execute pg_catalog.format(
+      'revoke insert, update, delete, truncate on table public.%I from anon',
+      table_name
+    );
+  end loop;
+end;
+$$;
+
+alter view public.v_padres_nombre set (security_invoker = true);
+alter view public.v_puntos_hijo set (security_invoker = true);
+revoke all on public.v_padres_nombre, public.v_puntos_hijo from anon;
 
 insert into storage.buckets (id, name, public)
 values ('activity-evidence', 'activity-evidence', false)
@@ -151,15 +175,15 @@ create policy evidencia_borrar_solo_propia
 
 do $$
 begin
-  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
-    and not exists (
-      select 1
-      from pg_publication_tables
-      where pubname = 'supabase_realtime'
-        and schemaname = 'public'
-        and tablename = 'padres'
-    )
-  then
+  if exists (
+    select 1 from pg_catalog.pg_publication where pubname = 'supabase_realtime'
+  ) and not exists (
+    select 1
+    from pg_catalog.pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'padres'
+  ) then
     alter publication supabase_realtime add table public.padres;
   end if;
 end;
