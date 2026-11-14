@@ -7,8 +7,10 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Switch,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,6 +18,8 @@ import type { User } from '@supabase/supabase-js';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import {
+  Fredoka_400Regular,
+  Fredoka_500Medium,
   Fredoka_600SemiBold,
   Fredoka_700Bold,
 } from '@expo-google-fonts/fredoka';
@@ -23,7 +27,6 @@ import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_600SemiBold,
   PlusJakartaSans_700Bold,
-  PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import * as Linking from 'expo-linking';
 
@@ -48,6 +51,7 @@ import {
 import {
   clearLegacyLocalData,
   type AccountRole,
+  type AvatarSelection,
   type ChildProgress,
   type LocalAccount,
   type NutriChild,
@@ -66,7 +70,12 @@ import {
   uploadEvidence,
   verifyTutorPassword,
 } from '@/features/unified/cloud-data';
+import { BarChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion, type ChartDay } from '@/features/unified/design';
+import { ActivityAnimation } from '@/features/unified/animations';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
+import { LoadingScreen, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
+import { PlatoDelBuenComer, SelectedFoodPills } from '@/features/unified/plato';
+import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SHARED, SPACE, tint, useAppTheme } from '@/features/unified/tokens';
 import { getSupabaseClient } from '@/lib/supabase';
 import {
   AvatarIllustration,
@@ -78,7 +87,6 @@ import {
   SectionTitle,
   styles,
   Tag,
-  TYPE,
   type AppIconName,
 } from '@/features/unified/ui';
 import { cleanText, unique } from '@/features/unified/utils';
@@ -96,8 +104,6 @@ const AVATAR_COLORS: Record<AvatarKey, string[]> = {
   accesorio: ['#ED64A6', '#805AD5', '#F6C445', '#48BB78', '#2B6CB0', '#ED8936'],
   fondo: ['#FFF0F5', '#F0FAF5', '#EAF4FF', '#F0EEFF', '#FFFBEA', '#F5F0FF'],
 };
-const AVATAR_OPTION_ICONS: AppIconName[] = ['sparkles', 'mood', 'achievements', 'food', 'points', 'avatar'];
-
 const ACHIEVEMENT_INFO: Record<string, { title: string; icon: AppIconName; description: string }> = {
   'primer-reto': { title: 'Primer reto', icon: 'check', description: 'Completaste tu primer reto.' },
   'familia-en-equipo': { title: 'Familia en equipo', icon: 'tutor', description: 'Compartiste un avance con tu familia.' },
@@ -132,8 +138,11 @@ type ProfileDraft = {
   height: string;
   allergies: string[];
   noLikes: string[];
+  likes: string[];
   otherAllergies: string;
   otherNoLikes: string;
+  otherLikes: string;
+  diagnosis: NutriChild['dictamen'] | '';
 };
 
 const EMPTY_LOG: UnifiedDailyLog = {
@@ -144,13 +153,56 @@ const EMPTY_LOG: UnifiedDailyLog = {
   activities: {},
 };
 
-const NAV_ITEMS: { id: AppTab; icon: AppIconName; label: string }[] = [
-  { id: 'Familia', icon: 'home', label: 'Familia' },
-  { id: 'Recetas', icon: 'recipes', label: 'Recetas' },
-  { id: 'Menú', icon: 'menu', label: 'Menú' },
-  { id: 'Ajustes', icon: 'settings', label: 'Ajustes' },
-  { id: 'Ayuda', icon: 'help', label: 'Ayuda' },
-];
+const NAV_ITEMS = {
+  tutor: [
+    { id: 'Familia', icon: 'home', label: 'Familia' },
+    { id: 'Recetas', icon: 'recipes', label: 'Recetas' },
+    { id: 'Menú', icon: 'menu', label: 'Menú' },
+    { id: 'Ajustes', icon: 'settings', label: 'Ajustes' },
+  ],
+  child: [
+    { id: 'Familia', icon: 'home', label: 'Familia' },
+    { id: 'Recetas', icon: 'recipes', label: 'Recetas' },
+    { id: 'Logros', icon: 'achievements', label: 'Logros' },
+    { id: 'Ajustes', icon: 'settings', label: 'Ajustes' },
+    { id: 'Ayuda', icon: 'help', label: 'Ayuda' },
+  ],
+} as const satisfies Record<AccountRole, readonly { id: AppTab; icon: AppIconName; label: string }[]>;
+
+const screenStyles = StyleSheet.create({
+  loginLogo: { width: 64, height: 64 },
+  topBar: { paddingHorizontal: SPACE[16], paddingTop: SPACE[12], paddingBottom: SPACE[12] },
+  sectionHeading: { gap: SPACE[4], marginTop: SPACE[4] },
+  moodGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[8] },
+  moodChoice: { width: '30%', minHeight: 76, alignItems: 'center', justifyContent: 'center', gap: SPACE[4], borderRadius: RADIUS.md, borderWidth: BORDER.fino },
+  moodIcon: { width: 44, height: 44, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
+  activityScene: { width: 56, alignItems: 'center', justifyContent: 'center' },
+  activityScreen: { flex: 1 },
+  activityContent: { padding: SPACE[20], gap: SPACE[16] },
+  activitySceneLarge: { alignSelf: 'center' },
+  achievementHero: { alignItems: 'center', borderRadius: RADIUS.hero, padding: SPACE[24], gap: SPACE[8] },
+  achievementGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[12] },
+  achievementItem: { width: '47%', alignItems: 'center', padding: SPACE[16], borderRadius: RADIUS.habito, gap: SPACE[8] },
+  achievementMedal: { width: 68, height: 68, borderRadius: RADIUS.pildora, borderWidth: BORDER.avatar, alignItems: 'center', justifyContent: 'center' },
+  centered: { textAlign: 'center' },
+  settingsTile: { minHeight: 72, borderRadius: RADIUS.habito, padding: SPACE[16], justifyContent: 'center' },
+  avatarPreview: { alignItems: 'center', borderRadius: RADIUS.habito, padding: SPACE[20], gap: SPACE[8] },
+  avatarTabs: { flexDirection: 'row', gap: SPACE[8] },
+  avatarTab: { minHeight: 44, paddingHorizontal: SPACE[14], borderRadius: RADIUS.pildora, flexDirection: 'row', alignItems: 'center', gap: SPACE[6] },
+  avatarOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[12] },
+  avatarOption: { width: 52, height: 52, borderRadius: RADIUS.pildora, borderWidth: BORDER.avatar, alignItems: 'center', justifyContent: 'center' },
+  avatarColor: { width: 38, height: 38, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
+  avatarCheck: { width: 22, height: 22, borderRadius: RADIUS.pildora, backgroundColor: SHARED.tarjeta, alignItems: 'center', justifyContent: 'center' },
+  helpLogo: { width: 120, height: 120, alignSelf: 'center' },
+  summaryRow: { flexDirection: 'row', gap: SPACE[12] },
+  summaryCard: { flex: 1, minWidth: 0, backgroundColor: SHARED.tarjeta, borderRadius: RADIUS.tarjeta, padding: SPACE[16], gap: SPACE[4], ...SHADOW.tarjeta },
+  selectionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[8] },
+  selectionPill: { minHeight: 44, paddingHorizontal: SPACE[16], borderRadius: RADIUS.pildora, justifyContent: 'center', alignItems: 'center' },
+  ingredientPill: { borderRadius: RADIUS.pildora, paddingHorizontal: SPACE[8], paddingVertical: SPACE[4] },
+  waterGlasses: { flexDirection: 'row', flexWrap: 'wrap', maxWidth: 150, gap: SPACE[8] },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE[12], marginBottom: SPACE[12] },
+  sheetContent: { gap: SPACE[12], paddingBottom: SPACE[12] },
+});
 
 const MEALS: { id: keyof WeeklyMeals; title: string; icon: AppIconName }[] = [
   { id: 'desayuno', title: 'Desayuno', icon: 'menu' },
@@ -160,11 +212,81 @@ const MEALS: { id: keyof WeeklyMeals; title: string; icon: AppIconName }[] = [
 
 const ACTIVITY_CATALOG: Activity[] = ACTIVITIES;
 
+const ACTIVITY_GUIDES: Record<string, { steps: readonly string[]; safety: string }> = {
+  dance: {
+    steps: [
+      'Pon tu canción favorita y rebota con las rodillas.',
+      'Sube un brazo y luego el otro, al ritmo.',
+      'Si estás quieto y en un lugar seguro, cierra los ojos y siente la música.',
+      'Mueve la cadera de lado a lado hasta que acabe la canción.',
+    ],
+    safety: 'Deja espacio libre a tu alrededor para no chocar con nada.',
+  },
+  animals: {
+    steps: [
+      'Camina como pingüino: brazos pegados y pasitos cortos.',
+      'Agáchate como rana, con las manos al frente.',
+      'Da un salto suave como rana, a tu ritmo.',
+      'Estírate como gato y respira despacio.',
+    ],
+    safety: 'Salta sobre un piso que no resbale y con zapatos puestos.',
+  },
+  walk: {
+    steps: [
+      'Sal con un adulto a un lugar seguro.',
+      'Camina despacio y observa como explorador.',
+      'Busca 3 cosas de colores: una flor, una hoja y un insecto.',
+      'Al regresar, cuenta qué descubriste.',
+    ],
+    safety: 'Siempre acompañado de un adulto y sin alejarte de su vista.',
+  },
+  stretch: {
+    steps: [
+      'Párate derecho y respira hondo.',
+      'Abre los brazos como avión.',
+      '¡Más alto! Sube los brazos y aguanta 5 segundos.',
+      'Baja despacio y relájate.',
+    ],
+    safety: 'Si algo te duele, detente y avísale a un adulto.',
+  },
+};
+
 const RECIPE_FILTERS = [
   { id: 'todas', label: 'Todas' },
   { id: 'desayuno', label: 'Desayunos' },
   { id: 'comida', label: 'Comidas' },
   { id: 'colacion', label: 'Colaciones' },
+] as const;
+
+const RECIPE_INGREDIENT_GROUPS: Record<string, keyof typeof FOOD_GROUP_COLORS> = {
+  'Tortillas de maíz': 'cereales',
+  'Hongos o champiñones': 'frutas',
+  'Quelites o espinaca': 'frutas',
+  'Queso al gusto': 'animal',
+  'Tostadas horneadas': 'cereales',
+  Frijoles: 'leguminosas',
+  Lechuga: 'frutas',
+  Jitomate: 'frutas',
+  Aguacate: 'frutas',
+  Calabacitas: 'frutas',
+  Elote: 'cereales',
+  Cebolla: 'frutas',
+  Avena: 'cereales',
+  'Manzana o plátano': 'frutas',
+};
+
+const MISSION_POINTS: Record<string, number> = {
+  'water-goal': 10,
+  'colorful-plate': 10,
+  'mood-check': 5,
+};
+
+const DIAGNOSES = [
+  { id: 'sano', label: 'Sano' },
+  { id: 'sobrepeso', label: 'Sobrepeso' },
+  { id: 'obesidad', label: 'Obesidad' },
+  { id: 'prediabetes', label: 'Prediabetes' },
+  { id: 'diabetes2', label: 'Diabetes tipo 2' },
 ] as const;
 
 const AVATAR_KEYS: AvatarKey[] = ['piel', 'cabello', 'ropa', 'accesorio', 'fondo'];
@@ -175,6 +297,23 @@ const AVATAR_LABELS: Record<AvatarKey, string> = {
   accesorio: 'Accesorio',
   fondo: 'Fondo',
 };
+const AVATAR_TAB_ICONS: Record<AvatarKey, AppIconName> = {
+  piel: 'profile',
+  cabello: 'avatar',
+  ropa: 'child',
+  accesorio: 'sparkles',
+  fondo: 'menu',
+};
+const EXERCISE_ICONS: Record<(typeof EXERCISE_CATEGORIES)[number]['id'], AppIconName> = {
+  cardio: 'heart',
+  fuerza: 'dumbbell',
+  flexibilidad: 'waves',
+  equilibrio: 'scale',
+};
+
+function defaultAvatarSelection(theme: UnifiedProfile['theme']): AvatarSelection {
+  return { piel: 0, cabello: 0, ropa: theme === 'nina' ? 0 : 2, accesorio: 0, fondo: theme === 'nina' ? 0 : 2 };
+}
 
 function createId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -334,8 +473,11 @@ function emptyProfileDraft(): ProfileDraft {
     height: '',
     allergies: [],
     noLikes: [],
+    likes: [],
     otherAllergies: '',
     otherNoLikes: '',
+    otherLikes: '',
+    diagnosis: '',
   };
 }
 
@@ -344,13 +486,15 @@ function defaultMeals(): WeeklyMeals {
 }
 
 export default function UnifiedApp() {
+  const { width: windowWidth } = useWindowDimensions();
   const [fontsLoaded, fontError] = useFonts({
+    Fredoka_400Regular,
+    Fredoka_500Medium,
     Fredoka_600SemiBold,
     Fredoka_700Bold,
     PlusJakartaSans_400Regular,
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
-    PlusJakartaSans_800ExtraBold,
   });
   const [data, setData] = useState<UnifiedData | null>(null);
   const dataRef = useRef<UnifiedData | null>(null);
@@ -371,6 +515,7 @@ export default function UnifiedApp() {
   const [selectedProfileKey, setSelectedProfileKey] = useState<string | null>(null);
   const [showChildProfilePicker, setShowChildProfilePicker] = useState(false);
   const [tab, setTab] = useState<AppTab>('Familia');
+  const [settingsSection, setSettingsSection] = useState<'main' | 'parental' | 'notifications' | 'help'>('main');
   const [profileStep, setProfileStep] = useState(0);
 
   const [registerMode, setRegisterMode] = useState(false);
@@ -410,6 +555,9 @@ export default function UnifiedApp() {
   const [recipeDetails, setRecipeDetails] = useState<Recipe | null>(null);
 
   const [activityModal, setActivityModal] = useState<Activity | null>(null);
+  const [activityStage, setActivityStage] = useState<'details' | 'form'>('details');
+  const [activityPlaying, setActivityPlaying] = useState(true);
+  const [activityReplay, setActivityReplay] = useState(0);
   const [activityDuration, setActivityDuration] = useState('');
   const [activityPhoto, setActivityPhoto] = useState<PhotoDraft | null>(null);
   const [activityError, setActivityError] = useState('');
@@ -420,6 +568,12 @@ export default function UnifiedApp() {
     { from: 'bot', text: '¡Hola! Soy NutriBot. Podemos hablar de hábitos, comida y cómo te sientes.' },
   ]);
   const [avatarCategory, setAvatarCategory] = useState<AvatarKey>('cabello');
+  const [childSettingsSection, setChildSettingsSection] = useState<'main' | 'avatar'>('main');
+  const [avatarDraft, setAvatarDraft] = useState<{
+    profileKey: string;
+    selection: AvatarSelection;
+    changed: AvatarKey[];
+  } | null>(null);
   const [notice, setNotice] = useState('');
 
   const loadData = useCallback(async () => {
@@ -473,7 +627,11 @@ export default function UnifiedApp() {
         setShowTutorGate(false);
         setTutorGatePassword('');
         setTutorGateError('');
-        if (user) setRole('tutor');
+        if (user) {
+          setRole('tutor');
+          setTab('Familia');
+          setSettingsSection('main');
+        }
       } else if (!user) {
         setLoading(false);
       }
@@ -574,11 +732,11 @@ export default function UnifiedApp() {
     const current = dataRef.current;
     if (!current || !authUser) {
       setStorageError('Los datos todavía no están listos. Intenta de nuevo en un momento.');
-      return;
+      return false;
     }
     if (writesBlocked.current) {
       setStorageError('No se guardarán más cambios hasta volver a cargar los datos de Supabase.');
-      return;
+      return false;
     }
     const next = update(current);
     dataRef.current = next;
@@ -605,16 +763,35 @@ export default function UnifiedApp() {
     ).finally(() => {
       pendingWrites.current -= 1;
     });
+    return true;
   };
 
   const profiles = useMemo(() => (data ? buildProfiles(data) : []), [data]);
   const currentProfile = profiles.find(profile => profile.key === selectedProfileKey) ?? null;
   const selectedProfile = currentProfile ?? (role === 'tutor' ? profiles[0] ?? null : null);
+  const theme = useAppTheme(role, selectedProfile?.theme ?? 'nina');
+  const loginTheme = useAppTheme('tutor', 'nina');
+  const reduceMotion = useReduceMotion();
+  const { transition, start: startTransition, cancel: cancelTransition } = useLoadingTransition(reduceMotion);
+  const waitingForLoad = !fontError && !loadError && (loading || !fontsLoaded);
+  const loadingVisible = useLoadingVisibility(waitingForLoad);
+
+  useEffect(() => {
+    if (!transition) return;
+    if (waitingForLoad || fontError || loadError || storageError || !authUser || !data ||
+        transition.userId !== authUser.id || role !== 'child' || selectedProfile?.key !== transition.owner ||
+        (transition.kind === 'actividad' && !activityModal)) {
+      cancelTransition();
+    }
+  }, [transition, waitingForLoad, fontError, loadError, storageError, authUser, data, role, selectedProfile, activityModal, cancelTransition]);
   const profileAllergies = selectedProfile?.nutri
     ? unique([...selectedProfile.nutri.alergias, selectedProfile.nutri.otrasAlergias].filter(Boolean))
     : [];
   const profileNoLikes = selectedProfile?.nutri
     ? unique([...selectedProfile.nutri.noGusta, selectedProfile.nutri.otrosNoGusta].filter(Boolean))
+    : [];
+  const profileLikes = selectedProfile?.nutri
+    ? unique([...(selectedProfile.nutri.gusta ?? []), selectedProfile.nutri.otrosGusta ?? ''].filter(Boolean))
     : [];
 
   const submitAuth = async () => {
@@ -715,8 +892,11 @@ export default function UnifiedApp() {
           height: profile.nutri?.altura ?? '',
           allergies: profile.nutri?.alergias ?? [],
           noLikes: profile.nutri?.noGusta ?? [],
+          likes: profile.nutri?.gusta ?? [],
           otherAllergies: profile.nutri?.otrasAlergias ?? '',
           otherNoLikes: profile.nutri?.otrosNoGusta ?? '',
+          otherLikes: profile.nutri?.otrosGusta ?? '',
+          diagnosis: profile.nutri?.dictamen ?? '',
         }
       : emptyProfileDraft());
     setShowProfileEditor(true);
@@ -730,7 +910,7 @@ export default function UnifiedApp() {
       return;
     }
     let updatedKey = editingProfile?.key ?? '';
-    updateData(current => {
+    const queued = updateData(current => {
       const existing = editingProfile;
       const nutriId = existing?.nutri?.id ?? createId('nutri-child');
       const warriorId = existing?.warrior?.id ?? createId('warrior-child');
@@ -750,6 +930,9 @@ export default function UnifiedApp() {
             noGusta: profileDraft.noLikes,
             otrasAlergias: profileDraft.otherAllergies.trim(),
             otrosNoGusta: profileDraft.otherNoLikes.trim(),
+            gusta: profileDraft.likes,
+            otrosGusta: profileDraft.otherLikes.trim(),
+            dictamen: profileDraft.diagnosis || undefined,
           }
         : {
             id: nutriId,
@@ -762,6 +945,9 @@ export default function UnifiedApp() {
             noGusta: profileDraft.noLikes,
             otrasAlergias: profileDraft.otherAllergies.trim(),
             otrosNoGusta: profileDraft.otherNoLikes.trim(),
+            gusta: profileDraft.likes,
+            otrosGusta: profileDraft.otherLikes.trim(),
+            dictamen: profileDraft.diagnosis || undefined,
           };
 
       const nextWarrior: WarriorChild = existing?.warrior
@@ -811,15 +997,19 @@ export default function UnifiedApp() {
         profileLinks,
       };
     });
+    if (!queued) {
+      setProfileError('No se pudo guardar el perfil. Cierra el formulario y revisa el aviso de conexión.');
+      return;
+    }
     setShowProfileEditor(false);
     setProfileStep(0);
     setEditingProfile(null);
     setSelectedProfileKey(updatedKey || null);
     setTab('Familia');
-    setNotice(editingProfile ? 'El perfil se actualizó en tu espacio familiar.' : 'Perfil infantil creado en tu espacio familiar.');
+    setNotice(editingProfile ? 'Los cambios del perfil están en proceso de guardado.' : 'El perfil infantil está en proceso de guardado.');
   };
 
-  const toggleProfileFood = (field: 'allergies' | 'noLikes', value: string) => {
+  const toggleProfileFood = (field: 'allergies' | 'noLikes' | 'likes', value: string) => {
     setProfileDraft(current => ({
       ...current,
       [field]: current[field].includes(value)
@@ -1179,19 +1369,64 @@ export default function UnifiedApp() {
     }));
   };
 
-  const setAvatarPart = (index: number) => {
-    if (!selectedProfile) return;
-    updateData(current => {
-      const existing = current.avatarSelections[selectedProfile.key]
-        ?? { piel: 0, cabello: 0, ropa: 0, accesorio: 0, fondo: 0 };
-      return {
-        ...current,
-        avatarSelections: {
-          ...current.avatarSelections,
-          [selectedProfile.key]: { ...existing, [avatarCategory]: index },
-        },
-      };
+  const openAvatarEditor = () => {
+    if (role !== 'child' || !selectedProfile || !data) return;
+    setAvatarDraft({
+      profileKey: selectedProfile.key,
+      selection: { ...(data.avatarSelections[selectedProfile.key] ?? defaultAvatarSelection(selectedProfile.theme)) },
+      changed: [],
     });
+    setAvatarCategory('piel');
+    setChildSettingsSection('avatar');
+    setTab('Ajustes');
+  };
+
+  const setAvatarPart = (index: number) => {
+    setAvatarDraft(current => current ? {
+      ...current,
+      selection: { ...current.selection, [avatarCategory]: index },
+      changed: current.changed.includes(avatarCategory) ? current.changed : [...current.changed, avatarCategory],
+    } : current);
+  };
+
+  const surpriseAvatar = () => {
+    const categories = AVATAR_KEYS.filter(key => key !== 'fondo');
+    const randomized = {
+      piel: Math.floor(Math.random() * AVATAR_OPCIONES.piel.length),
+      cabello: Math.floor(Math.random() * AVATAR_OPCIONES.cabello.length),
+      ropa: Math.floor(Math.random() * AVATAR_OPCIONES.ropa.length),
+      accesorio: Math.floor(Math.random() * AVATAR_OPCIONES.accesorio.length),
+    };
+    setAvatarDraft(current => current ? {
+      ...current,
+      selection: { ...current.selection, ...randomized },
+      changed: categories,
+    } : current);
+  };
+
+  const saveAvatar = () => {
+    if (role !== 'child' || !selectedProfile || !avatarDraft || avatarDraft.profileKey !== selectedProfile.key) return;
+    if (!dataRef.current || !authUser) {
+      setStorageError('Los datos todavía no están listos. Intenta de nuevo en un momento.');
+      return;
+    }
+    if (writesBlocked.current) {
+      setStorageError('No se guardarán más cambios hasta volver a cargar los datos de Supabase.');
+      return;
+    }
+    if (!buildProfiles(dataRef.current).some(profile => profile.key === avatarDraft.profileKey)) {
+      setNotice('Este perfil ya no está disponible. Pide ayuda a la persona tutora.');
+      return;
+    }
+    if (avatarDraft.changed.length) {
+      updateData(current => {
+        const selection = { ...(current.avatarSelections[avatarDraft.profileKey] ?? defaultAvatarSelection(selectedProfile.theme)) };
+        avatarDraft.changed.forEach(key => { selection[key] = avatarDraft.selection[key]; });
+        return { ...current, avatarSelections: { ...current.avatarSelections, [avatarDraft.profileKey]: selection } };
+      });
+    }
+    setAvatarDraft(null);
+    setChildSettingsSection('main');
   };
 
   const logout = async () => {
@@ -1250,9 +1485,12 @@ export default function UnifiedApp() {
   };
 
   const enterChildMode = (profileKey: string) => {
+    if (authUser) startTransition('perfil', profileKey, authUser.id);
     setSelectedProfileKey(profileKey);
     setRole('child');
     setTab('Familia');
+    setChildSettingsSection('main');
+    setAvatarDraft(null);
     setShowChildProfilePicker(false);
     setShowProfileEditor(false);
     setProfileToArchive(null);
@@ -1344,7 +1582,7 @@ export default function UnifiedApp() {
 
   const renderBrand = () => (
     <View style={styles.brandLockup}>
-      <View style={styles.brandMark}><Icon name="child" size={29} color={COLORS.white} /></View>
+      <Image source={require('@/assets/images/wk-logo.png')} style={screenStyles.loginLogo} resizeMode="contain" />
       <View>
         <Text style={styles.brandTitle}>Warrior Kids</Text>
         <Text style={styles.brandCaption}>CRECEMOS EN FAMILIA</Text>
@@ -1353,9 +1591,9 @@ export default function UnifiedApp() {
   );
 
   const renderLogin = () => (
-    <SafeAreaView style={styles.authRoot}>
+    <SafeAreaView style={[styles.authRoot, { backgroundColor: loginTheme.colors.hero }]}>
       <KeyboardAvoidingView
-        style={[styles.shell, { backgroundColor: COLORS.navy }]}
+        style={[styles.shell, { backgroundColor: loginTheme.colors.hero }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.authScroll} keyboardShouldPersistTaps="handled">
@@ -1399,11 +1637,11 @@ export default function UnifiedApp() {
             />
             {authError ? <Text accessibilityRole="alert" style={styles.errorText}>{authError}</Text> : null}
             {authNotice ? <Text accessibilityRole="alert" style={styles.authNotice}>{authNotice}</Text> : null}
-            <Button
-              title={authBusy ? 'Conectando…' : registerMode ? 'Crear cuenta' : 'Iniciar sesión'}
-              icon={registerMode ? 'add' : 'logout'}
+            <PillButton
+              theme={loginTheme}
+              label={authBusy ? 'Conectando…' : registerMode ? 'Crear cuenta' : 'Iniciar sesión'}
               disabled={authBusy}
-              onPress={submitAuth}
+              onPress={() => void submitAuth()}
             />
             {!registerMode ? (
               <Pressable
@@ -1430,7 +1668,7 @@ export default function UnifiedApp() {
               </Text>
             </Pressable>
           </View>
-          <Text style={styles.authNotice}>
+          <Text style={[styles.authNotice, { color: SHARED.textoInactivo }]}>
             Cada cuenta tutora tiene su propio espacio familiar. Los datos se sincronizan con Supabase y no se comparten con otras cuentas.
           </Text>
         </ScrollView>
@@ -1438,87 +1676,85 @@ export default function UnifiedApp() {
     </SafeAreaView>
   );
 
-  const renderHeader = () => (
-    <>
-      <View style={styles.header}>
-        <View style={styles.headerBrand}>
-          <View style={styles.headerMark}><Icon name="child" size={21} color={COLORS.blueDeep} /></View>
-          <View style={styles.flex}>
-            <Text style={styles.headerTitle}>Warrior Kids</Text>
-            <Text style={styles.headerSub} numberOfLines={1}>
-              {session?.name ? `Hola, ${session.name}` : 'Crecer en familia'}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.roleSwitch}>
-          {([
-            { id: 'child' as const, label: 'Niñez' },
-            { id: 'tutor' as const, label: 'Tutor' },
-          ]).map(option => (
+  const renderTutorProfileStrip = () => (
+    role === 'tutor' && profiles.length > 0 ? (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+        <View style={styles.profileStrip}>
+          {profiles.map(profile => (
             <Pressable
               accessibilityRole="button"
-              accessibilityState={{ selected: role === option.id }}
-              key={option.id}
-              onPress={() => requestRoleChange(option.id)}
-              style={[styles.roleSwitchItem, role === option.id && styles.roleSwitchActive]}
+              accessibilityState={{ selected: selectedProfile?.key === profile.key }}
+              key={profile.key}
+              onPress={() => setSelectedProfileKey(profile.key)}
+              style={[
+                styles.profileChip,
+                { borderRadius: RADIUS.pildora },
+                selectedProfile?.key === profile.key && { borderColor: theme.colors.acento, backgroundColor: theme.colors.acentoSuave },
+              ]}
             >
-              <Text style={[styles.roleSwitchText, role === option.id && styles.roleSwitchTextActive]}>
-                {option.label}
-              </Text>
+              <AvatarIllustration
+                theme={profile.theme}
+                selection={data?.avatarSelections[profile.key]}
+                size="small"
+              />
+              <Text style={[theme.type.tabActive, { color: theme.colors.texto }]}>{profile.name}</Text>
             </Pressable>
           ))}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => createOrEditProfile(null)}
+            style={[styles.profileChip, { borderStyle: 'dashed', borderRadius: RADIUS.pildora }]}
+          >
+            <Text style={[theme.type.tabActive, { color: theme.colors.texto }]}>＋ Perfil</Text>
+          </Pressable>
         </View>
-      </View>
-      {(role === 'tutor' ? profiles : selectedProfile ? [selectedProfile] : []).length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
-          <View style={styles.profileStrip}>
-            {(role === 'tutor' ? profiles : selectedProfile ? [selectedProfile] : []).map(profile => role === 'tutor' ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: selectedProfile?.key === profile.key }}
-                key={profile.key}
-                onPress={() => setSelectedProfileKey(profile.key)}
-                style={[styles.profileChip, selectedProfile?.key === profile.key && styles.profileChipActive]}
-              >
-                <AvatarIllustration
-                  theme={profile.theme}
-                  selection={data?.avatarSelections[profile.key]}
-                  size="small"
-                />
-                <Text style={styles.profileChipText}>{profile.name}</Text>
-              </Pressable>
-            ) : (
-              <View key={profile.key} style={[styles.profileChip, styles.profileChipActive]}>
-                <AvatarIllustration
-                  theme={profile.theme}
-                  selection={data?.avatarSelections[profile.key]}
-                  size="small"
-                />
-                <Text style={styles.profileChipText}>{profile.name}</Text>
-              </View>
-            ))}
-            {role === 'tutor' ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => createOrEditProfile(null)}
-                style={[styles.profileChip, { borderStyle: 'dashed' }]}
-              >
-                <Text style={styles.profileChipText}>＋ Perfil</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </ScrollView>
-      ) : null}
-    </>
+      </ScrollView>
+    ) : null
   );
 
-  const renderPageIntro = (eyebrow: string, title: string, subtitle: string) => (
-    <View style={styles.pageIntro}>
-      <Text style={styles.eyebrow}>{eyebrow}</Text>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+  const renderTutorIntro = (eyebrow: string, title: string, subtitle: string) => (
+    <View style={screenStyles.sectionHeading}>
+      <Text style={[theme.type.caption, { color: theme.colors.acento }]}>{eyebrow}</Text>
+      <Text style={[theme.type.h1, { color: theme.colors.texto }]}>{title}</Text>
+      <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{subtitle}</Text>
     </View>
   );
+
+  const renderSelectionPill = (label: string, selected: boolean, onPress: () => void) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[screenStyles.selectionPill, { backgroundColor: selected ? theme.colors.acento : theme.colors.tarjeta }]}
+    >
+      <Text style={[selected ? theme.type.tabActive : theme.type.tab, { color: selected ? theme.colors.sobreAcento : theme.colors.texto }]}>{label}</Text>
+    </Pressable>
+  );
+
+  const renderIngredientPills = (ingredients: string[]) => (
+    <View style={styles.wrap}>
+      {ingredients.map(ingredient => {
+        const group = RECIPE_INGREDIENT_GROUPS[ingredient];
+        const colors = group ? FOOD_GROUP_COLORS[group] : { fondo: theme.colors.apagada, texto: theme.colors.textoSecundario };
+        return (
+          <View key={ingredient} style={[screenStyles.ingredientPill, { backgroundColor: colors.fondo }]}>
+            <Text style={[theme.type.counter, { color: colors.texto }]}>{ingredient}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+
+  const renderFoodPreferences = () => profileAllergies.length || profileNoLikes.length || profileLikes.length ? (
+    <View accessibilityRole="alert" style={styles.notice}>
+      <Text style={styles.noticeText}>
+        {profileAllergies.length ? `Alergias registradas: ${profileAllergies.map(id => FOOD_OPTIONS.find(food => food.id === id)?.name ?? id).join(', ')}. ` : ''}
+        {profileNoLikes.length ? `No le gustan: ${profileNoLikes.map(id => FOOD_OPTIONS.find(food => food.id === id)?.name ?? id).join(', ')}. ` : ''}
+        {profileLikes.length ? `Le gustan: ${profileLikes.map(id => FOOD_OPTIONS.find(food => food.id === id)?.name ?? id).join(', ')}. ` : ''}
+        Revisa ingredientes y etiquetas; estas alertas no detectan contaminación cruzada ni sustituyen indicaciones profesionales.
+      </Text>
+    </View>
+  ) : null;
 
   const renderAvatar = (profile: UnifiedProfile, size: 'large' | 'small' = 'large') => {
     return (
@@ -1560,128 +1796,95 @@ export default function UnifiedApp() {
     const waterGoal = data.warriorKids.waterGoal;
     const claimList = data.missionClaims[selectedProfile.progressKey]?.[todayKey()] ?? [];
     const missions = [
-      { id: 'water-goal', title: 'Hidrátate a tu ritmo', detail: 'Llega a tu meta de agua de hoy.', icon: 'water' as const, points: 10, ready: log.water >= waterGoal },
-      { id: 'colorful-plate', title: 'Plato con colores', detail: 'Registra dos grupos de alimentos.', icon: 'food' as const, points: 10, ready: new Set(log.foodGroups.map(canonicalFoodGroup).filter(Boolean)).size >= 2 },
-      { id: 'mood-check', title: 'Cuéntanos cómo estás', detail: 'Elige un ánimo para hoy.', icon: 'mood' as const, points: 5, ready: Boolean(log.mood) },
+      { id: 'water-goal', title: 'Hidrátate a tu ritmo', detail: 'Llega a tu meta de agua de hoy.', icon: 'water' as const, points: MISSION_POINTS['water-goal'], ready: log.water >= waterGoal },
+      { id: 'colorful-plate', title: 'Plato con colores', detail: 'Registra dos grupos de alimentos.', icon: 'food' as const, points: MISSION_POINTS['colorful-plate'], ready: new Set(log.foodGroups.map(canonicalFoodGroup).filter(Boolean)).size >= 2 },
+      { id: 'mood-check', title: 'Cuéntanos cómo estás', detail: 'Elige un ánimo para hoy.', icon: 'mood' as const, points: MISSION_POINTS['mood-check'], ready: Boolean(log.mood) },
     ];
     const approvedActivities = Object.values(log.activities).filter(activity => activity.status === 'approved').length;
-    const recentDays = Array.from({ length: 7 }, (_, index) => {
+    const recentDays: ChartDay[] = Array.from({ length: 7 }, (_, index) => {
       const date = dateOffsetKey(6 - index);
       const daily = getDailyLog(data, selectedProfile, date);
-      const count = Number(daily.water > 0) +
-        Number(daily.foodGroups.length > 0) +
-        Number(Boolean(daily.mood)) +
-        Number(daily.sleepHours !== null) +
-        Object.values(daily.activities).filter(activity => activity.status === 'approved').length;
+      const foodGroupCount = new Set(daily.foodGroups.map(canonicalFoodGroup).filter(Boolean)).size;
       const label = new Intl.DateTimeFormat('es-MX', { weekday: 'short' }).format(new Date(`${date}T12:00:00`)).replace('.', '');
-      return { date, label, count };
+      return {
+        label,
+        values: {
+          agua: daily.water,
+          alimentacion: foodGroupCount,
+          estudio: 0,
+          descanso: daily.sleepHours ?? 0,
+        },
+      };
     });
-    const maxRecentCount = Math.max(1, ...recentDays.map(day => day.count));
+    const maxRecentValue = Math.max(8, waterGoal, ...recentDays.flatMap(day => Object.values(day.values)));
     return (
       <>
-        <Card style={{ backgroundColor: COLORS.navy, borderColor: COLORS.navy, padding: 17 }}>
-          <View style={styles.horizontal}>
-            {renderAvatar(selectedProfile)}
-            <View style={styles.flex}>
-              <Text style={[styles.eyebrow, { color: '#A8D4FF' }]}>{todayLabel()}</Text>
-              <Text style={[styles.title, { color: COLORS.white, fontSize: 25 }]}>¡Hola, {selectedProfile.name}!</Text>
-              <Text style={{ color: '#D5E0F0', fontFamily: TYPE.body, fontSize: 11, marginTop: 3 }}>
-                Cada pequeño paso cuenta.
-              </Text>
-              <View style={{ marginTop: 9 }}>
-                <Button
-                  small
-                  title="Personalizar avatar"
-                  icon="avatar"
-                  variant="secondary"
-                  onPress={() => setTab('Ajustes')}
-                  style={{ alignSelf: 'flex-start' }}
-                />
-              </View>
-            </View>
-          </View>
-          <View style={[styles.horizontal, { marginTop: 4 }]}>
-            <Icon name="points" size={17} color={COLORS.yellow} />
-            <Text style={{ color: COLORS.white, fontFamily: TYPE.bold, fontSize: 13 }}>{progress.points} puntos</Text>
-            <Text style={{ color: '#A8B4C7', fontFamily: TYPE.body, fontSize: 10 }}>· {approvedActivities} actividades aprobadas hoy</Text>
-          </View>
-        </Card>
+        <HeroCard
+          theme={theme}
+          title={`¡Hola, ${selectedProfile.name}!`}
+          subtitle={`${todayLabel()} · ${approvedActivities} actividades aprobadas hoy. Cada pequeño paso cuenta.`}
+          points={progress.points}
+          actionLabel="Personalizar avatar"
+          onAction={openAvatarEditor}
+        />
 
-        <View style={styles.sectionRow}>
-          <View>
-            <Text style={styles.sectionTitle}>Mis hábitos de hoy</Text>
-            <Text style={styles.sectionHint}>Avanza con calma, a tu manera.</Text>
-          </View>
-          <Text style={styles.muted}>{todayLabel()}</Text>
+        <View style={screenStyles.sectionHeading}>
+          <Text style={[theme.type.h2, { color: theme.colors.texto }]}>Mis hábitos de hoy</Text>
+          <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Avanza con calma, a tu manera.</Text>
         </View>
 
-        <Card>
-          <View style={styles.between}>
-            <View style={styles.horizontal}>
-              <Icon name="water" size={24} color={COLORS.blue} />
-              <View>
-                <Text style={styles.cardTitle}>Agua</Text>
-                <Text style={styles.muted}>{log.water} de {waterGoal} vasos</Text>
-              </View>
-            </View>
-            <View style={styles.horizontal}>
-              <Button title="−" small variant="outline" onPress={() => addWater(-1)} disabled={log.water <= 0} />
-              <Button title="+ 1" small onPress={() => addWater(1)} />
-            </View>
-          </View>
-          <ProgressMeter value={log.water} max={waterGoal} color={COLORS.blue} />
-        </Card>
+        <HabitCard
+          theme={theme}
+          title="Agua"
+          icon="water"
+          iconColor={theme.colors.agua}
+          value={log.water}
+          goal={waterGoal}
+          onDecrease={() => addWater(-1)}
+          onIncrease={() => addWater(1)}
+        />
+        <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>Reclama el reto de agua para ganar 10 puntos.</Text>
 
-        <Card>
-          <SectionTitle title="Colores en mi plato" subtitle="Marca los grupos que probaste hoy." />
+        <SectionCard theme={theme} role="child" title="Colores en mi plato" subtitle="Marca los grupos que probaste hoy.">
           <View style={styles.wrap}>
-            {[
-              { id: 'frutas-verduras', label: 'Frutas y verduras', color: COLORS.green },
-              { id: 'cereales', label: 'Cereales', color: COLORS.orange },
-              { id: 'leguminosas', label: 'Leguminosas', color: COLORS.purple },
-              { id: 'origen-animal', label: 'Origen animal', color: COLORS.blue },
-            ].map(group => (
-              <Tag
+            {([
+              { id: 'frutas-verduras', label: 'Frutas y verduras', group: 'frutas' },
+              { id: 'cereales', label: 'Cereales', group: 'cereales' },
+              { id: 'leguminosas', label: 'Leguminosas', group: 'leguminosas' },
+              { id: 'origen-animal', label: 'Origen animal', group: 'animal' },
+            ] as const).map(group => (
+              <FoodChip
                 key={group.id}
-                title={group.label}
-                color={group.color}
+                theme={theme}
+                label={group.label}
+                group={group.group}
                 selected={log.foodGroups.some(value => canonicalFoodGroup(value) === group.id)}
                 onPress={() => toggleFoodGroup(group.id)}
               />
             ))}
           </View>
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <SectionTitle title="¿Cómo te sientes?" subtitle="Puedes elegir más de una vez durante el día." />
-          <View style={[styles.between, { flexWrap: 'wrap' }]}>
+        <SectionCard theme={theme} role="child" title="¿Cómo te sientes?" subtitle="Puedes elegir más de una vez durante el día.">
+          <View style={screenStyles.moodGrid}>
             {CHILD_MOODS.map(mood => (
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ selected: log.mood === mood.id }}
                 key={mood.id}
                 onPress={() => setMood(mood.id)}
-                style={{
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 4,
-                  width: '30%',
-                  paddingVertical: 8,
-                  borderRadius: 14,
-                  backgroundColor: log.mood === mood.id ? `${mood.color}20` : 'transparent',
-                  borderWidth: 1,
-                  borderColor: log.mood === mood.id ? mood.color : 'transparent',
-                }}
+                style={[screenStyles.moodChoice, { borderColor: log.mood === mood.id ? mood.color : 'transparent' }]}
               >
-                <Icon name={MOOD_ICONS[mood.id] ?? 'mood'} size={24} color={mood.color} />
-                <Text style={[styles.muted, { color: COLORS.ink }]}>{mood.label}</Text>
+                <View style={[screenStyles.moodIcon, { backgroundColor: tint(mood.color, 0.15) }]}>
+                  <Icon name={MOOD_ICONS[mood.id] ?? 'mood'} size={24} color={mood.color} />
+                </View>
+                <Text style={[theme.type.tab, { color: theme.colors.texto }]}>{mood.label}</Text>
               </Pressable>
             ))}
           </View>
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <SectionTitle title="Mi descanso" subtitle="Registra cuántas horas dormiste anoche." />
+        <SectionCard theme={theme} role="child" title="Mi descanso" subtitle="Registra cuántas horas dormiste anoche.">
           <View style={styles.horizontal}>
             <Field
               label="Horas de sueño"
@@ -1696,46 +1899,34 @@ export default function UnifiedApp() {
           {log.sleepHours !== null ? (
             <Tag title={`Registraste ${log.sleepHours} horas`} color={COLORS.purple} icon="sleep" />
           ) : null}
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <SectionTitle title="Retos para hoy" subtitle="Se activan cuando completas el hábito." />
+        <SectionCard theme={theme} role="child" title="Retos para hoy" subtitle="Se activan cuando completas el hábito.">
           {missions.map(mission => {
             const claimed = claimList.includes(mission.id);
             return (
-              <View key={mission.id} style={[styles.between, { paddingVertical: 4 }]}>
-                <View style={[styles.horizontal, styles.flex]}>
-                  <Icon name={mission.icon} size={23} color={COLORS.blue} />
-                  <View style={styles.flex}>
-                    <Text style={styles.inputLabel}>{mission.title}</Text>
-                    <Text style={styles.muted}>{mission.detail}</Text>
-                  </View>
-                </View>
-                <Button
+              <ListRow
+                key={mission.id}
+                theme={theme}
+                icon={mission.icon}
+                iconColor={theme.colors.acento}
+                title={mission.title}
+                subtitle={mission.detail}
+                trailing={<Button
                   title={claimed ? 'Listo' : `+${mission.points} XP`}
                   small
                   variant={claimed ? 'success' : 'secondary'}
                   disabled={!mission.ready || claimed}
                   onPress={() => claimMission(mission.id, mission.points)}
-                />
-              </View>
+                />}
+              />
             );
           })}
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <SectionTitle title="Mi semana" subtitle="Hábitos y actividades registradas en los últimos 7 días." />
-          <View style={[styles.between, { alignItems: 'flex-end' }]}>
-            {recentDays.map(day => (
-              <View key={day.date} style={{ flex: 1, alignItems: 'center', gap: 5 }}>
-                <Text style={[styles.muted, { fontSize: 8 }]}>{day.label}</Text>
-                <View style={{ width: 18, height: 50, backgroundColor: '#EDF2F7', borderRadius: 7, justifyContent: 'flex-end', overflow: 'hidden' }}>
-                  <View style={{ height: Math.max(4, (day.count / maxRecentCount) * 50), backgroundColor: COLORS.blue, borderRadius: 7 }} />
-                </View>
-                <Text style={[styles.muted, { fontSize: 8 }]}>{day.count}</Text>
-              </View>
-            ))}
-          </View>
+        <SectionCard theme={theme} role="child" title="Mi semana" subtitle="Hábitos y actividades registradas en los últimos 7 días.">
+          <BarChart theme={theme} days={recentDays} max={maxRecentValue} />
+          <Text style={styles.muted}>El estudio aún no tiene registros diarios en esta sección.</Text>
           {selectedProfile.nutri && (selectedProfile.nutri.peso || selectedProfile.nutri.altura) ? (
             <View style={styles.wrap}>
               {selectedProfile.nutri.edad ? <Tag title={`${selectedProfile.nutri.edad} años`} color={COLORS.pink} icon="profile" /> : null}
@@ -1754,16 +1945,32 @@ export default function UnifiedApp() {
             )) : <Text style={styles.muted}>Tus insignias aparecerán conforme completes retos.</Text>}
           </View>
           <Button title="Ver mis logros" small icon="achievements" variant="secondary" onPress={() => setTab('Logros')} />
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <SectionTitle title="Movimiento a tu manera" subtitle="Elige una actividad segura y pide apoyo si lo necesitas." />
+        <SectionCard theme={theme} role="child" title="Movimiento a tu manera" subtitle="Elige una actividad segura y pide apoyo si lo necesitas.">
           {ACTIVITY_CATALOG.map(activity => {
             const saved = log.activities[activity.id];
             return (
-              <View key={activity.id} style={[styles.between, { paddingVertical: 6 }]}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Ver actividad ${activity.title}`}
+                key={activity.id}
+                onPress={() => {
+                  if (authUser) startTransition('actividad', selectedProfile.key, authUser.id);
+                  setActivityModal(activity);
+                  setActivityStage('details');
+                  setActivityPlaying(true);
+                  setActivityReplay(0);
+                  setActivityDuration(String(activity.minutes));
+                  setActivityPhoto(null);
+                  setActivityError('');
+                }}
+                style={[styles.between, { paddingVertical: SPACE[4] }]}
+              >
                 <View style={[styles.horizontal, styles.flex]}>
-                  <Icon name="activity" size={23} color={COLORS.blue} />
+                  <View style={screenStyles.activityScene}>
+                    <ActivityAnimation activity={activity.id} size={52} playing={false} staticFrame />
+                  </View>
                   <View style={styles.flex}>
                     <Text style={styles.inputLabel}>{activity.title}</Text>
                     <Text style={styles.muted}>{activity.minutes} min · {activity.points} puntos</Text>
@@ -1774,29 +1981,18 @@ export default function UnifiedApp() {
                 ) : saved?.status === 'pending' ? (
                   <Tag title="En revisión" color={COLORS.orange} />
                 ) : (
-                  <Button
-                    title="Registrar"
-                    small
-                    variant="outline"
-                    onPress={() => {
-                      setActivityModal(activity);
-                      setActivityDuration(String(activity.minutes));
-                      setActivityPhoto(null);
-                      setActivityError('');
-                    }}
-                  />
+                  <Text style={[theme.type.caption, { color: theme.colors.acento }]}>Ver actividad</Text>
                 )}
-              </View>
+              </Pressable>
             );
           })}
-        </Card>
+        </SectionCard>
 
-        <Card style={{ backgroundColor: COLORS.palePurple, borderColor: '#E9D8FD' }}>
-          <SectionTitle title="Muévete con cuidado" subtitle="Ideas sencillas para disfrutar en familia." />
+        <SectionCard theme={theme} role="child" title="Muévete con cuidado" subtitle="Ideas sencillas para disfrutar en familia.">
           {EXERCISE_CATEGORIES.map(category => (
-            <View key={category.id} style={{ paddingVertical: 3 }}>
+            <View key={category.id} style={{ paddingVertical: SPACE[4] }}>
               <View style={styles.horizontal}>
-                <Icon name="activity" size={16} color={category.color} />
+                <Icon name={EXERCISE_ICONS[category.id]} size={16} color={category.color} />
                 <Text style={styles.inputLabel}>{category.label}</Text>
               </View>
               <Text style={styles.muted}>
@@ -1805,17 +2001,16 @@ export default function UnifiedApp() {
             </View>
           ))}
           <Text style={styles.footer}>Elige actividades que se sientan cómodas. Detente si algo duele y pide ayuda a una persona adulta.</Text>
-        </Card>
+        </SectionCard>
 
-        <Card>
+        <SectionCard theme={theme} role="child" title="¿Platicamos con NutriBot?">
           <View style={styles.between}>
             <View style={styles.flex}>
-              <Text style={styles.cardTitle}>¿Platicamos con NutriBot?</Text>
               <Text style={styles.muted}>Respuestas educativas guardadas en la app; no es un servicio médico.</Text>
             </View>
             <Button title="Abrir" small icon="leaf" onPress={() => setChatOpen(true)} />
           </View>
-        </Card>
+        </SectionCard>
       </>
     );
   };
@@ -1826,38 +2021,44 @@ export default function UnifiedApp() {
     const badges = unique(progress.badges);
     return (
       <>
-        {renderPageIntro('MIS AVANCES', 'Mis logros', 'Cada hábito que practicas suma a tu camino.') }
-        <Card style={{ backgroundColor: COLORS.navy, borderColor: COLORS.navy, alignItems: 'center', paddingVertical: 22 }}>
-          <Icon name="points" size={30} color={COLORS.yellow} />
-          <Text style={[styles.title, { color: COLORS.white, fontSize: 34, marginTop: 4 }]}>{progress.points}</Text>
-          <Text style={{ color: '#D5E0F0', fontFamily: TYPE.medium, fontSize: 12 }}>puntos acumulados</Text>
-        </Card>
-        <SectionTitle
+        <View style={screenStyles.sectionHeading}>
+          <Text style={[theme.type.h1, { color: theme.colors.texto }]}>Mis logros</Text>
+          <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Cada hábito que practicas suma a tu camino.</Text>
+        </View>
+        <View style={[screenStyles.achievementHero, { backgroundColor: theme.colors.hero }]}>
+          <Icon name="points" size={30} color={theme.colors.puntos} />
+          <Text style={[theme.type.h1, { color: theme.colors.sobreAcento, fontSize: 34, lineHeight: 40 }]}>{progress.points}</Text>
+          <Text style={[theme.type.body, { color: theme.colors.sobreAcento }]}>puntos acumulados</Text>
+        </View>
+        <SectionCard
+          theme={theme}
+          role="child"
           title="Insignias desbloqueadas"
           subtitle={badges.length ? `Tienes ${badges.length} ${badges.length === 1 ? 'logro' : 'logros'}.` : 'Al completar retos aparecerán aquí.'}
-        />
-        {badges.length ? badges.map(badge => {
-          const achievement = ACHIEVEMENT_INFO[badge];
-          return (
-            <Card key={badge} style={[styles.cardTight, styles.horizontal]}>
-              <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.paleOrange }}>
-                <Icon name={achievement?.icon ?? 'achievements'} size={22} color={COLORS.orange} />
-              </View>
-              <View style={styles.flex}>
-                <Text style={styles.cardTitle}>{achievement?.title ?? badge.replace(/[-_]/g, ' ')}</Text>
-                <Text style={styles.muted}>{achievement?.description ?? 'Logro guardado en tu perfil.'}</Text>
-              </View>
-            </Card>
-          );
-        }) : (
-          <Card>
-            <View style={styles.emptyState}>
-              <Icon name="achievements" size={34} color={COLORS.orange} />
-              <Text style={styles.cardTitle}>Tu primera insignia está por llegar</Text>
-              <Text style={[styles.body, { textAlign: 'center' }]}>Completa tus retos diarios para ir reuniendo logros.</Text>
+        >
+          {badges.length ? (
+            <View style={screenStyles.achievementGrid}>
+              {badges.map(badge => {
+                const achievement = ACHIEVEMENT_INFO[badge];
+                return (
+                  <View key={badge} style={[screenStyles.achievementItem, { backgroundColor: tint(theme.colors.logros, 0.08) }]}>
+                    <View style={[screenStyles.achievementMedal, { borderColor: theme.colors.logros, backgroundColor: tint(theme.colors.logros, 0.15) }]}>
+                      <Icon name={achievement?.icon ?? 'achievements'} size={30} color={theme.colors.logros} />
+                    </View>
+                    <Text style={[theme.type.h3, screenStyles.centered, { color: theme.colors.texto }]}>{achievement?.title ?? badge.replace(/[-_]/g, ' ')}</Text>
+                    <Text style={[theme.type.counter, screenStyles.centered, { color: theme.colors.textoSecundario }]}>{achievement?.description ?? 'Logro guardado en tu perfil.'}</Text>
+                  </View>
+                );
+              })}
             </View>
-          </Card>
-        )}
+          ) : (
+            <View style={styles.emptyState}>
+              <Icon name="achievements" size={34} color={theme.colors.logros} />
+              <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Tu primera insignia está por llegar</Text>
+              <Text style={[theme.type.body, screenStyles.centered, { color: theme.colors.textoSecundario }]}>Completa tus retos diarios para ir reuniendo logros.</Text>
+            </View>
+          )}
+        </SectionCard>
       </>
     );
   };
@@ -1865,50 +2066,50 @@ export default function UnifiedApp() {
   const renderTutorHome = () => {
     if (!data) return null;
     if (!profiles.length) return renderNoProfile();
-    const pendingActivities = profiles.flatMap(profile =>
+    const allPendingActivities = profiles.flatMap(profile =>
       Object.entries(data.dailyLogs[profile.progressKey] ?? {}).flatMap(([date, log]) =>
         Object.entries(log.activities)
           .filter(([, activity]) => activity.status === 'pending')
           .map(([activityId, activity]) => ({ profile, date, activityId, activity })),
       ),
-    ).slice(0, 8);
+    );
+    const pendingActivities = allPendingActivities.slice(0, 8);
     return (
       <>
-        <Card style={{ backgroundColor: COLORS.navy, borderColor: COLORS.navy }}>
-          <Text style={[styles.eyebrow, { color: '#A8D4FF' }]}>ESPACIO DE ACOMPAÑAMIENTO</Text>
-          <Text style={[styles.title, { color: COLORS.white, fontSize: 25 }]}>Hola, {session?.name ?? 'familia'}</Text>
-          <Text style={{ color: '#D5E0F0', fontFamily: TYPE.body, fontSize: 11, lineHeight: 17, marginTop: 4 }}>
-            Un espacio para acompañar hábitos con cariño, sin competir.
-          </Text>
-          <View style={[styles.horizontal, { marginTop: 10 }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: '#A8B4C7', fontFamily: TYPE.medium, fontSize: 9 }}>PERFILES INFANTILES</Text>
-              <Text style={{ color: COLORS.white, fontFamily: TYPE.heading, fontSize: 21 }}>{profiles.length}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: '#A8B4C7', fontFamily: TYPE.medium, fontSize: 9 }}>POR REVISAR</Text>
-              <Text style={{ color: COLORS.white, fontFamily: TYPE.heading, fontSize: 21 }}>
-                {data.progressSharingEnabled ? pendingActivities.length : '—'}
-              </Text>
-            </View>
+        <HeroCard
+          theme={theme}
+          title={`¡Hola, ${session?.name ?? 'familia'}!`}
+          subtitle={`Acompaña los hábitos de tu familia. Puntos del perfil: ${selectedProfile?.name ?? 'sin seleccionar'}.`}
+          points={selectedProfile ? getProgress(data, selectedProfile).points : 0}
+          actionLabel="Control parental"
+          onAction={() => { setSettingsSection('parental'); setTab('Ajustes'); }}
+        />
+        <View style={screenStyles.summaryRow}>
+          <View style={screenStyles.summaryCard}>
+            <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>Perfiles infantiles</Text>
+            <Text style={[theme.type.metric, { color: theme.colors.texto }]}>{profiles.length}</Text>
           </View>
-        </Card>
+          <View style={screenStyles.summaryCard}>
+            <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>Por revisar</Text>
+            <Text style={[theme.type.metric, { color: theme.colors.texto }]}>{data.progressSharingEnabled ? allPendingActivities.length : '—'}</Text>
+          </View>
+        </View>
 
-        <SectionTitle title="Perfiles de la familia" subtitle="Selecciona un perfil para revisar su resumen." />
+        {renderTutorIntro('EN FAMILIA', 'Perfiles de la familia', 'Selecciona un perfil para revisar su resumen.')}
         {profiles.map(profile => {
           const log = getDailyLog(data, profile, todayKey());
           const progress = getProgress(data, profile);
+          const claims = data.missionClaims[profile.progressKey]?.[todayKey()] ?? [];
+          const missionPoints = claims.reduce((total, id) => total + (MISSION_POINTS[id] ?? 0), 0);
           return (
-            <Card key={profile.key} style={styles.cardTight}>
+            <SectionCard key={profile.key} theme={theme} role="tutor" title={profile.name}>
               <View style={styles.between}>
                 <View style={styles.horizontal}>
                   {renderAvatar(profile, 'small')}
                   <View>
-                    <Text style={styles.cardTitle}>{profile.name}</Text>
-                    <View style={[styles.horizontal, { gap: 5 }]}>
+                    <View style={[styles.horizontal, { gap: SPACE[4] }]}>
                       <Icon name="points" size={12} color={COLORS.orange} />
                       <Text style={styles.muted}>{progress.points} puntos</Text>
-                      <Text style={styles.muted}>· {log.water}/{data.warriorKids.waterGoal} vasos de agua</Text>
                     </View>
                   </View>
                 </View>
@@ -1921,7 +2122,23 @@ export default function UnifiedApp() {
                   }}
                 />
               </View>
-              <View style={{ gap: 5 }}>
+              {data.progressSharingEnabled ? (
+                <View style={styles.horizontal}>
+                  <View
+                    accessible
+                    accessibilityLabel={`${log.water} de ${data.warriorKids.waterGoal} vasos de agua`}
+                    style={screenStyles.waterGlasses}
+                  >
+                    {Array.from({ length: Math.max(0, Math.min(12, Math.ceil(data.warriorKids.waterGoal))) }, (_, index) => (
+                      <Icon key={index} name="water" size={18} color={index < log.water ? theme.colors.agua : theme.colors.textoInactivo} />
+                    ))}
+                  </View>
+                  <Text style={[theme.type.counter, styles.flex, { color: theme.colors.textoSecundario }]}>
+                    {log.water}/{data.warriorKids.waterGoal} vasos · {missionPoints} puntos en retos de hoy
+                  </Text>
+                </View>
+              ) : null}
+              <View style={{ gap: SPACE[4] }}>
                 <Text style={styles.inputLabel}>Logros de {profile.name}</Text>
                 {unique(progress.badges).length ? (
                   <View style={styles.wrap}>
@@ -1944,24 +2161,23 @@ export default function UnifiedApp() {
                   <Tag title={`${Object.values(log.activities).filter(item => item.status === 'approved').length} actividades aprobadas hoy`} color={COLORS.green} />
                 </View>
               ) : null}
-            </Card>
+            </SectionCard>
           );
         })}
 
         {!data.progressSharingEnabled ? (
-          <Card style={{ backgroundColor: COLORS.paleOrange, borderColor: '#FEEBC8' }}>
+          <Card style={{ backgroundColor: COLORS.paleOrange, borderColor: SHARED.advertenciaBorde }}>
             <Text style={styles.cardTitle}>Compartir progreso está desactivado</Text>
             <Text style={styles.noticeText}>
               Los detalles de hábitos, ánimo y actividades no se muestran aquí. Puedes cambiar esta preferencia en Ajustes; el cambio se guarda en tu espacio familiar.
             </Text>
           </Card>
         ) : (
-          <Card>
-            <SectionTitle title="Actividades por revisar" subtitle="Aprueba los registros o pide que se vuelvan a enviar." />
+          <SectionCard theme={theme} role="tutor" title="Actividades por revisar" subtitle="Aprueba los registros o pide que se vuelvan a enviar.">
             {pendingActivities.length ? pendingActivities.map(item => {
               const activity = ACTIVITY_CATALOG.find(candidate => candidate.id === item.activityId);
               return (
-                <View key={`${item.profile.key}-${item.date}-${item.activityId}`} style={{ borderTopWidth: 1, borderTopColor: COLORS.line, paddingTop: 10, gap: 8 }}>
+                <View key={`${item.profile.key}-${item.date}-${item.activityId}`} style={{ borderTopWidth: 1, borderTopColor: COLORS.line, paddingTop: SPACE[8], gap: SPACE[8] }}>
                   <View style={styles.between}>
                     <View style={[styles.horizontal, styles.flex]}>
                       <Icon name="activity" size={22} color={COLORS.blue} />
@@ -1976,7 +2192,7 @@ export default function UnifiedApp() {
                   ) : <Text style={styles.muted}>Sin foto adjunta.</Text>}
                   <View style={styles.horizontal}>
                     <Button
-                      title="Pedir corrección"
+                      title="Pedir de nuevo"
                       small
                       variant="outline"
                       style={styles.flex}
@@ -1998,14 +2214,13 @@ export default function UnifiedApp() {
                 <Text style={styles.body}>No hay actividades pendientes. ¡Gracias por acompañar!</Text>
               </View>
             )}
-          </Card>
+          </SectionCard>
         )}
-        <Button
-          title="Agregar perfil infantil"
-        icon="add"
-          variant="secondary"
-          onPress={() => createOrEditProfile(null)}
-        />
+        <SectionCard theme={theme} role="tutor" title="Accesos rápidos">
+          <Button title="Agregar perfil infantil" icon="add" variant="secondary" onPress={() => createOrEditProfile(null)} />
+          <Button title="Ver recetas" icon="recipes" variant="outline" onPress={() => setTab('Recetas')} />
+          <Button title="Abrir menú" icon="menu" variant="outline" onPress={() => setTab('Menú')} />
+        </SectionCard>
       </>
     );
   };
@@ -2017,28 +2232,14 @@ export default function UnifiedApp() {
     const ingredientIds = DIET_INGREDIENTS[dietDay] ?? {};
     return (
       <>
-        {profileAllergies.length ? (
-          <View style={styles.notice}>
-            <Text style={styles.noticeText}>
-              Preferencias de alergia registradas: {profileAllergies.join(', ')}. Las alertas del menú son orientativas; revisa todas las etiquetas e ingredientes con una persona adulta.
-            </Text>
+        {renderFoodPreferences()}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+          <View style={screenStyles.selectionRow}>
+            {WEEKDAYS.map(day => (
+              <View key={day}>{renderSelectionPill(day, day === dietDay, () => setDietDay(day))}</View>
+            ))}
           </View>
-        ) : null}
-        <View style={styles.tabRow}>
-          {WEEKDAYS.map(day => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: day === dietDay }}
-              key={day}
-              onPress={() => setDietDay(day)}
-              style={[styles.tabChip, day === dietDay && styles.tabChipActive]}
-            >
-              <Text style={[styles.tabChipText, day === dietDay && styles.tabChipTextActive]}>
-                {day.slice(0, 3)}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        </ScrollView>
         {([
           { id: 'desayuno' as const, label: 'Desayuno', icon: 'menu' as const, text: diet.desayuno },
           { id: 'comida' as const, label: 'Comida', icon: 'food' as const, text: diet.comida },
@@ -2046,12 +2247,11 @@ export default function UnifiedApp() {
         ]).map(meal => {
           const matchingAllergies = allergyIds.filter(id => ingredientIds[meal.id]?.includes(id));
           return (
-            <Card key={meal.id}>
+            <SectionCard key={meal.id} theme={theme} role={role} title={meal.label}>
               <View style={styles.horizontal}>
-                <Icon name={meal.icon} size={24} color={COLORS.blue} />
+                <Icon name={meal.icon} size={24} color={theme.colors.acento} />
                 <View style={styles.flex}>
-                  <Text style={styles.cardTitle}>{meal.label}</Text>
-                  <Text style={styles.body}>{meal.text}</Text>
+                  <Text style={[theme.type.body, { color: theme.colors.texto }]}>{meal.text}</Text>
                 </View>
               </View>
               {matchingAllergies.length ? (
@@ -2061,10 +2261,10 @@ export default function UnifiedApp() {
                   </Text>
                 </View>
               ) : null}
-            </Card>
+            </SectionCard>
           );
         })}
-        <Card style={{ backgroundColor: COLORS.paleGreen, borderColor: '#C6F6D5' }}>
+        <Card style={{ backgroundColor: COLORS.paleGreen, borderColor: SHARED.exitoBorde }}>
           <Text style={styles.cardTitle}>Una idea para niñas y niños</Text>
           <Text style={styles.body}>{diet.kids}</Text>
         </Card>
@@ -2085,26 +2285,10 @@ export default function UnifiedApp() {
     });
     return (
       <>
-        {renderPageIntro('COCINA EN FAMILIA', 'Recetas con color', 'Ideas sencillas para disfrutar y aprender juntos.')}
-        <View style={styles.roleRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: !dietMode }}
-            onPress={() => setDietMode(false)}
-            style={[styles.roleChoice, !dietMode && styles.roleChoiceActive]}
-          >
-            <Icon name="recipes" size={16} color={!dietMode ? COLORS.blueDeep : COLORS.muted} />
-            <Text style={[styles.roleChoiceText, !dietMode && styles.roleChoiceTextActive]}>Recetas</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: dietMode }}
-            onPress={() => setDietMode(true)}
-            style={[styles.roleChoice, dietMode && styles.roleChoiceActive]}
-          >
-            <Icon name="menu" size={16} color={dietMode ? COLORS.blueDeep : COLORS.muted} />
-            <Text style={[styles.roleChoiceText, dietMode && styles.roleChoiceTextActive]}>Plan semanal</Text>
-          </Pressable>
+        {renderTutorIntro('COCINA EN FAMILIA', 'Recetas con color', 'Ideas sencillas para disfrutar y aprender juntos.')}
+        <View style={screenStyles.selectionRow}>
+          {renderSelectionPill('Recetas', !dietMode, () => setDietMode(false))}
+          {renderSelectionPill('Plan semanal', dietMode, () => setDietMode(true))}
         </View>
         {dietMode ? renderDietPlan() : (
           <>
@@ -2115,55 +2299,36 @@ export default function UnifiedApp() {
               value={recipeSearch}
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
-              <View style={styles.tabRow}>
+              <View style={screenStyles.selectionRow}>
                 {RECIPE_FILTERS.map(filter => (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: recipeFilter === filter.id }}
-                    key={filter.id}
-                    onPress={() => setRecipeFilter(filter.id)}
-                    style={[styles.tabChip, recipeFilter === filter.id && styles.tabChipActive]}
-                  >
-                    <Text style={[styles.tabChipText, recipeFilter === filter.id && styles.tabChipTextActive]}>
-                      {filter.label}
-                    </Text>
-                  </Pressable>
+                  <View key={filter.id}>
+                    {renderSelectionPill(filter.label, recipeFilter === filter.id, () => setRecipeFilter(filter.id))}
+                  </View>
                 ))}
               </View>
             </ScrollView>
-            {profileAllergies.length || profileNoLikes.length ? (
-              <View style={styles.notice}>
-                <Text style={styles.noticeText}>
-                  {profileAllergies.length ? `Alergias registradas: ${profileAllergies.join(', ')}. ` : ''}
-                  {profileNoLikes.length ? `Preferencias para evitar: ${profileNoLikes.join(', ')}. ` : ''}
-                  Revisa ingredientes y etiquetas con una persona adulta; las recetas no detectan contaminación cruzada ni sustituyen indicaciones profesionales.
-                </Text>
-              </View>
-            ) : null}
+            {renderFoodPreferences()}
             {filteredRecipes.length ? filteredRecipes.map(recipe => {
               const warnings = recipeWarnings(recipe, profileAllergies);
+              const dislikes = recipeWarnings(recipe, profileNoLikes);
               return (
-                <Card key={recipe.id} style={styles.cardTight}>
-                  <View style={styles.horizontal}>
-                    <Icon name="recipes" size={28} color={COLORS.blue} />
-                    <View style={styles.flex}>
-                      <Text style={styles.cardTitle}>{recipe.title}</Text>
-                      <Text style={styles.muted}>{recipe.groups}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.wrap}>
-                    {recipe.ingredients.slice(0, 4).map(ingredient => <Tag key={ingredient} title={ingredient} color={COLORS.green} />)}
-                  </View>
+                <SectionCard key={recipe.id} theme={theme} role={role} title={recipe.title} subtitle={recipe.groups}>
+                  {renderIngredientPills(recipe.ingredients)}
                   {warnings.length ? (
                     <Text style={styles.errorText}>
                       Revisa estos ingredientes: {warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.
+                    </Text>
+                  ) : null}
+                  {dislikes.length ? (
+                    <Text style={styles.noticeText}>
+                      Preferencias para evitar: {dislikes.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.
                     </Text>
                   ) : null}
                   <View style={styles.between}>
                     <Text style={[styles.muted, styles.flex]}>{recipe.note}</Text>
                     <Button title="Ver receta" small variant="secondary" onPress={() => setRecipeDetails(recipe)} />
                   </View>
-                </Card>
+                </SectionCard>
               );
             }) : (
               <Card>
@@ -2189,41 +2354,26 @@ export default function UnifiedApp() {
     const meals = data.weeklyMeals[selectedDay] ?? defaultMeals();
     return (
       <>
-        {renderPageIntro('ORGANIZACIÓN FAMILIAR', 'Menú de la semana', 'Planeen tres momentos de comida para cada día.')}
+        {renderTutorIntro('ORGANIZACIÓN FAMILIAR', 'Menú de la semana', 'Planeen tres momentos de comida para cada día.')}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
-          <View style={styles.tabRow}>
+          <View style={screenStyles.selectionRow}>
             {WEEKDAYS.map(day => (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: selectedDay === day }}
-                key={day}
-                onPress={() => setSelectedDay(day)}
-                style={[styles.tabChip, selectedDay === day && styles.tabChipActive]}
-              >
-                <Text style={[styles.tabChipText, selectedDay === day && styles.tabChipTextActive]}>{day.slice(0, 3)}</Text>
-              </Pressable>
+              <View key={day}>{renderSelectionPill(day, selectedDay === day, () => setSelectedDay(day))}</View>
             ))}
           </View>
         </ScrollView>
-        {selectedProfile?.nutri ? (
-          <View style={styles.notice}>
-            <Text style={styles.noticeText}>
-              {profileAllergies.length ? `Alergias registradas: ${profileAllergies.join(', ')}. ` : ''}
-              {profileNoLikes.length ? `Preferencias: ${profileNoLikes.join(', ')}. ` : ''}
-              Revisa ingredientes y etiquetas para {selectedProfile.name} antes de servir.
-            </Text>
-          </View>
-        ) : null}
+        {renderFoodPreferences()}
         {MEALS.map(meal => {
           const recipe = RECIPES.find(item => item.id === meals[meal.id]);
           const savedValue = meals[meal.id];
+          const warnings = recipe ? recipeWarnings(recipe, profileAllergies) : [];
+          const dislikes = recipe ? recipeWarnings(recipe, profileNoLikes) : [];
           return (
-            <Card key={meal.id}>
+            <SectionCard key={meal.id} theme={theme} role="tutor" title={meal.title}>
               <View style={styles.between}>
-                <View style={styles.horizontal}>
-                  <Icon name={meal.icon} size={24} color={COLORS.blue} />
-                  <View>
-                    <Text style={styles.cardTitle}>{meal.title}</Text>
+                <View style={[styles.horizontal, styles.flex]}>
+                  <Icon name={meal.icon} size={24} color={theme.colors.acento} />
+                  <View style={styles.flex}>
                     {recipe ? (
                       <Text style={styles.body}>{recipe.title}</Text>
                     ) : savedValue ? (
@@ -2246,15 +2396,17 @@ export default function UnifiedApp() {
                 ) : null}
               </View>
               {recipe ? (
-                <View style={styles.wrap}>
-                  {recipe.ingredients.slice(0, 3).map(ingredient => <Tag key={ingredient} title={ingredient} color={COLORS.green} />)}
+                <>
+                  {renderIngredientPills(recipe.ingredients)}
+                  {warnings.length ? <Text style={styles.errorText}>Revisa estos ingredientes: {warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.</Text> : null}
+                  {dislikes.length ? <Text style={styles.noticeText}>Preferencias para evitar: {dislikes.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.</Text> : null}
                   <Button title="Ver preparación" small variant="secondary" onPress={() => setRecipeDetails(recipe)} />
-                </View>
+                </>
               ) : null}
-            </Card>
+            </SectionCard>
           );
         })}
-        <Card style={{ backgroundColor: COLORS.paleBlue, borderColor: '#C6D9F0' }}>
+        <Card style={{ backgroundColor: COLORS.paleBlue, borderColor: SHARED.infoBorde }}>
           <Text style={styles.cardTitle}>¿Ya tenías recetas guardadas?</Text>
           <Text style={styles.body}>
             Las recetas semanales de Warrior Kids se conservaron como comida del día. Puedes agregar desayuno y cena sin reemplazar esa información.
@@ -2268,69 +2420,64 @@ export default function UnifiedApp() {
   };
 
   const renderAvatarEditor = () => {
-    if (!selectedProfile) return null;
+    if (!selectedProfile || !avatarDraft || avatarDraft.profileKey !== selectedProfile.key) return renderNoProfile();
     const options = AVATAR_OPCIONES[avatarCategory];
-    const selection = data?.avatarSelections[selectedProfile.key];
+    const selection = avatarDraft.selection;
     return (
-      <Card>
-        <SectionTitle title="Personaliza tu avatar" subtitle="Elige cada detalle para crear tu personaje." />
-        <View style={[styles.horizontal, { justifyContent: 'center', paddingVertical: 5 }]}>
-          {renderAvatar(selectedProfile)}
+      <>
+        <Button
+          title="Volver a ajustes"
+          icon="logout"
+          variant="outline"
+          onPress={() => { setAvatarDraft(null); setChildSettingsSection('main'); }}
+        />
+        <View style={[screenStyles.avatarPreview, { backgroundColor: theme.colors.acentoSuave }]}>
+          <AvatarIllustration theme={selectedProfile.theme} selection={selection} />
+          <Text style={[theme.type.h2, { color: theme.colors.texto }]}>{selectedProfile.name}</Text>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
-          <View style={styles.tabRow}>
-            {AVATAR_KEYS.map(key => (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: avatarCategory === key }}
-                key={key}
-                onPress={() => setAvatarCategory(key)}
-                style={[styles.tabChip, avatarCategory === key && styles.tabChipActive]}
-              >
-                <Text style={[styles.tabChipText, avatarCategory === key && styles.tabChipTextActive]}>
-                  {AVATAR_LABELS[key]}
-                </Text>
-              </Pressable>
-            ))}
+        <SectionCard theme={theme} role="child" title="Personaliza tu avatar" subtitle="Elige cada detalle para crear tu personaje.">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+            <View style={screenStyles.avatarTabs}>
+              {AVATAR_KEYS.filter(key => key !== 'fondo').map(key => (
+                <Pressable
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: avatarCategory === key }}
+                  key={key}
+                  onPress={() => setAvatarCategory(key)}
+                  style={[screenStyles.avatarTab, { backgroundColor: avatarCategory === key ? theme.colors.acento : theme.colors.apagada }]}
+                >
+                  <Icon name={AVATAR_TAB_ICONS[key]} size={16} color={avatarCategory === key ? theme.colors.sobreAcento : theme.colors.texto} />
+                  <Text style={[theme.type.tabActive, { color: avatarCategory === key ? theme.colors.sobreAcento : theme.colors.texto }]}>
+                    {AVATAR_LABELS[key]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+          <View style={screenStyles.avatarOptions}>
+            {options.map((_, index) => {
+              const selected = selection[avatarCategory] === index;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${AVATAR_LABELS[avatarCategory]}, opción ${index + 1}`}
+                  accessibilityState={{ selected }}
+                  key={`${avatarCategory}-${index}`}
+                  onPress={() => setAvatarPart(index)}
+                  style={[screenStyles.avatarOption, { borderColor: selected ? theme.colors.acento : 'transparent' }]}
+                >
+                  <View style={[screenStyles.avatarColor, { backgroundColor: AVATAR_COLORS[avatarCategory][index] }]}>
+                    {selected ? <View style={screenStyles.avatarCheck}><Icon name="check" size={16} color={theme.colors.texto} /></View> : null}
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
-        </ScrollView>
-        <View style={styles.wrap}>
-          {options.map((_, index) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: selection?.[avatarCategory] === index }}
-              key={`${avatarCategory}-${index}`}
-              onPress={() => setAvatarPart(index)}
-              style={{
-                width: 52,
-                height: 52,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 16,
-                backgroundColor: selection?.[avatarCategory] === index ? COLORS.paleBlue : COLORS.white,
-                borderWidth: 1,
-                borderColor: selection?.[avatarCategory] === index ? COLORS.blue : COLORS.line,
-              }}
-            >
-              <View
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: avatarCategory === 'ropa' ? 9 : 15,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: AVATAR_COLORS[avatarCategory][index],
-                }}
-              >
-                {avatarCategory === 'accesorio' ? (
-                  <Icon name={AVATAR_OPTION_ICONS[index] ?? 'sparkles'} size={17} color={COLORS.white} />
-                ) : null}
-              </View>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={styles.footer}>El avatar se guarda en el espacio privado de tu cuenta.</Text>
-      </Card>
+          <PillButton theme={theme} label="Guardar avatar" onPress={saveAvatar} />
+          <PillButton theme={theme} label="Sorpréndeme" variant="ghost" onPress={surpriseAvatar} />
+          <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>El avatar se guarda en el espacio privado de tu cuenta.</Text>
+        </SectionCard>
+      </>
     );
   };
 
@@ -2340,8 +2487,9 @@ export default function UnifiedApp() {
     const unlinkedWarrior = data.warriorKids.children.filter(child => !getLinkedWarrior(data, child.id));
     return (
       <>
-        <Card>
-          <SectionTitle title="Perfiles infantiles" subtitle="Editar conserva los datos originales de cada registro." />
+        {settingsSection === 'parental' ? (
+          <>
+        <SectionCard theme={theme} role="tutor" title="Perfiles infantiles" subtitle="Editar conserva los datos originales de cada registro.">
           {profiles.length ? profiles.map(profile => (
             <View key={profile.key} style={styles.profileRow}>
               {renderAvatar(profile, 'small')}
@@ -2356,7 +2504,7 @@ export default function UnifiedApp() {
                 accessibilityRole="button"
                 accessibilityLabel={`Ocultar perfil ${profile.name}`}
                 onPress={() => setProfileToArchive(profile)}
-                style={{ padding: 7 }}
+                style={styles.close}
               >
                 <Icon name="close" size={16} color={COLORS.error} />
               </Pressable>
@@ -2365,10 +2513,9 @@ export default function UnifiedApp() {
             <Text style={styles.muted}>No hay perfiles activos. Los perfiles ocultos no se borran.</Text>
           )}
           <Button title="Crear perfil infantil" icon="add" variant="secondary" onPress={() => createOrEditProfile(null)} />
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <SectionTitle title="Vincular perfiles existentes" subtitle="Solo se unirán si tú seleccionas cada registro." />
+        <SectionCard theme={theme} role="tutor" title="Vincular perfiles existentes" subtitle="Solo se unirán si tú seleccionas cada registro.">
           <Text style={styles.body}>
             Si hay diferencias en nombres o temas, las fuentes se mantienen intactas y el nombre de la app se guarda por separado.
           </Text>
@@ -2400,11 +2547,13 @@ export default function UnifiedApp() {
           ) : (
             <Text style={styles.muted}>No hay perfiles sin vincular de ambos orígenes.</Text>
           )}
-        </Card>
+        </SectionCard>
+          </>
+        ) : null}
 
-        <Card>
-          <SectionTitle title="Preferencias de bienestar" subtitle="Ajustes de tu espacio familiar." />
-          <View style={[styles.between, { paddingVertical: 4 }]}>
+        {settingsSection === 'notifications' ? (
+        <SectionCard theme={theme} role="tutor" title="Notificaciones de hábitos" subtitle="Ajustes de tu espacio familiar.">
+          <View style={[styles.between, { paddingVertical: SPACE[4] }]}>
             <View style={styles.flex}>
               <Text style={styles.inputLabel}>Meta diaria de agua</Text>
               <Text style={styles.muted}>Vasos · ajusta la meta para la familia.</Text>
@@ -2440,7 +2589,11 @@ export default function UnifiedApp() {
               trackColor={{ true: COLORS.blue }}
             />
           </View>
-          <View style={styles.divider} />
+        </SectionCard>
+        ) : null}
+        {settingsSection === 'parental' ? (
+          <>
+        <SectionCard theme={theme} role="tutor" title="Tiempo de pantalla">
           <View style={styles.between}>
             <View style={styles.flex}>
               <Text style={styles.inputLabel}>Tiempo de pantalla sugerido</Text>
@@ -2469,17 +2622,15 @@ export default function UnifiedApp() {
               />
             </View>
           </View>
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <SectionTitle title="Seguridad de la cuenta" subtitle="Inicio de sesión protegido por Supabase Auth." />
+        <SectionCard theme={theme} role="tutor" title="Seguridad de la cuenta" subtitle="Inicio de sesión protegido por Supabase Auth.">
           <Text style={styles.body}>
             La contraseña no se guarda en la tabla de padres. Cada tutor solo puede consultar y actualizar los datos asociados a su cuenta.
           </Text>
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <SectionTitle title="Mostrar avances en el espacio tutor" />
+        <SectionCard theme={theme} role="tutor" title="Mostrar avances en el espacio tutor">
           <View style={styles.between}>
             <Text style={[styles.body, styles.flex]}>
               {data.progressSharingEnabled
@@ -2494,70 +2645,147 @@ export default function UnifiedApp() {
             />
           </View>
           <Text style={styles.footer}>Esta preferencia se sincroniza con Supabase.</Text>
-        </Card>
+        </SectionCard>
+          </>
+        ) : null}
       </>
     );
   };
 
   const renderSettings = () => {
     if (!data || role !== 'tutor') return null;
+    if (settingsSection !== 'main') {
+      return (
+        <>
+          <PillButton theme={theme} label="Volver a ajustes" variant="ghost" onPress={() => setSettingsSection('main')} />
+          {settingsSection === 'help' ? renderHelp() : renderTutorSettings()}
+        </>
+      );
+    }
     return (
       <>
-        {renderPageIntro('TU ESPACIO', 'Ajustes y privacidad', 'Configura tu espacio familiar privado.')}
-        {renderTutorSettings()}
-        <Card>
-          <SectionTitle title="Tus datos en la nube" />
+        {renderTutorIntro('TU ESPACIO', 'Ajustes y privacidad', 'Configura tu espacio familiar privado.')}
+        {([
+          { id: 'parental', title: 'Control parental', subtitle: 'Perfiles, avances y seguridad.', icon: 'shield', color: theme.colors.acento },
+          { id: 'notifications', title: 'Notificaciones de hábitos', subtitle: 'Meta de agua y recordatorios.', icon: 'bell', color: theme.colors.agua },
+          { id: 'help', title: 'Ayuda', subtitle: 'Respuestas para usar la app en familia.', icon: 'help', color: theme.colors.logros },
+        ] as const).map(item => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={item.title}
+            key={item.id}
+            onPress={() => setSettingsSection(item.id)}
+            style={[screenStyles.settingsTile, { backgroundColor: tint(item.color, 0.12) }]}
+          >
+            <ListRow theme={theme} icon={item.icon} iconColor={item.color} title={item.title} subtitle={item.subtitle}
+              trailing={<Icon name="next" size={18} color={theme.colors.texto} />} />
+          </Pressable>
+        ))}
+        <SectionCard theme={theme} role="tutor" title="Tu cuenta">
           <Text style={styles.body}>
             Tus perfiles y avances se guardan en el espacio privado de tu cuenta de Supabase.
           </Text>
           <Text style={styles.muted}>Correo: {session?.email ?? 'sin sesión'}</Text>
           <Button title="Cerrar sesión" icon="logout" variant="outline" onPress={logout} />
-        </Card>
+        </SectionCard>
       </>
     );
   };
 
-  const renderChildAvatarSettings = () => (
-    <>
-      {renderPageIntro('TU AVATAR', 'Personaliza tu avatar', 'Elige los detalles de tu personaje.')}
-      {renderAvatarEditor()}
-    </>
-  );
+  const renderChildAvatarSettings = () => {
+    if (!data || !selectedProfile) return renderNoProfile();
+    if (childSettingsSection === 'avatar') return renderAvatarEditor();
+    return (
+      <>
+        <View style={screenStyles.sectionHeading}>
+          <Text style={[theme.type.h1, { color: theme.colors.texto }]}>Mis ajustes</Text>
+          <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Elige cómo quieres usar tu espacio.</Text>
+        </View>
+        <View style={[screenStyles.settingsTile, { backgroundColor: theme.colors.acentoSuave }]}>
+          <ListRow
+            theme={theme}
+            icon="music"
+            iconColor={theme.colors.acento}
+            title="Sonido y música"
+            subtitle="Preferencia guardada; todavía no hay audio."
+            trailing={(
+              <Switch
+                accessibilityLabel="Sonido y música"
+                value={data.soundEnabled ?? false}
+                onValueChange={value => {
+                  if (role === 'child' && selectedProfile) updateData(current => ({ ...current, soundEnabled: value }));
+                }}
+                trackColor={{ true: theme.colors.acento }}
+              />
+            )}
+          />
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cambiar de personaje"
+          onPress={openAvatarEditor}
+          style={[screenStyles.settingsTile, { backgroundColor: tint(theme.colors.logros, 0.12) }]}
+        >
+          <ListRow
+            theme={theme}
+            icon="avatar"
+            iconColor={theme.colors.logros}
+            title="Cambiar de personaje"
+            subtitle="Personaliza tu avatar."
+            trailing={<Icon name="next" size={18} color={theme.colors.texto} />}
+          />
+        </Pressable>
+        <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Los demás ajustes los cuida tu tutor.</Text>
+      </>
+    );
+  };
 
-  const renderHelp = () => (
+  const renderHelp = () => role === 'child' ? (
     <>
-      {renderPageIntro('ESTAMOS PARA ACOMPAÑARTE', 'Ayuda y privacidad', 'Respuestas claras para usar la app en familia.')}
-      {FAQ_ITEMS.map(item => (
-        <Card key={item.question} style={styles.cardTight}>
-          <Text style={styles.cardTitle}>{item.question}</Text>
-          <Text style={styles.body}>{item.answer}</Text>
-        </Card>
+      <View style={screenStyles.sectionHeading}>
+        <Text style={[theme.type.h1, { color: theme.colors.texto }]}>¿Necesitas ayuda?</Text>
+        <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Estamos para acompañarte.</Text>
+      </View>
+      <Image source={require('@/assets/images/wk-logo.png')} style={screenStyles.helpLogo} resizeMode="contain" />
+      {[
+        { question: '¿Cómo registro mi agua?', answer: 'Toca +1 cuando tomes un vaso. Puedes corregirlo con el botón −.' },
+        { question: '¿Cómo gano puntos?', answer: 'Completa y reclama tus retos. Tu tutor también puede aprobar tus actividades.' },
+        { question: '¿Quién cuida mis datos?', answer: 'Tu cuenta familiar es privada. Si tienes dudas, habla con tu tutor.' },
+        { question: '¿Qué hace NutriBot?', answer: 'Te comparte respuestas preparadas sobre hábitos. Si algo te preocupa, habla con una persona adulta de confianza.' },
+      ].map(item => (
+        <SectionCard key={item.question} theme={theme} role="child" title={item.question}>
+          <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{item.answer}</Text>
+        </SectionCard>
       ))}
-      <Card style={{ backgroundColor: COLORS.paleBlue, borderColor: '#C6D9F0' }}>
-        <Text style={styles.cardTitle}>Sobre NutriBot</Text>
+    </>
+  ) : (
+    <>
+      {renderTutorIntro('ESTAMOS PARA ACOMPAÑARTE', 'Ayuda y privacidad', 'Respuestas claras para usar la app en familia.')}
+      {FAQ_ITEMS.map(item => (
+        <SectionCard key={item.question} theme={theme} role="tutor" title={item.question}>
+          <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{item.answer}</Text>
+        </SectionCard>
+      ))}
+      <SectionCard theme={theme} role="tutor" title="Sobre NutriBot">
         <Text style={styles.body}>
           NutriBot ofrece respuestas locales predefinidas para conversar sobre hábitos. No usa inteligencia artificial, no recibe mensajes por internet y no reemplaza a una persona profesional.
         </Text>
-      </Card>
-      <Card>
-        <Text style={styles.cardTitle}>¿Qué pasa con mis datos anteriores?</Text>
+      </SectionCard>
+      <SectionCard theme={theme} role="tutor" title="¿Qué pasa con mis datos anteriores?">
         <Text style={styles.body}>
           Cada cuenta tutora tiene un espacio privado en la nube. Los perfiles y avances solo son visibles para la cuenta que los creó.
         </Text>
-      </Card>
+      </SectionCard>
       <Text style={styles.footer}>Warrior Kids · Hecho para acompañar hábitos saludables con cariño.</Text>
     </>
   );
 
   const renderProfileModal = () => (
-    <Modal
-      animationType="slide"
-      onRequestClose={() => setShowProfileEditor(false)}
-      transparent
+    <BottomSheet
+      theme={theme}
       visible={role === 'tutor' && showProfileEditor}
+      onClose={() => setShowProfileEditor(false)}
     >
-      <View style={styles.overlay}>
-        <View style={styles.modalCard}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{editingProfile ? 'Editar perfil infantil' : 'Nuevo perfil infantil'}</Text>
             <Pressable
@@ -2569,15 +2797,16 @@ export default function UnifiedApp() {
               <Icon name="close" size={18} color={COLORS.ink} />
             </Pressable>
           </View>
-          <Text style={styles.inputLabel}>Fase {profileStep + 1} de 5 · {[
+          <Text style={styles.inputLabel}>Fase {profileStep + 1} de 6 · {[
             'Avatar, nombre y color',
-            'Edad, peso y estatura',
+            'Datos y dictamen',
             'Alergias',
-            'Alimentos a prevenir y otra información',
+            'No le gustan',
+            'Le gustan',
             'Resumen y confirmación',
           ][profileStep]}</Text>
-          <ProgressMeter value={profileStep + 1} max={5} color={COLORS.pink} />
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingTop: 12, paddingBottom: 8 }}>
+          <ProgressMeter value={profileStep + 1} max={6} color={COLORS.pink} />
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: SPACE[12], paddingTop: SPACE[12], paddingBottom: SPACE[8] }}>
             {editingProfile?.link ? (
               <View style={styles.notice}>
                 <Text style={styles.inputLabel}>Vínculo conservado</Text>
@@ -2597,7 +2826,7 @@ export default function UnifiedApp() {
                   value={profileDraft.name}
                 />
                 <SectionTitle title="Elige un color y revisa el avatar" subtitle="Podrás personalizar más detalles después." />
-                <View style={[styles.horizontal, { justifyContent: 'center', paddingVertical: 5 }]}>
+                <View style={[styles.horizontal, { justifyContent: 'center', paddingVertical: SPACE[4] }]}>
                   <AvatarIllustration
                     theme={profileDraft.theme}
                     selection={editingProfile ? data?.avatarSelections[editingProfile.key] : undefined}
@@ -2625,6 +2854,17 @@ export default function UnifiedApp() {
 
             {profileStep === 1 ? (
               <>
+                <SectionTitle title="Sexo" subtitle="Elige la opción del perfil." />
+                <View style={styles.roleRow}>
+                  {([{ id: 'nina', label: 'Niña' }, { id: 'nino', label: 'Niño' }] as const).map(option => (
+                    <Pressable key={option.id} accessibilityRole="button"
+                      accessibilityState={{ selected: profileDraft.theme === option.id }}
+                      onPress={() => setProfileDraft(current => ({ ...current, theme: option.id }))}
+                      style={[styles.roleChoice, profileDraft.theme === option.id && styles.roleChoiceActive]}>
+                      <Text style={[styles.roleChoiceText, profileDraft.theme === option.id && styles.roleChoiceTextActive]}>{option.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
                 <Field
                   label="Edad (años, opcional)"
                   keyboardType="number-pad"
@@ -2650,60 +2890,41 @@ export default function UnifiedApp() {
                     style={styles.flex}
                   />
                 </View>
-                <Text style={styles.footer}>Estos datos son opcionales y solo están disponibles en tu cuenta. No sirven para diagnóstico médico.</Text>
-              </>
-            ) : null}
-
-            {profileStep === 2 ? (
-              <>
-                <SectionTitle title="Alergias o ingredientes que evitar" subtitle="Selecciona lo que la familia necesita tener presente." />
-                <View style={styles.wrap}>
-                  {FOOD_OPTIONS.map(food => (
-                    <Tag
-                      key={food.id}
-                      title={food.name}
-                      icon="food"
-                      color={COLORS.orange}
-                      selected={profileDraft.allergies.includes(food.id)}
-                      onPress={() => toggleProfileFood('allergies', food.id)}
-                    />
+                <SectionTitle title="Dictamen del especialista (opcional)" subtitle="Selecciona solo un dictamen proporcionado por una persona especialista." />
+                <View style={screenStyles.selectionRow}>
+                  <View>{renderSelectionPill('Sin registrar', !profileDraft.diagnosis, () => setProfileDraft(current => ({ ...current, diagnosis: '' })))}</View>
+                  {DIAGNOSES.map(option => (
+                    <View key={option.id}>
+                      {renderSelectionPill(option.label, profileDraft.diagnosis === option.id, () => setProfileDraft(current => ({ ...current, diagnosis: option.id })))}
+                    </View>
                   ))}
                 </View>
-                <Field
-                  label="Otra alergia o ingrediente"
-                  onChangeText={value => setProfileDraft(current => ({ ...current, otherAllergies: value }))}
-                  placeholder="Escribe otro ingrediente"
-                  value={profileDraft.otherAllergies}
-                />
-                <Text style={styles.footer}>Confirma siempre ingredientes y etiquetas con una persona adulta.</Text>
+                <Text style={styles.footer}>Estos datos sirven para asignar el plan de alimentación y de ejercicio. No son un diagnóstico médico. Por ahora la app no asigna planes automáticamente.</Text>
               </>
             ) : null}
 
-            {profileStep === 3 ? (
+            {profileStep >= 2 && profileStep <= 4 ? (
               <>
-                <SectionTitle title="Alimentos a prevenir" subtitle="Registra preferencias o alimentos que la familia prefiera evitar." />
-                <View style={styles.wrap}>
-                  {FOOD_OPTIONS.map(food => (
-                    <Tag
-                      key={food.id}
-                      title={food.name}
-                      icon="food"
-                      color={COLORS.purple}
-                      selected={profileDraft.noLikes.includes(food.id)}
-                      onPress={() => toggleProfileFood('noLikes', food.id)}
-                    />
-                  ))}
-                </View>
-                <Field
-                  label="Otra información o alimento"
-                  onChangeText={value => setProfileDraft(current => ({ ...current, otherNoLikes: value }))}
-                  placeholder="Escribe una nota para la persona tutora"
-                  value={profileDraft.otherNoLikes}
+                <SectionTitle
+                  title={profileStep === 2 ? 'Alergias' : profileStep === 3 ? 'No le gustan' : 'Le gustan'}
+                  subtitle="Elige un grupo para seleccionar alimentos."
                 />
+                <PlatoDelBuenComer
+                  key={profileStep}
+                  theme={theme}
+                  values={profileStep === 2 ? profileDraft.allergies : profileStep === 3 ? profileDraft.noLikes : profileDraft.likes}
+                  onToggle={id => toggleProfileFood(profileStep === 2 ? 'allergies' : profileStep === 3 ? 'noLikes' : 'likes', id)}
+                  other={profileStep === 2 ? profileDraft.otherAllergies : profileStep === 3 ? profileDraft.otherNoLikes : profileDraft.otherLikes}
+                  onChangeOther={value => setProfileDraft(current => ({
+                    ...current,
+                    [profileStep === 2 ? 'otherAllergies' : profileStep === 3 ? 'otherNoLikes' : 'otherLikes']: value,
+                  }))}
+                />
+                {profileStep === 2 ? <Text style={styles.footer}>Confirma siempre ingredientes y etiquetas con una persona adulta.</Text> : null}
               </>
             ) : null}
 
-            {profileStep === 4 ? (
+            {profileStep === 5 ? (
               <>
                 <SectionTitle title="Revisa antes de guardar" subtitle="Confirma la información del perfil infantil." />
                 <Card style={styles.cardTight}>
@@ -2721,18 +2942,16 @@ export default function UnifiedApp() {
                   <Text style={styles.body}>Edad: {profileDraft.age.trim() || 'No registrada'}</Text>
                   <Text style={styles.body}>Peso: {profileDraft.weight.trim() ? `${profileDraft.weight.trim()} kg` : 'No registrado'}</Text>
                   <Text style={styles.body}>Estatura: {profileDraft.height.trim() ? `${profileDraft.height.trim()} cm` : 'No registrada'}</Text>
+                  <Text style={styles.body}>Sexo: {profileDraft.theme === 'nina' ? 'Niña' : 'Niño'}</Text>
+                  <Text style={styles.body}>Dictamen: {DIAGNOSES.find(item => item.id === profileDraft.diagnosis)?.label ?? 'No registrado'}</Text>
                 </Card>
                 <Card style={styles.cardTight}>
                   <Text style={styles.inputLabel}>Alergias</Text>
-                  <Text style={styles.body}>
-                    {[...profileDraft.allergies.map(id => FOOD_OPTIONS.find(food => food.id === id)?.name ?? id), profileDraft.otherAllergies.trim()]
-                      .filter(Boolean).join(', ') || 'Ninguna registrada'}
-                  </Text>
-                  <Text style={styles.inputLabel}>Alimentos a prevenir</Text>
-                  <Text style={styles.body}>
-                    {[...profileDraft.noLikes.map(id => FOOD_OPTIONS.find(food => food.id === id)?.name ?? id), profileDraft.otherNoLikes.trim()]
-                      .filter(Boolean).join(', ') || 'Ninguno registrado'}
-                  </Text>
+                  <SelectedFoodPills values={profileDraft.allergies} other={profileDraft.otherAllergies} />
+                  <Text style={styles.inputLabel}>No le gustan</Text>
+                  <SelectedFoodPills values={profileDraft.noLikes} other={profileDraft.otherNoLikes} />
+                  <Text style={styles.inputLabel}>Le gustan</Text>
+                  <SelectedFoodPills values={profileDraft.likes} other={profileDraft.otherLikes} />
                 </Card>
                 <Text style={styles.footer}>La información se guarda en el espacio privado de tu cuenta.</Text>
               </>
@@ -2747,7 +2966,7 @@ export default function UnifiedApp() {
                 disabled={profileStep === 0}
                 onPress={() => { setProfileError(''); setProfileStep(current => Math.max(0, current - 1)); }}
               />
-              {profileStep < 4 ? (
+              {profileStep < 5 ? (
                 <Button
                   title="Continuar"
                   icon="check"
@@ -2757,7 +2976,7 @@ export default function UnifiedApp() {
                       return;
                     }
                     setProfileError('');
-                    setProfileStep(current => Math.min(4, current + 1));
+                    setProfileStep(current => Math.min(5, current + 1));
                   }}
                 />
               ) : (
@@ -2769,9 +2988,7 @@ export default function UnifiedApp() {
               )}
             </View>
           </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 
   const renderLinkModal = () => {
@@ -2779,21 +2996,18 @@ export default function UnifiedApp() {
     const nutriCandidates = data.nutribot.ninos.filter(child => !getLinkedNutri(data, child.id));
     const warriorCandidates = data.warriorKids.children.filter(child => !getLinkedWarrior(data, child.id));
     return (
-      <Modal
-        animationType="slide"
-        onRequestClose={() => setShowLinkEditor(false)}
-        transparent
+      <BottomSheet
+        theme={theme}
         visible={role === 'tutor' && showLinkEditor}
+        onClose={() => setShowLinkEditor(false)}
       >
-        <View style={styles.overlay}>
-          <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Vincular perfiles</Text>
               <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowLinkEditor(false)} style={styles.close}>
                 <Icon name="close" size={18} color={COLORS.ink} />
               </Pressable>
             </View>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: SPACE[12], paddingBottom: SPACE[8] }}>
               <Text style={styles.body}>
                 Elige los dos registros manualmente. Los nombres, preferencias y demás datos de origen se conservan; el nombre mostrado se guarda por separado.
               </Text>
@@ -2865,19 +3079,80 @@ export default function UnifiedApp() {
               {linkError ? <Text accessibilityRole="alert" style={styles.errorText}>{linkError}</Text> : null}
               <Button title="Vincular manualmente" icon="link" onPress={saveProfileLink} disabled={!nutriCandidates.length || !warriorCandidates.length} />
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      </BottomSheet>
     );
   };
 
-  const renderActivityModal = () => (
+  const renderActivityModal = () => {
+    const guide = activityModal ? ACTIVITY_GUIDES[activityModal.id] : undefined;
+    const activityStatus = activityModal && selectedProfile && data
+      ? getDailyLog(data, selectedProfile, todayKey()).activities[activityModal.id]?.status
+      : undefined;
+    const canRegister = role === 'child' && Boolean(selectedProfile) && !activityStatus;
+    return (
     <Modal
       animationType="slide"
-      onRequestClose={() => setActivityModal(null)}
+      onRequestClose={() => { cancelTransition(); setActivityModal(null); }}
       transparent
       visible={Boolean(activityModal)}
     >
+      {activityModal && transition?.kind === 'actividad' && transition.userId === authUser?.id &&
+        role === 'child' && transition.owner === selectedProfile?.key && !reduceMotion && !storageError ? (
+        <SafeAreaView style={[screenStyles.activityScreen, { backgroundColor: theme.colors.fondoInicio }]}>
+          {transition.visible ? <LoadingScreen variant="actividad" theme={theme} activity={activityModal.id} /> : null}
+        </SafeAreaView>
+      ) : activityModal && activityStage === 'details' ? (
+        <SafeAreaView style={[screenStyles.activityScreen, { backgroundColor: theme.colors.fondoInicio }]}>
+          <View style={[screenStyles.sheetHeader, { paddingHorizontal: SPACE[20], paddingTop: SPACE[12] }]}>
+            <Text style={[theme.type.h2, styles.flex, { color: theme.colors.texto }]}>{activityModal.title}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setActivityModal(null)}
+              style={[styles.close, { minWidth: 44, minHeight: 44 }]}>
+              <Icon name="close" size={18} color={theme.colors.texto} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={screenStyles.activityContent}>
+            <ActivityAnimation
+              key={`${activityModal.id}-${activityReplay}`}
+              activity={activityModal.id}
+              size={Math.max(1, Math.min(320, windowWidth - 40))}
+              playing={activityPlaying}
+              style={screenStyles.activitySceneLarge}
+            />
+            <View style={styles.horizontal}>
+              <Button title={activityPlaying ? 'Pausa' : 'Continuar'} icon={activityPlaying ? 'pause' : 'activity'}
+                variant="outline" style={styles.flex} onPress={() => setActivityPlaying(current => !current)} />
+              <Button title="Repetir" icon="repeat" variant="outline" style={styles.flex}
+                onPress={() => { setActivityReplay(current => current + 1); setActivityPlaying(true); }} />
+            </View>
+            <View style={styles.wrap}>
+              <Tag title={`${activityModal.minutes} minutos`} color={theme.colors.acento} />
+              <Tag title={`${activityModal.points} puntos`} color={theme.colors.puntos} icon="points" />
+            </View>
+            <SectionCard theme={theme} role="child" title="Así se hace">
+              {guide ? guide.steps.map((step, index) => (
+                <Text key={step} style={[theme.type.body, { color: theme.colors.texto }]}>{index + 1}. {step}</Text>
+              )) : <Text accessibilityRole="alert" style={styles.errorText}>No hay una guía disponible para esta actividad.</Text>}
+            </SectionCard>
+            {guide ? (
+              <SectionCard theme={theme} role="child" title="Consejo de seguridad">
+                <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{guide.safety}</Text>
+              </SectionCard>
+            ) : null}
+            <PillButton theme={theme} label="¡Empezar!" onPress={() => {
+              setActivityReplay(current => current + 1);
+              setActivityPlaying(true);
+            }} />
+            <PillButton theme={theme} label="Ya la hice · Registrar" variant="ghost" disabled={!canRegister}
+              onPress={() => { if (canRegister) setActivityStage('form'); }} />
+            {!canRegister ? (
+              <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>
+                {!selectedProfile ? 'Este perfil ya no está disponible. Pide ayuda a tu tutor.' :
+                  activityStatus === 'approved' ? 'Esta actividad ya fue aprobada hoy.' : 'Esta actividad ya está en revisión.'}
+              </Text>
+            ) : null}
+          </ScrollView>
+        </SafeAreaView>
+      ) : (
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
           <View style={styles.modalHeader}>
@@ -2890,7 +3165,7 @@ export default function UnifiedApp() {
             </Pressable>
           </View>
           {activityModal ? (
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: SPACE[12], paddingBottom: SPACE[8] }}>
               <Text style={styles.body}>{activityModal.title}</Text>
               <Text style={styles.muted}>{activityModal.instructions}</Text>
               <Field
@@ -2917,107 +3192,83 @@ export default function UnifiedApp() {
                 <Text style={styles.footer}>La foto es opcional; puedes registrar la actividad sin evidencia.</Text>
               )}
               {activityError ? <Text accessibilityRole="alert" style={styles.errorText}>{activityError}</Text> : null}
-              <Button title="Enviar a revisión" icon="send" onPress={() => void submitActivity()} />
+              {!canRegister ? (
+                <Text accessibilityRole="alert" style={styles.errorText}>
+                  {!selectedProfile ? 'Este perfil ya no está disponible.' : 'Esta actividad ya fue registrada hoy.'}
+                </Text>
+              ) : null}
+              <Button title="Enviar a revisión" icon="send" disabled={!canRegister} onPress={() => void submitActivity()} />
+              <Button title="Volver a la actividad" variant="outline" onPress={() => setActivityStage('details')} />
             </ScrollView>
           ) : null}
         </View>
       </View>
+      )}
     </Modal>
-  );
+    );
+  };
 
   const renderRecipeModal = () => (
-    <Modal
-      animationType="slide"
-      onRequestClose={() => setRecipeDetails(null)}
-      transparent
-      visible={Boolean(recipeDetails)}
-    >
-      <View style={styles.overlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <View style={styles.horizontal}>
-              <Icon name="recipes" size={20} color={COLORS.blue} />
-              <Text style={styles.modalTitle}>{recipeDetails?.title}</Text>
-            </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setRecipeDetails(null)} style={styles.close}>
-              <Icon name="close" size={18} color={COLORS.ink} />
-            </Pressable>
-          </View>
-          {recipeDetails ? (
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
-              <Text style={styles.muted}>{recipeDetails.groups}</Text>
-              <Text style={styles.sectionTitle}>Ingredientes</Text>
-              {recipeDetails.ingredients.map(ingredient => <Text key={ingredient} style={styles.body}>• {ingredient}</Text>)}
-              <Text style={styles.sectionTitle}>Preparación</Text>
-              <Text style={styles.body}>{recipeDetails.preparation}</Text>
-              <View style={styles.notice}>
-                <Text style={styles.noticeText}>{recipeDetails.note}</Text>
-              </View>
-              <Text style={styles.footer}>Una persona adulta debe acompañar la preparación y revisar alergias, etiquetas y seguridad alimentaria.</Text>
-            </ScrollView>
-          ) : null}
+    <BottomSheet theme={theme} visible={Boolean(recipeDetails)} onClose={() => setRecipeDetails(null)}>
+      <View style={screenStyles.sheetHeader}>
+        <View style={styles.flex}>
+          <Text style={[theme.type.h2, { color: theme.colors.texto }]}>{recipeDetails?.title}</Text>
         </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setRecipeDetails(null)} style={[styles.close, { minWidth: 44, minHeight: 44 }]}>
+          <Icon name="close" size={18} color={theme.colors.texto} />
+        </Pressable>
       </View>
-    </Modal>
+      {recipeDetails ? (
+        <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={screenStyles.sheetContent}>
+          <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{recipeDetails.groups}</Text>
+          {renderFoodPreferences()}
+          <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Ingredientes</Text>
+          {renderIngredientPills(recipeDetails.ingredients)}
+          <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Preparación</Text>
+          <Text style={[theme.type.body, { color: theme.colors.texto }]}>{recipeDetails.preparation}</Text>
+          <View style={styles.notice}><Text style={styles.noticeText}>{recipeDetails.note}</Text></View>
+          <Text style={styles.footer}>Una persona adulta debe acompañar la preparación y revisar alergias, etiquetas y seguridad alimentaria.</Text>
+        </ScrollView>
+      ) : null}
+    </BottomSheet>
   );
 
   const renderMenuPickerModal = () => (
-    <Modal
-      animationType="slide"
-      onRequestClose={() => setMenuPicker(null)}
-      transparent
-      visible={role === 'tutor' && Boolean(menuPicker)}
-    >
-      <View style={styles.overlay}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
-              Elegir receta · {menuPicker ? getMealName(menuPicker.meal) : ''}
-            </Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setMenuPicker(null)} style={styles.close}>
-              <Icon name="close" size={18} color={COLORS.ink} />
-            </Pressable>
-          </View>
-          {menuPicker ? (
-            <ScrollView contentContainerStyle={{ gap: 9, paddingBottom: 8 }}>
-              {RECIPES.map(recipe => (
-                <Pressable
-                  accessibilityRole="button"
-                  key={recipe.id}
-                  onPress={() => assignRecipe(menuPicker.day, menuPicker.meal, recipe.id)}
-                  style={[styles.card, styles.cardTight]}
-                >
-                  <View style={styles.horizontal}>
-                    <Icon name="recipes" size={23} color={COLORS.blue} />
-                    <View style={styles.flex}>
-                      <Text style={styles.cardTitle}>{recipe.title}</Text>
-                      <Text style={styles.muted}>{recipe.groups}</Text>
-                    </View>
-                    <Icon name="add" size={19} color={COLORS.blue} />
-                  </View>
-                </Pressable>
-              ))}
-              <Button
-                title="Quitar receta asignada"
-                variant="outline"
-                onPress={() => assignRecipe(menuPicker.day, menuPicker.meal, null)}
-              />
-            </ScrollView>
-          ) : null}
-        </View>
+    <BottomSheet theme={theme} visible={role === 'tutor' && Boolean(menuPicker)} onClose={() => setMenuPicker(null)}>
+      <View style={screenStyles.sheetHeader}>
+        <Text style={[theme.type.h2, styles.flex, { color: theme.colors.texto }]}>
+          Elegir receta · {menuPicker ? getMealName(menuPicker.meal) : ''}
+        </Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setMenuPicker(null)} style={[styles.close, { minWidth: 44, minHeight: 44 }]}>
+          <Icon name="close" size={18} color={theme.colors.texto} />
+        </Pressable>
       </View>
-    </Modal>
+      {menuPicker ? (
+        <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={screenStyles.sheetContent}>
+          {renderFoodPreferences()}
+          {RECIPES.map(recipe => {
+            const warnings = recipeWarnings(recipe, profileAllergies);
+            return (
+              <Pressable
+                accessibilityRole="button"
+                key={recipe.id}
+                onPress={() => assignRecipe(menuPicker.day, menuPicker.meal, recipe.id)}
+              >
+                <SectionCard theme={theme} role="tutor" title={recipe.title} subtitle={recipe.groups}>
+                  {renderIngredientPills(recipe.ingredients)}
+                  {warnings.length ? <Text style={styles.errorText}>Revisa estos ingredientes: {warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.</Text> : null}
+                </SectionCard>
+              </Pressable>
+            );
+          })}
+          <PillButton theme={theme} label="Quitar receta asignada" variant="ghost" onPress={() => assignRecipe(menuPicker.day, menuPicker.meal, null)} />
+        </ScrollView>
+      ) : null}
+    </BottomSheet>
   );
 
   const renderChatModal = () => (
-    <Modal
-      animationType="slide"
-      onRequestClose={() => setChatOpen(false)}
-      transparent
-      visible={chatOpen}
-    >
-      <View style={styles.overlay}>
-        <View style={styles.modalCard}>
+    <BottomSheet theme={theme} visible={chatOpen} onClose={() => setChatOpen(false)}>
           <View style={styles.modalHeader}>
             <View style={styles.flex}>
               <View style={styles.horizontal}>
@@ -3030,15 +3281,15 @@ export default function UnifiedApp() {
               <Icon name="close" size={18} color={COLORS.ink} />
             </Pressable>
           </View>
-          <ScrollView style={{ maxHeight: 330 }} contentContainerStyle={{ gap: 9, paddingVertical: 5 }}>
+          <ScrollView style={{ maxHeight: 330 }} contentContainerStyle={{ gap: SPACE[8], paddingVertical: SPACE[4] }}>
             {chatMessages.map((message, index) => (
               <View
                 key={`${index}-${message.from}`}
                 style={{
                   alignSelf: message.from === 'child' ? 'flex-end' : 'flex-start',
                   maxWidth: '88%',
-                  padding: 11,
-                  borderRadius: 15,
+                  padding: SPACE[12],
+                  borderRadius: RADIUS.md,
                   backgroundColor: message.from === 'child' ? COLORS.paleBlue : COLORS.white,
                   borderWidth: 1,
                   borderColor: COLORS.line,
@@ -3061,42 +3312,24 @@ export default function UnifiedApp() {
             <Button title="Enviar" small onPress={sendChatMessage} />
           </View>
           <Text style={styles.footer}>No es una persona ni servicio médico. Si algo te preocupa, platícalo con una persona adulta de confianza.</Text>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 
   const renderArchiveModal = () => (
-    <Modal
-      animationType="fade"
-      onRequestClose={() => setProfileToArchive(null)}
-      transparent
-      visible={role === 'tutor' && Boolean(profileToArchive)}
-    >
-      <View style={[styles.overlay, { justifyContent: 'center', padding: 18 }]}>
-        <View style={[styles.modalCard, { borderRadius: 22 }]}>
+    <BottomSheet theme={theme} visible={role === 'tutor' && Boolean(profileToArchive)} onClose={() => setProfileToArchive(null)}>
           <Text style={styles.modalTitle}>¿Ocultar este perfil?</Text>
-          <Text style={[styles.body, { marginVertical: 12 }]}>
+          <Text style={[styles.body, { marginVertical: SPACE[12] }]}>
             “{profileToArchive?.name}” dejará de aparecer en la app. Sus datos no se borrarán y el perfil no se desvinculará de su origen.
           </Text>
           <View style={styles.horizontal}>
             <Button title="Cancelar" variant="outline" style={styles.flex} onPress={() => setProfileToArchive(null)} />
             <Button title="Ocultar perfil" variant="danger" style={styles.flex} onPress={archiveProfile} />
           </View>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 
   const renderTutorGateModal = () => (
-    <Modal
-      animationType="fade"
-      onRequestClose={closeTutorGate}
-      transparent
-      visible={role === 'child' && showTutorGate}
-    >
-      <View style={[styles.overlay, { justifyContent: 'center', padding: 18 }]}>
-        <View style={[styles.modalCard, { borderRadius: 22 }]}>
+    <BottomSheet theme={theme} visible={role === 'child' && showTutorGate} onClose={closeTutorGate}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Acceso al espacio tutor</Text>
             <Pressable
@@ -3109,7 +3342,7 @@ export default function UnifiedApp() {
               <Icon name="close" size={18} color={COLORS.ink} />
             </Pressable>
           </View>
-          <Text style={[styles.body, { marginBottom: 12 }]}>
+          <Text style={[styles.body, { marginBottom: SPACE[12] }]}>
             Confirma la contraseña de la cuenta tutora para continuar.
           </Text>
           <Field
@@ -3135,7 +3368,7 @@ export default function UnifiedApp() {
             <Text accessibilityRole="alert" style={styles.errorText}>{tutorGateError}</Text>
           ) : null}
           {tutorGateBusy ? (
-            <View style={[styles.horizontal, { justifyContent: 'center', marginBottom: 12 }]}>
+            <View style={[styles.horizontal, { justifyContent: 'center', marginBottom: SPACE[12] }]}>
               <ActivityIndicator size="small" color={COLORS.blue} />
               <Text style={styles.muted}>Verificando contraseña…</Text>
             </View>
@@ -3155,25 +3388,16 @@ export default function UnifiedApp() {
               onPress={() => void confirmTutorGate()}
             />
           </View>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 
   const renderChildProfilePickerModal = () => (
-    <Modal
-      animationType="fade"
-      onRequestClose={cancelChildProfilePicker}
-      transparent
-      visible={role === 'tutor' && showChildProfilePicker}
-    >
-      <View style={[styles.overlay, { justifyContent: 'center', padding: 18 }]}>
-        <View style={[styles.modalCard, { borderRadius: 22 }]}>
+    <BottomSheet theme={theme} visible={role === 'tutor' && showChildProfilePicker} onClose={cancelChildProfilePicker}>
           <Text style={styles.modalTitle}>¿Quién va a usar la app?</Text>
-          <Text style={[styles.body, { marginTop: 6, marginBottom: 12 }]}>
+          <Text style={[styles.body, { marginTop: SPACE[6], marginBottom: SPACE[12] }]}>
             Elige el perfil infantil para esta sesión.
           </Text>
-          <View style={{ gap: 8 }}>
+          <View style={{ gap: SPACE[8] }}>
             {profiles.map(profile => (
               <Pressable
                 accessibilityRole="button"
@@ -3199,7 +3423,7 @@ export default function UnifiedApp() {
               </Pressable>
             ))}
           </View>
-          <View style={[styles.horizontal, { marginTop: 14 }]}>
+          <View style={[styles.horizontal, { marginTop: SPACE[14] }]}>
             <Button
               title="Cancelar"
               variant="outline"
@@ -3207,9 +3431,7 @@ export default function UnifiedApp() {
               onPress={cancelChildProfilePicker}
             />
           </View>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 
   const renderTabContent = () => {
@@ -3219,30 +3441,18 @@ export default function UnifiedApp() {
       case 'Recetas':
         return renderRecipes();
       case 'Menú':
-        return role === 'tutor' ? renderWeeklyMenu() : renderAchievements();
+        return role === 'tutor' ? renderWeeklyMenu() : null;
       case 'Logros':
-        return role === 'child' ? renderAchievements() : renderTutorHome();
+        return role === 'child' ? renderAchievements() : null;
       case 'Ajustes':
-        return role === 'tutor' ? renderSettings() : renderChildAvatarSettings();
+        if (role === 'child') return renderChildAvatarSettings();
+        return renderSettings();
       case 'Ayuda':
-        return renderHelp();
+        return role === 'child' ? renderHelp() : null;
       default:
         return null;
     }
   };
-
-  if (loading || (!fontsLoaded && !fontError)) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={COLORS.blue} />
-          <Text style={styles.spinnerText}>
-            {fontError ? 'No se pudieron cargar las tipografías de Warrior Kids.' : 'Preparando tu espacio familiar…'}
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   if (fontError) {
     return (
@@ -3270,6 +3480,20 @@ export default function UnifiedApp() {
     );
   }
 
+  if (waitingForLoad || loadingVisible) {
+    const metadataName = authUser?.user_metadata?.name;
+    const name = typeof metadataName === 'string' && metadataName.trim()
+      ? metadataName.trim()
+      : authUser?.email?.split('@')[0];
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: authUser ? loginTheme.colors.fondoInicio : loginTheme.colors.hero }]}>
+        {loadingVisible ? (
+          <LoadingScreen variant={authUser ? 'sesion' : 'entrada'} theme={loginTheme} name={name} fontsLoaded={fontsLoaded} />
+        ) : null}
+      </SafeAreaView>
+    );
+  }
+
   if (!session) return renderLogin();
 
   if (!data) {
@@ -3284,16 +3508,32 @@ export default function UnifiedApp() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.shell}>
-        {renderHeader()}
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.fondoInicio }]}>
+      <View style={[styles.shell, { backgroundColor: theme.colors.fondoInicio }]}>
+        <View style={screenStyles.topBar}>
+          <TopBar
+            theme={theme}
+            role={role}
+            onSelectChild={() => {
+              setSettingsSection('main');
+              requestRoleChange('child');
+            }}
+            onRequestTutor={() => {
+              setSettingsSection('main');
+              requestRoleChange('tutor');
+            }}
+            childName={selectedProfile?.name}
+            avatar={role === 'child' && selectedProfile ? renderAvatar(selectedProfile, 'small') : undefined}
+          />
+        </View>
+        {renderTutorProfileStrip()}
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {storageError ? (
-            <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: '#FFF5F5', borderColor: '#FED7D7', gap: 8 }]}>
+            <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: SHARED.errorFondo, borderColor: SHARED.errorBorde, gap: SPACE[8] }]}>
               <Text style={[styles.noticeText, { color: COLORS.error }]}>No se guardó el último cambio: {storageError}</Text>
               <Button
                 title="Recargar datos de Supabase"
@@ -3310,24 +3550,33 @@ export default function UnifiedApp() {
           ) : null}
           {renderTabContent()}
         </ScrollView>
-        <View style={styles.nav}>
-          {(role === 'tutor'
-            ? NAV_ITEMS
-            : NAV_ITEMS.filter(item => item.id !== 'Ajustes').map(item => item.id === 'Menú'
-              ? { ...item, id: 'Logros' as const, icon: 'achievements' as const, label: 'Logros' }
-              : item)).map(item => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: tab === item.id }}
-              key={item.id}
-              onPress={() => setTab(item.id)}
-              style={[styles.navItem, tab === item.id && styles.navItemActive]}
-            >
-              <Icon name={item.icon} size={19} color={tab === item.id ? COLORS.blueDeep : COLORS.muted} />
-              <Text style={[styles.navLabel, tab === item.id && styles.navLabelActive]}>{item.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <BottomBar
+          theme={theme}
+          items={NAV_ITEMS[role]}
+          activeId={tab}
+          onSelect={id => {
+            const item = NAV_ITEMS[role].find(candidate => candidate.id === id);
+            if (!item) {
+              console.error(`Pestaña no disponible para el rol actual: ${id}`);
+              return;
+            }
+            setSettingsSection('main');
+            if (role === 'child') {
+              setChildSettingsSection('main');
+              setAvatarDraft(null);
+            }
+            setTab(item.id);
+          }}
+        />
+        {transition?.kind === 'perfil' && transition.userId === authUser?.id &&
+          role === 'child' && selectedProfile?.key === transition.owner && !reduceMotion && !storageError ? (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.fondoInicio }]}>
+            {transition.visible ? (
+              <LoadingScreen variant="perfil" theme={theme} name={selectedProfile.name}
+                points={getProgress(data, selectedProfile).points} avatar={renderAvatar(selectedProfile)} />
+            ) : null}
+          </View>
+        ) : null}
       </View>
       {renderProfileModal()}
       {renderLinkModal()}

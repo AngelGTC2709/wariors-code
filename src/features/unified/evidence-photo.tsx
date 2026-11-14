@@ -3,6 +3,7 @@ import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 
 import { getEvidenceUrl } from '@/features/unified/cloud-data';
 import { COLORS } from '@/features/unified/constants';
+import { RADIUS, SPACE } from '@/features/unified/tokens';
 
 type EvidencePhotoProps = {
   path: string;
@@ -49,15 +50,15 @@ export function EvidencePhoto({ path }: EvidencePhotoProps) {
 }
 
 const styles = StyleSheet.create({
-  image: { width: '100%', height: 150, borderRadius: 12 },
+  image: { width: '100%', height: 150, borderRadius: RADIUS.sm },
   placeholder: {
     width: '100%',
     minHeight: 72,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.paleBlue,
-    padding: 10,
+    padding: SPACE[8],
   },
   error: { color: COLORS.orange, textAlign: 'center' },
 });

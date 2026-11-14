@@ -1,25 +1,23 @@
 import { PLAN_DIETA } from '@/constants/family-wellness';
+import { SHARED, THEMES } from '@/features/unified/tokens';
 
 export const COLORS = {
-  navy: '#1A202C',
-  blue: '#2B6CB0',
-  blueDeep: '#1E4E8C',
-  pink: '#ED64A6',
-  green: '#48BB78',
-  orange: '#ED8936',
-  purple: '#805AD5',
-  yellow: '#F6C445',
-  background: '#F7FAFC',
-  white: '#FFFFFF',
-  ink: '#1A202C',
-  muted: '#5A6474',
-  line: '#E2E8F0',
-  error: '#E53E3E',
-  paleBlue: '#EBF4FF',
-  paleGreen: '#F0FFF4',
-  palePink: '#FFF5F9',
-  paleOrange: '#FFFAF0',
-  palePurple: '#FAF5FF',
+  navy: THEMES.tutor.hero,
+  blue: THEMES.oli.acento,
+  blueDeep: THEMES.oli.texto,
+  pink: THEMES.lia.acento,
+  green: SHARED.completado,
+  orange: SHARED.puntos,
+  purple: SHARED.logros,
+  background: THEMES.tutor.fondoInicio,
+  white: SHARED.tarjeta,
+  ink: THEMES.tutor.texto,
+  muted: SHARED.textoSecundario,
+  line: SHARED.bordeSutil,
+  error: SHARED.error,
+  paleBlue: THEMES.oli.acentoSuave,
+  paleGreen: SHARED.exitoFondo,
+  paleOrange: THEMES.tutor.acentoSuave,
 } as const;
 
 export const CHILD_MOODS = [
@@ -33,28 +31,28 @@ export const CHILD_MOODS = [
 ] as const;
 
 export const FOOD_OPTIONS = [
-  { id: 'leche', emoji: '🥛', name: 'Leche y lácteos', keywords: ['leche', 'yogur', 'queso', 'crema'] },
-  { id: 'huevo', emoji: '🥚', name: 'Huevo', keywords: ['huevo', 'omelette', 'mayonesa'] },
-  { id: 'cacahuate', emoji: '🥜', name: 'Cacahuate', keywords: ['cacahuate', 'maní'] },
-  { id: 'nueces', emoji: '🌰', name: 'Nueces y almendras', keywords: ['nuez', 'almendra', 'granola'] },
-  { id: 'pescado', emoji: '🐟', name: 'Pescado', keywords: ['pescado', 'atún'] },
-  { id: 'mariscos', emoji: '🦐', name: 'Mariscos', keywords: ['camarón', 'mariscos'] },
-  { id: 'gluten', emoji: '🌾', name: 'Trigo / gluten', keywords: ['trigo', 'gluten', 'pan', 'tostada', 'tortilla de harina'] },
-  { id: 'soya', emoji: '🫘', name: 'Soya', keywords: ['soya', 'soja'] },
-  { id: 'ajonjoli', emoji: '⚪', name: 'Ajonjolí', keywords: ['ajonjolí', 'sésamo'] },
-  { id: 'fresa', emoji: '🍓', name: 'Fresa', keywords: ['fresa'] },
-  { id: 'pollo', emoji: '🍗', name: 'Pollo', keywords: ['pollo'] },
-  { id: 'res', emoji: '🥩', name: 'Carne de res', keywords: ['res', 'bistec'] },
-  { id: 'cerdo', emoji: '🥓', name: 'Cerdo', keywords: ['cerdo', 'tocino'] },
-  { id: 'frijoles', emoji: '🫘', name: 'Frijoles', keywords: ['frijol'] },
-  { id: 'brocoli', emoji: '🥦', name: 'Brócoli', keywords: ['brócoli', 'brocoli'] },
-  { id: 'espinaca', emoji: '🥬', name: 'Espinaca', keywords: ['espinaca'] },
-  { id: 'zanahoria', emoji: '🥕', name: 'Zanahoria', keywords: ['zanahoria'] },
-  { id: 'tomate', emoji: '🍅', name: 'Tomate', keywords: ['tomate', 'jitomate'] },
-  { id: 'cebolla', emoji: '🧅', name: 'Cebolla', keywords: ['cebolla'] },
-  { id: 'champi', emoji: '🍄', name: 'Champiñones', keywords: ['champiñón', 'champiñones', 'hongos'] },
-  { id: 'aguacate', emoji: '🥑', name: 'Aguacate', keywords: ['aguacate', 'guacamole'] },
-  { id: 'picante', emoji: '🌶️', name: 'Picante', keywords: ['chile', 'picante', 'salsa'] },
+  { id: 'leche', group: 'animal', emoji: '🥛', name: 'Leche y lácteos', keywords: ['leche', 'yogur', 'queso', 'crema'] },
+  { id: 'huevo', group: 'animal', emoji: '🥚', name: 'Huevo', keywords: ['huevo', 'omelette', 'mayonesa'] },
+  { id: 'cacahuate', group: 'leguminosas', emoji: '🥜', name: 'Cacahuate', keywords: ['cacahuate', 'maní'] },
+  { id: 'nueces', group: 'leguminosas', emoji: '🌰', name: 'Nueces y almendras', keywords: ['nuez', 'almendra', 'granola'] },
+  { id: 'pescado', group: 'animal', emoji: '🐟', name: 'Pescado', keywords: ['pescado', 'atún'] },
+  { id: 'mariscos', group: 'animal', emoji: '🦐', name: 'Mariscos', keywords: ['camarón', 'mariscos'] },
+  { id: 'gluten', group: 'cereales', emoji: '🌾', name: 'Trigo / gluten', keywords: ['trigo', 'gluten', 'pan', 'tostada', 'tortilla de harina'] },
+  { id: 'soya', group: 'leguminosas', emoji: '🫘', name: 'Soya', keywords: ['soya', 'soja'] },
+  { id: 'ajonjoli', group: 'leguminosas', emoji: '⚪', name: 'Ajonjolí', keywords: ['ajonjolí', 'sésamo'] },
+  { id: 'fresa', group: 'frutas', emoji: '🍓', name: 'Fresa', keywords: ['fresa'] },
+  { id: 'pollo', group: 'animal', emoji: '🍗', name: 'Pollo', keywords: ['pollo'] },
+  { id: 'res', group: 'animal', emoji: '🥩', name: 'Carne de res', keywords: ['res', 'bistec'] },
+  { id: 'cerdo', group: 'animal', emoji: '🥓', name: 'Cerdo', keywords: ['cerdo', 'tocino'] },
+  { id: 'frijoles', group: 'leguminosas', emoji: '🫘', name: 'Frijoles', keywords: ['frijol'] },
+  { id: 'brocoli', group: 'frutas', emoji: '🥦', name: 'Brócoli', keywords: ['brócoli', 'brocoli'] },
+  { id: 'espinaca', group: 'frutas', emoji: '🥬', name: 'Espinaca', keywords: ['espinaca'] },
+  { id: 'zanahoria', group: 'frutas', emoji: '🥕', name: 'Zanahoria', keywords: ['zanahoria'] },
+  { id: 'tomate', group: 'frutas', emoji: '🍅', name: 'Tomate', keywords: ['tomate', 'jitomate'] },
+  { id: 'cebolla', group: 'frutas', emoji: '🧅', name: 'Cebolla', keywords: ['cebolla'] },
+  { id: 'champi', group: 'frutas', emoji: '🍄', name: 'Champiñones', keywords: ['champiñón', 'champiñones', 'hongos'] },
+  { id: 'aguacate', group: 'frutas', emoji: '🥑', name: 'Aguacate', keywords: ['aguacate', 'guacamole'] },
+  { id: 'picante', group: 'frutas', emoji: '🌶️', name: 'Picante', keywords: ['chile', 'picante', 'salsa'] },
 ] as const;
 
 export const EXERCISE_CATEGORIES = [
@@ -107,15 +105,15 @@ export const EXERCISE_CATEGORIES = [
 export const FAQ_ITEMS = [
   {
     question: '¿Los datos de mis hijos son privados?',
-    answer: 'Los datos se guardan en este dispositivo. No se envían a una nube ni se comparten públicamente.',
+    answer: 'Los datos se guardan en el espacio privado de tu cuenta en Supabase y no se comparten públicamente.',
   },
   {
     question: '¿Quién puede revisar los avances?',
-    answer: 'La persona tutora de este dispositivo puede acompañar y revisar las actividades registradas.',
+    answer: 'La persona tutora de la cuenta puede acompañar y revisar las actividades registradas.',
   },
   {
-    question: '¿El PIN protege mis datos?',
-    answer: 'No. El PIN es solo una confirmación local; no sustituye una contraseña ni una autenticación segura.',
+    question: '¿Cómo se protege el acceso del tutor?',
+    answer: 'La cuenta usa correo y contraseña. Para volver al modo tutor se verifica la contraseña de la cuenta.',
   },
   {
     question: '¿Warrior Kids da consejos médicos?',
@@ -123,7 +121,7 @@ export const FAQ_ITEMS = [
   },
   {
     question: '¿Cómo se guardan las fotos de actividades?',
-    answer: 'Las fotos opcionales se guardan solo en este dispositivo y no se suben a ningún servidor.',
+    answer: 'Las fotos opcionales se guardan en un espacio privado de Supabase asociado a la cuenta.',
   },
 ] as const;
 

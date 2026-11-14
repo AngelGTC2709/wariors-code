@@ -22,6 +22,9 @@ export type NutriChild = {
   noGusta: string[];
   otrasAlergias: string;
   otrosNoGusta: string;
+  gusta?: string[];
+  otrosGusta?: string;
+  dictamen?: 'sano' | 'sobrepeso' | 'obesidad' | 'prediabetes' | 'diabetes2';
 };
 
 export type NutriData = {
@@ -120,6 +123,7 @@ export type UnifiedData = {
   missionClaims: Record<string, Record<string, string[]>>;
   tutorPin: string | null;
   progressSharingEnabled: boolean;
+  soundEnabled?: boolean;
 };
 
 export const NUTRI_STORAGE_KEY = 'nutribot-familiar-local-v1';
@@ -184,7 +188,11 @@ function isNutriChild(value: unknown): value is NutriChild {
     isStringArray(value.alergias) &&
     isStringArray(value.noGusta) &&
     typeof value.otrasAlergias === 'string' &&
-    typeof value.otrosNoGusta === 'string'
+    typeof value.otrosNoGusta === 'string' &&
+    (value.gusta === undefined || isStringArray(value.gusta)) &&
+    (value.otrosGusta === undefined || typeof value.otrosGusta === 'string') &&
+    (value.dictamen === undefined || value.dictamen === 'sano' || value.dictamen === 'sobrepeso' ||
+      value.dictamen === 'obesidad' || value.dictamen === 'prediabetes' || value.dictamen === 'diabetes2')
   );
 }
 
@@ -346,7 +354,8 @@ export function isUnifiedData(value: unknown): value is UnifiedData {
       dates => isRecord(dates) && Object.values(dates).every(isStringArray),
     ) &&
     (value.tutorPin === null || (typeof value.tutorPin === 'string' && /^\d{4,6}$/.test(value.tutorPin))) &&
-    typeof value.progressSharingEnabled === 'boolean'
+    typeof value.progressSharingEnabled === 'boolean' &&
+    (value.soundEnabled === undefined || typeof value.soundEnabled === 'boolean')
   )) return false;
 
   const nutriIds = new Set(value.nutribot.ninos.map(child => child.id));
@@ -478,6 +487,7 @@ export function createEmptyUnifiedData(account: LocalAccount): UnifiedData {
     missionClaims: {},
     tutorPin: null,
     progressSharingEnabled: true,
+    soundEnabled: false,
   };
 }
 
@@ -528,6 +538,7 @@ export async function loadUnifiedData(): Promise<{ data: UnifiedData; migrated: 
       missionClaims: {},
       tutorPin: null,
       progressSharingEnabled: true,
+      soundEnabled: false,
     },
     migrated: true,
   };

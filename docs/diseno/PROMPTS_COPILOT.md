@@ -1,6 +1,7 @@
 # Prompts para GitHub Copilot (modo Agente)
 
 Cómo usarlos:
+
 1. En VS Code abre Copilot Chat y elige el modo **Agent**.
 2. Haz un commit antes de cada fase (`git add -A && git commit -m "antes de fase N"`).
 3. Pega **un prompt a la vez**, en orden. No pases al siguiente hasta que `npm run lint` y `npx tsc --noEmit` terminen sin errores y hayas probado la app.

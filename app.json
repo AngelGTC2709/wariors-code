@@ -42,7 +42,9 @@
           "cameraPermission": "Warrior Kids usa la cámara para tomar evidencia opcional de una actividad.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
