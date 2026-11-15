@@ -405,6 +405,7 @@ export function Field({
       <Text style={styles.inputLabel}>{label}</Text>
       <TextInput
         {...props}
+        accessibilityLabel={props.accessibilityLabel ?? label}
         placeholderTextColor={SHARED.textoInactivo}
         style={[styles.input, error && styles.inputError, inputStyle]}
       />
@@ -422,6 +423,7 @@ export function Button({
   disabled = false,
   icon,
   style,
+  accessibilityLabel,
 }: {
   title: string;
   onPress: () => void;
@@ -430,6 +432,7 @@ export function Button({
   disabled?: boolean;
   icon?: AppIconName;
   style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
 }) {
   const variantStyle = {
     primary: styles.buttonPrimary,
@@ -455,7 +458,7 @@ export function Button({
 
   return (
     <AnimatedPress
-      label={title}
+      label={accessibilityLabel ?? title}
       disabled={disabled}
       onPress={onPress}
       style={[

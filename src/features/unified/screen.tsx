@@ -1702,6 +1702,7 @@ export default function UnifiedApp() {
           ))}
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Agregar perfil infantil"
             onPress={() => createOrEditProfile(null)}
             style={[styles.profileChip, { borderStyle: 'dashed', borderRadius: RADIUS.pildora }]}
           >
@@ -2561,6 +2562,7 @@ export default function UnifiedApp() {
             <View style={styles.horizontal}>
               <Button
                 title="−"
+                accessibilityLabel="Bajar la meta de agua"
                 small
                 variant="outline"
                 disabled={data.warriorKids.waterGoal <= 1}
@@ -2569,6 +2571,7 @@ export default function UnifiedApp() {
               <Text style={styles.cardTitle}>{data.warriorKids.waterGoal}</Text>
               <Button
                 title="+"
+                accessibilityLabel="Subir la meta de agua"
                 small
                 variant="outline"
                 disabled={data.warriorKids.waterGoal >= 12}
@@ -2602,6 +2605,7 @@ export default function UnifiedApp() {
             <View style={styles.horizontal}>
               <Button
                 title="−"
+                accessibilityLabel="Bajar 15 minutos el tiempo de pantalla"
                 small
                 variant="outline"
                 disabled={data.warriorKids.screenLimitMinutes <= 0}
@@ -2613,6 +2617,7 @@ export default function UnifiedApp() {
               <Text style={styles.inputLabel}>{data.warriorKids.screenLimitMinutes} min</Text>
               <Button
                 title="+"
+                accessibilityLabel="Subir 15 minutos el tiempo de pantalla"
                 small
                 variant="outline"
                 onPress={() => updateData(current => ({
@@ -3180,10 +3185,15 @@ export default function UnifiedApp() {
               </View>
               {activityPhoto ? (
                 <>
-                  <Image source={{ uri: activityPhoto.uri }} style={styles.imagePreview} resizeMode="cover" />
+                  <Image accessible accessibilityLabel="Foto elegida como evidencia" source={{ uri: activityPhoto.uri }} style={styles.imagePreview} resizeMode="cover" />
                   <View style={styles.between}>
                     <Text style={styles.muted}>Foto opcional · guardada en el espacio privado de tu cuenta.</Text>
-                    <Pressable accessibilityRole="button" onPress={() => setActivityPhoto(null)}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Quitar foto"
+                      hitSlop={{ top: 14, bottom: 12, left: 16, right: 16 }}
+                      onPress={() => setActivityPhoto(null)}
+                    >
                       <Text style={styles.linkText}>Quitar</Text>
                     </Pressable>
                   </View>
@@ -3248,15 +3258,19 @@ export default function UnifiedApp() {
           {renderFoodPreferences()}
           {RECIPES.map(recipe => {
             const warnings = recipeWarnings(recipe, profileAllergies);
+            const warningText = warnings.length
+              ? `Revisa estos ingredientes: ${warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.`
+              : '';
             return (
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={warningText ? `Asignar ${recipe.title}. ${warningText}` : `Asignar ${recipe.title}`}
                 key={recipe.id}
                 onPress={() => assignRecipe(menuPicker.day, menuPicker.meal, recipe.id)}
               >
                 <SectionCard theme={theme} role="tutor" title={recipe.title} subtitle={recipe.groups}>
                   {renderIngredientPills(recipe.ingredients)}
-                  {warnings.length ? <Text style={styles.errorText}>Revisa estos ingredientes: {warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.</Text> : null}
+                  {warningText ? <Text style={styles.errorText}>{warningText}</Text> : null}
                 </SectionCard>
               </Pressable>
             );
@@ -3544,7 +3558,7 @@ export default function UnifiedApp() {
             </View>
           ) : null}
           {notice ? (
-            <Pressable accessibilityRole="button" onPress={() => setNotice('')} style={styles.banner}>
+            <Pressable accessibilityRole="button" accessibilityLiveRegion="polite" onPress={() => setNotice('')} style={styles.banner}>
               <Text style={styles.bannerText}>{notice}  ·  Toca para cerrar</Text>
             </Pressable>
           ) : null}
