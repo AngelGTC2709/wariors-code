@@ -9,12 +9,16 @@ npm install
 npx expo start
 ```
 
-Para generar un APK de distribución interna:
+Los iconos de aplicación se configuran para iOS y Android en `app.json`; sus recursos están en `assets/images/` (icono cuadrado para iOS, capas adaptativas para Android y logo transparente para la pantalla de inicio).
+
+Para generar builds de distribución interna para Android e iOS:
 
 ```bash
 npx eas-cli@latest login
-npm run build:android:apk
+npx eas-cli@latest build --platform all --profile preview
 ```
+
+El perfil `preview` genera un APK para Android. La build interna de iOS requiere las credenciales de Apple Developer que solicite Expo.
 
 ## Experiencia
 
