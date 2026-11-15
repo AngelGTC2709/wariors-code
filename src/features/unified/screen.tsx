@@ -455,14 +455,6 @@ function getMealName(value: keyof WeeklyMeals): string {
   return MEALS.find(meal => meal.id === value)?.title ?? value;
 }
 
-function getLinkedNutri(data: UnifiedData, nutriId: string): boolean {
-  return data.profileLinks.some(link => link.nutriId === nutriId);
-}
-
-function getLinkedWarrior(data: UnifiedData, warriorId: string): boolean {
-  return data.profileLinks.some(link => link.warriorId === warriorId);
-}
-
 function emptyProfileDraft(): ProfileDraft {
   return {
     name: '',
@@ -538,12 +530,6 @@ export default function UnifiedApp() {
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(emptyProfileDraft());
   const [profileError, setProfileError] = useState('');
   const [profileToArchive, setProfileToArchive] = useState<UnifiedProfile | null>(null);
-  const [showLinkEditor, setShowLinkEditor] = useState(false);
-  const [selectedNutriId, setSelectedNutriId] = useState('');
-  const [selectedWarriorId, setSelectedWarriorId] = useState('');
-  const [linkDisplayName, setLinkDisplayName] = useState('');
-  const [linkTheme, setLinkTheme] = useState<'nina' | 'nino'>('nina');
-  const [linkError, setLinkError] = useState('');
 
   const [selectedDay, setSelectedDay] = useState(WEEKDAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]);
   const [selectedMeal, setSelectedMeal] = useState<keyof WeeklyMeals>('comida');
@@ -1029,61 +1015,6 @@ export default function UnifiedApp() {
     setNotice('El perfil se ocultó de la aplicación. Sus datos se conservaron en tu espacio familiar.');
   };
 
-  const unlinkProfile = (profile: UnifiedProfile) => {
-    if (role !== 'tutor' || !profile.link) return;
-    updateData(current => ({
-      ...current,
-      profileLinks: current.profileLinks.filter(link => link.id !== profile.link?.id),
-    }));
-    setSelectedProfileKey(null);
-    setNotice('Los perfiles se separaron. Sus datos de origen se conservaron.');
-  };
-
-  const openLinkEditor = () => {
-    if (role !== 'tutor' || !data) return;
-    const nutri = data.nutribot.ninos.find(child => !getLinkedNutri(data, child.id));
-    const warrior = data.warriorKids.children.find(child => !getLinkedWarrior(data, child.id));
-    setSelectedNutriId(nutri?.id ?? '');
-    setSelectedWarriorId(warrior?.id ?? '');
-    setLinkDisplayName(nutri?.nombre ?? warrior?.name ?? '');
-    setLinkTheme(nutri?.genero ?? warrior?.theme ?? 'nina');
-    setLinkError('');
-    setShowLinkEditor(true);
-  };
-
-  const saveProfileLink = () => {
-    if (role !== 'tutor') return;
-    if (!data || !selectedNutriId || !selectedWarriorId) {
-      setLinkError('Elige un perfil de cada lista para vincularlos.');
-      return;
-    }
-    const nutri = data.nutribot.ninos.find(child => child.id === selectedNutriId);
-    const warrior = data.warriorKids.children.find(child => child.id === selectedWarriorId);
-    const displayName = linkDisplayName.trim();
-    if (!nutri || !warrior || !displayName) {
-      setLinkError('Revisa los perfiles y el nombre que se mostrará en la aplicación.');
-      return;
-    }
-    if (getLinkedNutri(data, nutri.id) || getLinkedWarrior(data, warrior.id)) {
-      setLinkError('Uno de estos perfiles ya está vinculado. Primero separa el vínculo existente.');
-      return;
-    }
-    const id = createId('profile-link');
-    updateData(current => ({
-      ...current,
-      profileLinks: [...current.profileLinks, {
-        id,
-        nutriId: nutri.id,
-        warriorId: warrior.id,
-        displayName,
-        theme: linkTheme,
-      }],
-    }));
-    setSelectedProfileKey(`linked:${id}`);
-    setShowLinkEditor(false);
-    setNotice('Perfiles vinculados manualmente. Los datos distintos de cada origen se conservaron.');
-  };
-
   const updateDailyLog = (
     profile: UnifiedProfile,
     date: string,
@@ -1494,7 +1425,6 @@ export default function UnifiedApp() {
     setShowChildProfilePicker(false);
     setShowProfileEditor(false);
     setProfileToArchive(null);
-    setShowLinkEditor(false);
     setMenuPicker(null);
   };
 
@@ -2484,8 +2414,6 @@ export default function UnifiedApp() {
 
   const renderTutorSettings = () => {
     if (!data) return null;
-    const unlinkedNutri = data.nutribot.ninos.filter(child => !getLinkedNutri(data, child.id));
-    const unlinkedWarrior = data.warriorKids.children.filter(child => !getLinkedWarrior(data, child.id));
     return (
       <>
         {settingsSection === 'parental' ? (
@@ -2514,40 +2442,6 @@ export default function UnifiedApp() {
             <Text style={styles.muted}>No hay perfiles activos. Los perfiles ocultos no se borran.</Text>
           )}
           <Button title="Crear perfil infantil" icon="add" variant="secondary" onPress={() => createOrEditProfile(null)} />
-        </SectionCard>
-
-        <SectionCard theme={theme} role="tutor" title="Vincular perfiles existentes" subtitle="Solo se unirán si tú seleccionas cada registro.">
-          <Text style={styles.body}>
-            Si hay diferencias en nombres o temas, las fuentes se mantienen intactas y el nombre de la app se guarda por separado.
-          </Text>
-          {data.profileLinks.map(link => {
-            const nutri = data.nutribot.ninos.find(child => child.id === link.nutriId);
-            const warrior = data.warriorKids.children.find(child => child.id === link.warriorId);
-            if (!nutri || !warrior) return null;
-            return (
-              <View key={link.id} style={styles.notice}>
-                <View style={styles.horizontal}>
-                  <Icon name="link" size={14} color={COLORS.blue} />
-                  <Text style={styles.inputLabel}>{link.displayName}</Text>
-                </View>
-                <Text style={styles.noticeText}>NutriBot: “{nutri.nombre}” · Warrior Kids: “{warrior.name}”</Text>
-                <Button
-                  title="Separar perfiles"
-                  small
-                  variant="outline"
-                  onPress={() => {
-                    const profile = profiles.find(item => item.link?.id === link.id);
-                    if (profile) unlinkProfile(profile);
-                  }}
-                />
-              </View>
-            );
-          })}
-          {unlinkedNutri.length || unlinkedWarrior.length ? (
-            <Button title="Vincular dos perfiles" icon="link" variant="outline" onPress={openLinkEditor} />
-          ) : (
-            <Text style={styles.muted}>No hay perfiles sin vincular de ambos orígenes.</Text>
-          )}
         </SectionCard>
           </>
         ) : null}
@@ -2627,12 +2521,6 @@ export default function UnifiedApp() {
               />
             </View>
           </View>
-        </SectionCard>
-
-        <SectionCard theme={theme} role="tutor" title="Seguridad de la cuenta" subtitle="Inicio de sesión protegido por Supabase Auth.">
-          <Text style={styles.body}>
-            La contraseña no se guarda en la tabla de padres. Cada tutor solo puede consultar y actualizar los datos asociados a su cuenta.
-          </Text>
         </SectionCard>
 
         <SectionCard theme={theme} role="tutor" title="Mostrar avances en el espacio tutor">
@@ -2995,98 +2883,6 @@ export default function UnifiedApp() {
           </ScrollView>
     </BottomSheet>
   );
-
-  const renderLinkModal = () => {
-    if (!data) return null;
-    const nutriCandidates = data.nutribot.ninos.filter(child => !getLinkedNutri(data, child.id));
-    const warriorCandidates = data.warriorKids.children.filter(child => !getLinkedWarrior(data, child.id));
-    return (
-      <BottomSheet
-        theme={theme}
-        visible={role === 'tutor' && showLinkEditor}
-        onClose={() => setShowLinkEditor(false)}
-      >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Vincular perfiles</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowLinkEditor(false)} style={styles.close}>
-                <Icon name="close" size={18} color={COLORS.ink} />
-              </Pressable>
-            </View>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: SPACE[12], paddingBottom: SPACE[8] }}>
-              <Text style={styles.body}>
-                Elige los dos registros manualmente. Los nombres, preferencias y demás datos de origen se conservan; el nombre mostrado se guarda por separado.
-              </Text>
-              <Text style={styles.inputLabel}>Perfil de NutriBot Familiar</Text>
-              {nutriCandidates.length ? nutriCandidates.map(child => (
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selectedNutriId === child.id }}
-                  key={child.id}
-                  onPress={() => {
-                    setSelectedNutriId(child.id);
-                    if (!linkDisplayName.trim()) setLinkDisplayName(child.nombre);
-                    setLinkTheme(child.genero);
-                  }}
-                  style={[styles.profileRow, selectedNutriId === child.id && { backgroundColor: COLORS.paleBlue }]}
-                >
-                  <View style={styles.profileAvatar}><Icon name="profile" size={20} color={COLORS.green} /></View>
-                  <View style={styles.flex}>
-                    <Text style={styles.inputLabel}>{child.nombre}</Text>
-                    <Text style={styles.muted}>Peso: {child.peso || 'sin dato'} · Estatura: {child.altura || 'sin dato'}</Text>
-                  </View>
-                  <Icon name="check" size={19} color={selectedNutriId === child.id ? COLORS.blue : COLORS.line} />
-                </Pressable>
-              )) : <Text style={styles.muted}>No hay perfiles NutriBot disponibles para vincular.</Text>}
-              <Text style={styles.inputLabel}>Perfil de Warrior Kids</Text>
-              {warriorCandidates.length ? warriorCandidates.map(child => (
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selectedWarriorId === child.id }}
-                  key={child.id}
-                  onPress={() => {
-                    setSelectedWarriorId(child.id);
-                    if (!linkDisplayName.trim()) setLinkDisplayName(child.name);
-                    setLinkTheme(child.theme ?? 'nina');
-                  }}
-                  style={[styles.profileRow, selectedWarriorId === child.id && { backgroundColor: COLORS.paleBlue }]}
-                >
-                  <AvatarIllustration theme={child.theme ?? 'nina'} size="small" />
-                  <View style={styles.flex}>
-                    <Text style={styles.inputLabel}>{child.name}</Text>
-                    <Text style={styles.muted}>{child.points} puntos · {child.badges.length} insignias</Text>
-                  </View>
-                  <Icon name="check" size={19} color={selectedWarriorId === child.id ? COLORS.blue : COLORS.line} />
-                </Pressable>
-              )) : <Text style={styles.muted}>No hay perfiles Warrior Kids disponibles para vincular.</Text>}
-              <Field
-                autoCapitalize="words"
-                label="Nombre que se mostrará en la app"
-                onChangeText={setLinkDisplayName}
-                placeholder="Nombre"
-                value={linkDisplayName}
-              />
-              <View style={styles.roleRow}>
-                {([
-                  { id: 'nina' as const, label: 'Tema rosa' },
-                  { id: 'nino' as const, label: 'Tema azul' },
-                ]).map(option => (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: linkTheme === option.id }}
-                    key={option.id}
-                    onPress={() => setLinkTheme(option.id)}
-                    style={[styles.roleChoice, linkTheme === option.id && styles.roleChoiceActive]}
-                  >
-                    <Text style={[styles.roleChoiceText, linkTheme === option.id && styles.roleChoiceTextActive]}>{option.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              {linkError ? <Text accessibilityRole="alert" style={styles.errorText}>{linkError}</Text> : null}
-              <Button title="Vincular manualmente" icon="link" onPress={saveProfileLink} disabled={!nutriCandidates.length || !warriorCandidates.length} />
-            </ScrollView>
-      </BottomSheet>
-    );
-  };
 
   const renderActivityModal = () => {
     const guide = activityModal ? ACTIVITY_GUIDES[activityModal.id] : undefined;
@@ -3593,7 +3389,6 @@ export default function UnifiedApp() {
         ) : null}
       </View>
       {renderProfileModal()}
-      {renderLinkModal()}
       {renderActivityModal()}
       {renderRecipeModal()}
       {renderMenuPickerModal()}
