@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   Pressable,
+  type PressableStateCallbackType,
   StyleSheet,
   View,
   type StyleProp,
@@ -36,6 +37,8 @@ export function useReduceMotion() {
   return reduceMotion;
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 export function AnimatedPress({
   children,
   onPress,
@@ -58,8 +61,6 @@ export function AnimatedPress({
   const reduceMotion = useReduceMotion();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
-  const { flexDirection, gap, alignItems, justifyContent, borderRadius } = StyleSheet.flatten(style) ?? {};
-
   useEffect(() => {
     if (reduceMotion) {
       cancelAnimation(scale);
@@ -68,39 +69,28 @@ export function AnimatedPress({
   }, [reduceMotion, scale]);
 
   return (
-    <Animated.View style={[style, animatedStyle]}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={{ disabled, selected }}
-        disabled={disabled}
-        hitSlop={hitSlop}
-        onPress={onPress}
-        onPressIn={() => { if (!reduceMotion) scale.set(withSpring(pressedScale)); }}
-        onPressOut={() => { if (!reduceMotion) scale.set(withSpring(1)); }}
-        style={[
-          styles.pressable,
-          {
-            ...(flexDirection ? { flexDirection } : null),
-            ...(gap !== undefined ? { gap } : null),
-            ...(alignItems ? { alignItems } : null),
-            ...(justifyContent ? { justifyContent } : null),
-            ...(borderRadius !== undefined ? { borderRadius } : null),
-          },
-        ]}
-      >
-        {({ pressed }) => (
-          <>
-            {children}
-            {pressed && !disabled ? <View pointerEvents="none" style={styles.pressedOverlay} /> : null}
-          </>
-        )}
-      </Pressable>
-    </Animated.View>
+    <AnimatedPressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled, selected }}
+      disabled={disabled}
+      hitSlop={hitSlop}
+      onPress={onPress}
+      onPressIn={() => { if (!reduceMotion) scale.set(withSpring(pressedScale)); }}
+      onPressOut={() => { if (!reduceMotion) scale.set(withSpring(1)); }}
+      style={[styles.pressable, style, animatedStyle]}
+    >
+      {({ pressed }: PressableStateCallbackType) => (
+        <>
+          {children}
+          {pressed && !disabled ? <View pointerEvents="none" style={styles.pressedOverlay} /> : null}
+        </>
+      )}
+    </AnimatedPressable>
   );
 }
 
 const styles = StyleSheet.create({
-  pressable: { flexGrow: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: RADIUS.pildora },
+  pressable: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: RADIUS.pildora },
   pressedOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: SHARED.presionado },
 });
