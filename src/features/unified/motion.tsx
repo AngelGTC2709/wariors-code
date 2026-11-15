@@ -26,7 +26,7 @@ export function useReduceMotion() {
     AccessibilityInfo.isReduceMotionEnabled().then(value => {
       if (active && !changed) setReduceMotion(value);
     }).catch(error => {
-      console.warn('No se pudo consultar la preferencia de movimiento reducido.', error);
+      if (__DEV__) console.warn('No se pudo consultar la preferencia de movimiento reducido.', error);
     });
     return () => {
       active = false;

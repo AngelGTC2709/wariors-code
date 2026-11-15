@@ -318,7 +318,6 @@ export const styles = StyleSheet.create({
   inputGroup: { gap: SPACE[4] },
   inputLabel: { color: COLORS.ink, fontFamily: TYPE.bold, fontSize: 11 },
   input: { minHeight: 48, borderRadius: RADIUS.sm, borderWidth: BORDER.fino, borderColor: COLORS.line, backgroundColor: COLORS.white, paddingHorizontal: SPACE[14], color: COLORS.ink, fontFamily: TYPE.body, fontSize: 13 },
-  inputFocused: { borderColor: COLORS.blue },
   inputError: { borderColor: SHARED.error },
   fieldHint: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 10, lineHeight: 15 },
   errorText: { color: SHARED.error, fontFamily: TYPE.medium, fontSize: 11, lineHeight: 16 },

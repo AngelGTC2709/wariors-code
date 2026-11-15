@@ -50,7 +50,7 @@ export default function PasswordRecoveryScreen() {
 
     void initializeRecovery().catch(error => {
       if (!active) return;
-      setRecoveryError(friendlyError(error, 'No se pudo configurar Supabase.'));
+      setRecoveryError(friendlyError(error, 'No se pudo iniciar la app.'));
     });
 
     return () => {
@@ -110,7 +110,7 @@ export default function PasswordRecoveryScreen() {
           <Text style={styles.authSubtitle}>
             {complete
               ? 'Tu contraseña se actualizó correctamente.'
-              : 'Elige una contraseña nueva para tu cuenta de tutor.'}
+              : 'Elige una contraseña nueva para tu cuenta tutora.'}
           </Text>
           <View style={styles.authCard}>
             {complete ? (

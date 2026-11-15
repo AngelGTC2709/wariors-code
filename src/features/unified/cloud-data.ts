@@ -20,7 +20,7 @@ export type CloudDataSnapshot = {
 
 export function accountFromUser(user: User): LocalAccount {
   const email = user.email?.trim().toLocaleLowerCase('es-MX') ?? '';
-  if (!email) throw userError('La cuenta de Supabase no tiene un correo electrónico.');
+  if (!email) throw userError('Tu cuenta no tiene un correo electrónico registrado.');
   const metadataName = user.user_metadata?.name;
   const name = typeof metadataName === 'string' && metadataName.trim()
     ? metadataName.trim()
@@ -52,7 +52,7 @@ export async function loadCloudData(
     .eq('id_padre', user.id)
     .maybeSingle();
 
-  if (error) throw userError('No se pudieron cargar los datos de Supabase.', error);
+  if (error) throw userError('No se pudieron cargar los datos de tu espacio familiar.', error);
   if (!parent) {
     throw userError('No encontramos el perfil familiar de esta cuenta. Verifica que se haya aplicado el SQL de configuración.');
   }
@@ -63,7 +63,7 @@ export async function loadCloudData(
     return { data: initialData, version };
   }
   if (!isUnifiedData(parent.datos_app)) {
-    throw userError('Los datos familiares en Supabase no tienen el formato esperado. No se sobrescribieron.');
+    throw userError('Los datos de tu espacio familiar no tienen el formato esperado. No se sobrescribieron.');
   }
 
   return { data: parent.datos_app, version: parent.datos_app_version };
@@ -85,7 +85,7 @@ export async function saveCloudData(
     .select('datos_app_version')
     .maybeSingle();
 
-  if (error) throw userError('No se pudieron guardar los cambios en Supabase.', error);
+  if (error) throw userError('No se pudieron guardar los cambios en tu espacio familiar.', error);
   if (!updated) {
     throw userError('Los datos cambiaron en otro dispositivo. Vuelve a cargar tu espacio para evitar sobrescribir cambios.');
   }
@@ -110,7 +110,7 @@ export function subscribeToCloudData(
       payload => {
         const row = payload.new;
         if (typeof row.datos_app_version !== 'number' || !isUnifiedData(row.datos_app)) {
-          onError(userError('Supabase envió datos familiares con un formato inesperado.'));
+          onError(userError('Llegaron datos familiares con un formato inesperado.'));
           return;
         }
         onData({ data: row.datos_app, version: row.datos_app_version });
@@ -118,7 +118,7 @@ export function subscribeToCloudData(
     )
     .subscribe(status => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        onError(userError('No se pudo mantener la sincronización en tiempo real con Supabase.'));
+        onError(userError('No se pudo mantener la sincronización en tiempo real.'));
       }
     });
 }
@@ -142,13 +142,13 @@ export async function uploadEvidence(
     .storage
     .from(EVIDENCE_BUCKET)
     .upload(path, body, { contentType, upsert: false });
-  if (error) throw userError('No se pudo subir la evidencia a Supabase.', error);
+  if (error) throw userError('No se pudo subir la foto de evidencia.', error);
   return data.path;
 }
 
 export async function deleteEvidence(path: string): Promise<void> {
   const { error } = await getSupabaseClient().storage.from(EVIDENCE_BUCKET).remove([path]);
-  if (error) throw userError('No se pudo eliminar la evidencia de Supabase.', error);
+  if (error) throw userError('No se pudo eliminar la foto de evidencia.', error);
 }
 
 export async function getEvidenceUrl(path: string): Promise<string> {

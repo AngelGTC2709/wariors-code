@@ -47,7 +47,16 @@ export function EvidencePhoto({ path }: EvidencePhotoProps) {
       </View>
     );
   }
-  return <Image accessible accessibilityLabel="Foto de evidencia" source={{ uri: result.uri }} style={styles.image} resizeMode="cover" />;
+  return (
+    <Image
+      accessible
+      accessibilityLabel="Foto de evidencia"
+      onError={() => setResult({ path, error: 'No se pudo mostrar la foto.' })}
+      source={{ uri: result.uri }}
+      style={styles.image}
+      resizeMode="cover"
+    />
+  );
 }
 
 const styles = StyleSheet.create({

@@ -93,7 +93,7 @@ export function LoadingScreen({
   const [index, setIndex] = useState(0);
   const [count, setCount] = useState(3);
   const opacity = useSharedValue(1);
-  const fade = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  const fade = useAnimatedStyle(() => ({ opacity: opacity.get() }));
 
   useEffect(() => {
     let fadeTimer: ReturnType<typeof setTimeout> | undefined;

@@ -304,13 +304,14 @@ function HabitProgress({ value, max, color }: { value: number; max: number; colo
 }
 
 export function HabitCard({
-  theme, title, icon, iconColor, value, goal, onDecrease, onIncrease,
+  theme, title, icon, iconColor, value, goal, points, onDecrease, onIncrease,
 }: Themed & {
   title: string;
   icon: AppIconName;
   iconColor: string;
   value: number;
   goal: number;
+  points: number;
   onDecrease: () => void;
   onIncrease: () => void;
 }) {
@@ -323,7 +324,7 @@ export function HabitCard({
           <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>{value} de {goal}</Text>
         </View>
         <View style={[styles.pointsPill, { backgroundColor: tint(theme.colors.puntos, 0.15) }]}>
-          <Text style={[theme.type.caption, { color: theme.colors.texto }]}>+10 pts</Text>
+          <Text style={[theme.type.caption, { color: theme.colors.texto }]}>+{points} puntos</Text>
         </View>
       </View>
       <HabitProgress value={value} max={goal} color={iconColor} />

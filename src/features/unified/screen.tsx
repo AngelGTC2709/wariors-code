@@ -585,7 +585,7 @@ export default function UnifiedApp() {
       return loaded;
     } catch (error) {
       if (generation === loadGeneration.current) {
-        setLoadError(friendlyError(error, 'No se pudieron cargar los datos de Supabase.'));
+        setLoadError(friendlyError(error, 'No se pudieron cargar los datos de tu espacio familiar.'));
       }
       return null;
     } finally {
@@ -642,14 +642,14 @@ export default function UnifiedApp() {
         })
         .catch(error => {
           if (!active) return;
-          setLoadError(friendlyError(error, 'No se pudo restaurar la sesión de Supabase.'));
+          setLoadError(friendlyError(error, 'No se pudo restaurar tu sesión.'));
           setLoading(false);
           setAuthReady(true);
         });
     } catch (error) {
       void Promise.resolve().then(() => {
         if (!active) return;
-        setLoadError(friendlyError(error, 'No se pudo configurar Supabase.'));
+        setLoadError(friendlyError(error, 'No se pudo iniciar la app.'));
         setLoading(false);
         setAuthReady(true);
       });
@@ -725,7 +725,7 @@ export default function UnifiedApp() {
       return false;
     }
     if (writesBlocked.current) {
-      setStorageError('No se guardarán más cambios hasta volver a cargar los datos de Supabase.');
+      setStorageError('No se guardarán más cambios hasta volver a cargar tus datos.');
       return false;
     }
     const next = update(current);
@@ -747,7 +747,7 @@ export default function UnifiedApp() {
       error => {
         if (authUserId.current === userId) {
           writesBlocked.current = true;
-          setStorageError(friendlyError(error, 'No se pudieron guardar los cambios en Supabase.'));
+          setStorageError(friendlyError(error, 'No se pudieron guardar los cambios en tu espacio familiar.'));
         }
       },
     ).finally(() => {
@@ -836,7 +836,7 @@ export default function UnifiedApp() {
       } else if (normalized.includes('already registered') || normalized.includes('user already')) {
         setAuthError('Ese correo ya tiene una cuenta. Inicia sesión.');
       } else {
-        setAuthError(friendlyError(error, 'No se pudo completar el acceso con Supabase.'));
+        setAuthError(friendlyError(error, 'No se pudo completar el acceso.'));
       }
     } finally {
       setAuthBusy(false);
@@ -1143,7 +1143,7 @@ export default function UnifiedApp() {
       setActivityError('');
       setNotice('Actividad enviada a la persona tutora para revisión.');
     } catch (error) {
-      setActivityError(friendlyError(error, 'No se pudo guardar la evidencia en Supabase.'));
+      setActivityError(friendlyError(error, 'No se pudo guardar la foto de evidencia.'));
     } finally {
       activitySubmittingRef.current = false;
       setActivitySubmitting(false);
@@ -1288,7 +1288,7 @@ export default function UnifiedApp() {
       : lower.includes('comida') || lower.includes('comer') || lower.includes('receta')
         ? '¡Qué buena pregunta! Podemos elegir alimentos de varios colores y disfrutar la comida en familia. ¿Qué ingrediente te gusta?'
         : lower.includes('agua')
-          ? 'Tomar agua durante el día ayuda a mantenerte hidratado/a. ¡Un vasito a la vez!'
+          ? 'Tomar agua durante el día ayuda a mantener tu cuerpo hidratado. ¡Un vasito a la vez!'
           : '¡Gracias por compartirlo! Cada familia tiene hábitos distintos. Elige cambios pequeños que se sientan bien para ti.';
     setChatMessages(current => [...current, { from: 'child', text }, { from: 'bot', text: response }]);
     setChatInput('');
@@ -1360,7 +1360,7 @@ export default function UnifiedApp() {
       return;
     }
     if (writesBlocked.current) {
-      setStorageError('No se guardarán más cambios hasta volver a cargar los datos de Supabase.');
+      setStorageError('No se guardarán más cambios hasta volver a cargar tus datos.');
       return;
     }
     if (!buildProfiles(dataRef.current).some(profile => profile.key === avatarDraft.profileKey)) {
@@ -1395,7 +1395,7 @@ export default function UnifiedApp() {
       setRole('tutor');
       setTab('Familia');
     } catch (error) {
-      const message = friendlyError(error, 'No se pudo cerrar la sesión de Supabase.');
+      const message = friendlyError(error, 'No se pudo cerrar la sesión.');
       setAuthError(message);
       setStorageError(message);
     }
@@ -1499,7 +1499,7 @@ export default function UnifiedApp() {
       } else if (/invalid login credentials|invalid credentials/i.test(message)) {
         setTutorGateError('La contraseña no es correcta. Inténtalo de nuevo.');
       } else {
-        setTutorGateError('No se pudo verificar la contraseña con Supabase. Inténtalo de nuevo.');
+        setTutorGateError('No se pudo verificar la contraseña. Inténtalo de nuevo.');
       }
     } finally {
       setTutorGateBusy(false);
@@ -1522,11 +1522,11 @@ export default function UnifiedApp() {
         setAuthReady(true);
         setLoading(false);
       }).catch(error => {
-        setLoadError(friendlyError(error, 'No se pudo restaurar la sesión de Supabase.'));
+        setLoadError(friendlyError(error, 'No se pudo restaurar tu sesión.'));
         setLoading(false);
       });
     } catch (error) {
-      setLoadError(friendlyError(error, 'No se pudo configurar Supabase.'));
+      setLoadError(friendlyError(error, 'No se pudo iniciar la app.'));
       setLoading(false);
     }
   };
@@ -1615,12 +1615,12 @@ export default function UnifiedApp() {
               style={styles.linkButton}
             >
               <Text style={styles.linkText}>
-                {registerMode ? 'Ya tengo una cuenta' : 'Crear una cuenta de tutor'}
+                {registerMode ? 'Ya tengo una cuenta' : 'Crear una cuenta tutora'}
               </Text>
             </Pressable>
           </View>
           <Text style={[styles.authNotice, { color: SHARED.textoInactivo }]}>
-            Cada cuenta tutora tiene su propio espacio familiar. Los datos se sincronizan con Supabase y no se comparten con otras cuentas.
+            Cada cuenta tutora tiene su propio espacio familiar. Los datos se guardan en la nube y no se comparten con otras cuentas.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -1724,7 +1724,7 @@ export default function UnifiedApp() {
         <Icon name="child" size={34} color={COLORS.blue} />
         <Text style={styles.cardTitle}>
           {role === 'child' && selectedProfileKey
-            ? 'Este perfil ya no está disponible.'
+            ? 'Este perfil ya no está disponible'
             : 'Todavía no hay un perfil infantil'}
         </Text>
         <Text style={[styles.body, { textAlign: 'center' }]}>
@@ -1734,9 +1734,9 @@ export default function UnifiedApp() {
         </Text>
         {role === 'tutor' ? (
           <Button title="Crear perfil infantil" icon="add" onPress={() => createOrEditProfile(null)} />
-        ) : (
-          <Text style={styles.muted}>Pídele a la persona tutora que cree o vincule tu perfil.</Text>
-        )}
+        ) : !selectedProfileKey ? (
+          <Text style={styles.muted}>Pídele a la persona tutora que cree tu perfil.</Text>
+        ) : null}
       </View>
     </Card>
   );
@@ -1774,7 +1774,7 @@ export default function UnifiedApp() {
         <HeroCard
           theme={theme}
           title={`¡Hola, ${selectedProfile.name}!`}
-          subtitle={`${todayLabel()} · ${approvedActivities} actividades aprobadas hoy. Cada pequeño paso cuenta.`}
+          subtitle={`${todayLabel()} · ${approvedActivities} ${approvedActivities === 1 ? 'actividad aprobada' : 'actividades aprobadas'} hoy. Cada pequeño paso cuenta.`}
           points={progress.points}
           actionLabel="Personalizar avatar"
           onAction={openAvatarEditor}
@@ -1794,8 +1794,9 @@ export default function UnifiedApp() {
           goal={waterGoal}
           onDecrease={() => addWater(-1)}
           onIncrease={() => addWater(1)}
+          points={MISSION_POINTS['water-goal']}
         />
-        <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>Reclama el reto de agua para ganar 10 puntos.</Text>
+        <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>Reclama el reto de agua para ganar {MISSION_POINTS['water-goal']} puntos.</Text>
 
         <SectionCard theme={theme} role="child" title="Colores en mi plato" subtitle="Marca los grupos que probaste hoy.">
           <View style={styles.wrap}>
@@ -1865,7 +1866,7 @@ export default function UnifiedApp() {
                 title={mission.title}
                 subtitle={mission.detail}
                 trailing={<Button
-                  title={claimed ? 'Listo' : `+${mission.points} XP`}
+                  title={claimed ? 'Listo' : `+${mission.points} puntos`}
                   small
                   variant={claimed ? 'success' : 'secondary'}
                   disabled={!mission.ready || claimed}
@@ -2053,6 +2054,7 @@ export default function UnifiedApp() {
           const progress = getProgress(data, profile);
           const claims = data.missionClaims[profile.progressKey]?.[todayKey()] ?? [];
           const missionPoints = claims.reduce((total, id) => total + (MISSION_POINTS[id] ?? 0), 0);
+          const approvedCount = Object.values(log.activities).filter(item => item.status === 'approved').length;
           return (
             <SectionCard key={profile.key} theme={theme} role="tutor" title={profile.name}>
               <View style={styles.between}>
@@ -2108,9 +2110,9 @@ export default function UnifiedApp() {
               {data.progressSharingEnabled ? (
                 <View style={styles.wrap}>
                   {log.mood ? <Tag title={`Ánimo: ${CHILD_MOODS.find(item => item.id === log.mood)?.label ?? log.mood}`} color={COLORS.purple} /> : null}
-                  {log.sleepHours !== null ? <Tag title={`${log.sleepHours} h de sueño`} color={COLORS.blue} icon="sleep" /> : null}
-                  {log.foodGroups.length ? <Tag title={`${log.foodGroups.length} grupos de alimentos`} color={COLORS.green} icon="food" /> : null}
-                  <Tag title={`${Object.values(log.activities).filter(item => item.status === 'approved').length} actividades aprobadas hoy`} color={COLORS.green} />
+                  {log.sleepHours !== null ? <Tag title={`${log.sleepHours} horas de sueño`} color={COLORS.blue} icon="sleep" /> : null}
+                  {log.foodGroups.length ? <Tag title={`${log.foodGroups.length} ${log.foodGroups.length === 1 ? 'grupo' : 'grupos'} de alimentos`} color={COLORS.green} icon="food" /> : null}
+                  <Tag title={`${approvedCount} ${approvedCount === 1 ? 'actividad aprobada' : 'actividades aprobadas'} hoy`} color={COLORS.green} />
                 </View>
               ) : null}
             </SectionCard>
@@ -2135,7 +2137,7 @@ export default function UnifiedApp() {
                       <Icon name="activity" size={22} color={COLORS.blue} />
                       <View style={styles.flex}>
                         <Text style={styles.inputLabel}>{item.profile.name} · {activity?.title ?? 'Actividad'}</Text>
-                        <Text style={styles.muted}>{item.date} · {item.activity.duration} min</Text>
+                        <Text style={styles.muted}>{new Intl.DateTimeFormat('es-MX', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(`${item.date}T12:00:00`))} · {item.activity.duration} min</Text>
                       </View>
                     </View>
                   </View>
@@ -2249,7 +2251,7 @@ export default function UnifiedApp() {
             <Field
               label="Buscar receta o ingrediente"
               onChangeText={setRecipeSearch}
-              placeholder="Ej. avena, frijoles..."
+              placeholder="Ej. avena, frijoles…"
               value={recipeSearch}
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
@@ -2560,7 +2562,7 @@ export default function UnifiedApp() {
               trackColor={{ true: COLORS.blue }}
             />
           </View>
-          <Text style={styles.footer}>Esta preferencia se sincroniza con Supabase.</Text>
+          <Text style={styles.footer}>Esta preferencia se guarda en tu espacio familiar.</Text>
         </SectionCard>
           </>
         ) : null}
@@ -2599,7 +2601,7 @@ export default function UnifiedApp() {
         ))}
         <SectionCard theme={theme} role="tutor" title="Tu cuenta">
           <Text style={styles.body}>
-            Tus perfiles y avances se guardan en el espacio privado de tu cuenta de Supabase.
+            Tus perfiles y avances se guardan en el espacio privado de tu cuenta.
           </Text>
           <Text style={styles.muted}>Correo: {session?.email ?? 'sin sesión'}</Text>
           <Button title="Cerrar sesión" icon="logout" variant="outline" onPress={logout} />
@@ -2651,7 +2653,7 @@ export default function UnifiedApp() {
             trailing={<Icon name="next" size={18} color={theme.colors.texto} />}
           />
         </Pressable>
-        <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Los demás ajustes los cuida tu tutor.</Text>
+        <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Los demás ajustes los cuida la persona tutora.</Text>
       </>
     );
   };
@@ -2665,8 +2667,8 @@ export default function UnifiedApp() {
       <Image source={require('@/assets/images/wk-logo.png')} style={screenStyles.helpLogo} resizeMode="contain" />
       {[
         { question: '¿Cómo registro mi agua?', answer: 'Toca +1 cuando tomes un vaso. Puedes corregirlo con el botón −.' },
-        { question: '¿Cómo gano puntos?', answer: 'Completa y reclama tus retos. Tu tutor también puede aprobar tus actividades.' },
-        { question: '¿Quién cuida mis datos?', answer: 'Tu cuenta familiar es privada. Si tienes dudas, habla con tu tutor.' },
+        { question: '¿Cómo gano puntos?', answer: 'Completa y reclama tus retos. La persona tutora también puede aprobar tus actividades.' },
+        { question: '¿Quién cuida mis datos?', answer: 'Tu cuenta familiar es privada. Si tienes dudas, habla con la persona tutora.' },
         { question: '¿Qué hace NutriBot?', answer: 'Te comparte respuestas preparadas sobre hábitos. Si algo te preocupa, habla con una persona adulta de confianza.' },
       ].map(item => (
         <SectionCard key={item.question} theme={theme} role="child" title={item.question}>
@@ -2815,7 +2817,7 @@ export default function UnifiedApp() {
                     </View>
                   ))}
                 </View>
-                <Text style={styles.footer}>Estos datos sirven para asignar el plan de alimentación y de ejercicio. No son un diagnóstico médico. Por ahora la app no asigna planes automáticamente.</Text>
+                <Text style={styles.footer}>Estos datos servirán para asignar planes de alimentación y ejercicio; por ahora la app no los asigna automáticamente. No son un diagnóstico médico.</Text>
               </>
             ) : null}
 
@@ -2949,7 +2951,7 @@ export default function UnifiedApp() {
                 onPress={() => { setActivityReplay(current => current + 1); setActivityPlaying(true); }} />
             </View>
             <View style={styles.wrap}>
-              <Tag title={`${activityModal.minutes} minutos`} color={theme.colors.acento} />
+              <Tag title={`${activityModal.minutes} min`} color={theme.colors.acento} />
               <Tag title={`${activityModal.points} puntos`} color={theme.colors.puntos} icon="points" />
             </View>
             <SectionCard theme={theme} role="child" title="Así se hace">
@@ -2970,7 +2972,7 @@ export default function UnifiedApp() {
               onPress={() => { if (canRegister) setActivityStage('form'); }} />
             {!canRegister ? (
               <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>
-                {!selectedProfile ? 'Este perfil ya no está disponible. Pide ayuda a tu tutor.' :
+                {!selectedProfile ? 'Este perfil ya no está disponible. Pide ayuda a la persona tutora.' :
                   activityStatus === 'approved' ? 'Esta actividad ya fue aprobada hoy.' : 'Esta actividad ya está en revisión.'}
               </Text>
             ) : null}
@@ -3004,7 +3006,7 @@ export default function UnifiedApp() {
               </View>
               {activityPhoto ? (
                 <>
-                  <Image accessible accessibilityLabel="Foto elegida como evidencia" source={{ uri: activityPhoto.uri }} style={styles.imagePreview} resizeMode="cover" />
+                  <Image accessible accessibilityLabel="Foto elegida como evidencia" onError={() => setActivityError('No se pudo mostrar la foto. Elige otra o regístrala sin foto.')} source={{ uri: activityPhoto.uri }} style={styles.imagePreview} resizeMode="cover" />
                   <View style={styles.between}>
                     <Text style={styles.muted}>Foto opcional · guardada en el espacio privado de tu cuenta.</Text>
                     <Pressable
@@ -3374,7 +3376,7 @@ export default function UnifiedApp() {
             <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: SHARED.errorFondo, borderColor: SHARED.errorBorde, gap: SPACE[8] }]}>
               <Text style={[styles.noticeText, { color: COLORS.error }]}>No se guardó el último cambio: {storageError}</Text>
               <Button
-                title="Recargar datos de Supabase"
+                title="Recargar datos"
                 small
                 variant="outline"
                 onPress={() => { void loadData(); }}
@@ -3395,7 +3397,7 @@ export default function UnifiedApp() {
           onSelect={id => {
             const item = NAV_ITEMS[role].find(candidate => candidate.id === id);
             if (!item) {
-              console.error(`Pestaña no disponible para el rol actual: ${id}`);
+              if (__DEV__) console.error(`Pestaña no disponible para el rol actual: ${id}`);
               return;
             }
             setSettingsSection('main');

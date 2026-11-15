@@ -105,15 +105,15 @@ export const EXERCISE_CATEGORIES = [
 export const FAQ_ITEMS = [
   {
     question: '¿Los datos de mis hijos son privados?',
-    answer: 'Los datos se guardan en el espacio privado de tu cuenta en Supabase y no se comparten públicamente.',
+    answer: 'Los datos se guardan en el espacio privado de tu cuenta en la nube y no se comparten públicamente.',
   },
   {
     question: '¿Quién puede revisar los avances?',
     answer: 'La persona tutora de la cuenta puede acompañar y revisar las actividades registradas.',
   },
   {
-    question: '¿Cómo se protege el acceso del tutor?',
-    answer: 'La cuenta usa correo y contraseña. Para volver al modo tutor se verifica la contraseña de la cuenta.',
+    question: '¿Cómo se protege el acceso de la persona tutora?',
+    answer: 'La cuenta usa correo y contraseña. Para volver al modo Tutor se verifica la contraseña de la cuenta.',
   },
   {
     question: '¿Warrior Kids da consejos médicos?',
@@ -121,7 +121,7 @@ export const FAQ_ITEMS = [
   },
   {
     question: '¿Cómo se guardan las fotos de actividades?',
-    answer: 'Las fotos opcionales se guardan en un espacio privado de Supabase asociado a la cuenta.',
+    answer: 'Las fotos opcionales se guardan en un espacio privado en la nube asociado a la cuenta.',
   },
 ] as const;
 
