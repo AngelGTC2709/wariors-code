@@ -1,7 +1,9 @@
 import { useEffect, type ReactNode } from 'react';
 import {
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -478,12 +480,12 @@ export function BottomSheet({
 }: Themed & { visible: boolean; onClose: () => void; children: ReactNode }) {
   return (
     <Modal transparent visible={visible} onRequestClose={onClose} animationType="none">
-      <View style={styles.sheetContainer}>
+      <KeyboardAvoidingView style={styles.sheetContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={onClose} style={StyleSheet.absoluteFill} />
         <View accessibilityViewIsModal style={[styles.sheet, { backgroundColor: theme.colors.fondoFin }]}>
           {children}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

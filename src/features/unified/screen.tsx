@@ -547,6 +547,10 @@ export default function UnifiedApp() {
   const [activityDuration, setActivityDuration] = useState('');
   const [activityPhoto, setActivityPhoto] = useState<PhotoDraft | null>(null);
   const [activityError, setActivityError] = useState('');
+  const [activitySubmitting, setActivitySubmitting] = useState(false);
+  const activitySubmittingRef = useRef(false);
+  const [reviewingKeys, setReviewingKeys] = useState<string[]>([]);
+  const reviewingActivities = useRef(new Set<string>());
   const [sleepInput, setSleepInput] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
@@ -1107,11 +1111,11 @@ export default function UnifiedApp() {
     }
     updateDailyLog(selectedProfile, todayKey(), log => ({ ...log, sleepHours: hours }));
     setSleepInput('');
-    setNotice('Tu registro de sueño quedó guardado en tu espacio familiar.');
+    setNotice('Registramos tus horas de sueño.');
   };
 
   const submitActivity = async () => {
-    if (!selectedProfile || !activityModal || !data) return;
+    if (!selectedProfile || !activityModal || !data || activitySubmittingRef.current) return;
     const duration = Number(activityDuration);
     if (!Number.isInteger(duration) || duration < 1 || duration > 180) {
       setActivityError('Escribe una duración en minutos entre 1 y 180.');
@@ -1122,6 +1126,8 @@ export default function UnifiedApp() {
       setActivityError('Esta actividad ya fue aprobada hoy. Elige otra para registrar.');
       return;
     }
+    activitySubmittingRef.current = true;
+    setActivitySubmitting(true);
     try {
       const evidenceUri = activityPhoto ? await storeEvidence(activityPhoto) : null;
       updateDailyLog(selectedProfile, todayKey(), log => ({
@@ -1138,6 +1144,9 @@ export default function UnifiedApp() {
       setNotice('Actividad enviada a la persona tutora para revisión.');
     } catch (error) {
       setActivityError(friendlyError(error, 'No se pudo guardar la evidencia en Supabase.'));
+    } finally {
+      activitySubmittingRef.current = false;
+      setActivitySubmitting(false);
     }
   };
 
@@ -1189,6 +1198,8 @@ export default function UnifiedApp() {
 
   const reviewActivity = async (profile: UnifiedProfile, date: string, activityId: string, approve: boolean) => {
     if (role !== 'tutor') return;
+    const reviewKey = `${profile.key}-${date}-${activityId}`;
+    if (reviewingActivities.current.has(reviewKey)) return;
     const log = data?.dailyLogs[profile.progressKey]?.[date];
     const activity = log?.activities[activityId];
     if (!activity || activity.status !== 'pending') return;
@@ -1207,6 +1218,8 @@ export default function UnifiedApp() {
       return;
     }
     if (activity.evidenceUri && !activity.evidenceUri.startsWith('data:')) {
+      reviewingActivities.current.add(reviewKey);
+      setReviewingKeys(current => [...current, reviewKey]);
       try {
         await deleteEvidence(activity.evidenceUri);
       } catch (error) {
@@ -1215,6 +1228,9 @@ export default function UnifiedApp() {
           ? `No se eliminó la foto, así que el registro se conservó. ${reason}`
           : 'No se eliminó la foto, así que el registro se conservó.');
         return;
+      } finally {
+        reviewingActivities.current.delete(reviewKey);
+        setReviewingKeys(current => current.filter(key => key !== reviewKey));
       }
     }
     updateDailyLog(profile, date, current => {
@@ -1222,7 +1238,9 @@ export default function UnifiedApp() {
       delete activities[activityId];
       return { ...current, activities };
     });
-    setNotice('Se pidió volver a registrar la actividad. La evidencia se eliminó de Supabase.');
+    setNotice(activity.evidenceUri
+      ? 'Se pidió volver a registrar la actividad. La foto se eliminó.'
+      : 'Se pidió volver a registrar la actividad.');
   };
 
   const claimMission = (missionId: string, points: number) => {
@@ -1350,11 +1368,12 @@ export default function UnifiedApp() {
       return;
     }
     if (avatarDraft.changed.length) {
-      updateData(current => {
+      const queued = updateData(current => {
         const selection = { ...(current.avatarSelections[avatarDraft.profileKey] ?? defaultAvatarSelection(selectedProfile.theme)) };
         avatarDraft.changed.forEach(key => { selection[key] = avatarDraft.selection[key]; });
         return { ...current, avatarSelections: { ...current.avatarSelections, [avatarDraft.profileKey]: selection } };
       });
+      if (queued) setNotice('¡Tu avatar quedó listo!');
     }
     setAvatarDraft(null);
     setChildSettingsSection('main');
@@ -1417,6 +1436,7 @@ export default function UnifiedApp() {
 
   const enterChildMode = (profileKey: string) => {
     if (authUser) startTransition('perfil', profileKey, authUser.id);
+    setNotice('');
     setSelectedProfileKey(profileKey);
     setRole('child');
     setTab('Familia');
@@ -1460,6 +1480,7 @@ export default function UnifiedApp() {
     try {
       await verifyTutorPassword(email, tutorGatePassword, userId);
       tutorGateFailedAttempts.current = 0;
+      setNotice('');
       setRole('tutor');
       setTab('Familia');
       setShowTutorGate(false);
@@ -2126,6 +2147,7 @@ export default function UnifiedApp() {
                       title="Pedir de nuevo"
                       small
                       variant="outline"
+                      disabled={reviewingKeys.includes(`${item.profile.key}-${item.date}-${item.activityId}`)}
                       style={styles.flex}
                       onPress={() => void reviewActivity(item.profile, item.date, item.activityId, false)}
                     />
@@ -2133,6 +2155,7 @@ export default function UnifiedApp() {
                       title="Aprobar"
                       small
                       variant="success"
+                      disabled={reviewingKeys.includes(`${item.profile.key}-${item.date}-${item.activityId}`)}
                       style={styles.flex}
                       onPress={() => void reviewActivity(item.profile, item.date, item.activityId, true)}
                     />
@@ -3003,7 +3026,12 @@ export default function UnifiedApp() {
                   {!selectedProfile ? 'Este perfil ya no está disponible.' : 'Esta actividad ya fue registrada hoy.'}
                 </Text>
               ) : null}
-              <Button title="Enviar a revisión" icon="send" disabled={!canRegister} onPress={() => void submitActivity()} />
+              <Button
+                title={activitySubmitting ? 'Enviando…' : 'Enviar a revisión'}
+                icon="send"
+                disabled={!canRegister || activitySubmitting}
+                onPress={() => void submitActivity()}
+              />
               <Button title="Volver a la actividad" variant="outline" onPress={() => setActivityStage('details')} />
             </ScrollView>
           ) : null}
