@@ -148,16 +148,9 @@ export const imitaAnimales: Scene = {
     },
   ],
   front: [],
-  labels: [
-    { id: 'label0', text: '🐧  Camina como pingüino' },
-    { id: 'label1', text: '🐸  Salta como rana' },
-    { id: 'label2', text: '🐱  Estírate como gato' },
-  ],
+  labels: [],
   pose(x: number) {
     const p: Pose = {
-      label0: { op: win(x, -0.05, 0.335) + win(x, 0.97, 1.4) },
-      label1: { op: win(x, 0.335, 0.665) },
-      label2: { op: win(x, 0.665, 1.0) },
     };
     const set = (id: string, v: Pose[string]) => (p[id] = { ...(p[id] || {}), ...v });
 
@@ -322,7 +315,7 @@ export const estiraGigante: Scene = {
     { id: 'star1', pivot: [168, 14], shapes: [star(168, 14, 12, C.yellow)] },
     { id: 'star2', pivot: [100, 0], shapes: [star(100, 0, 8, '#FF8FB1')] },
   ],
-  labels: [{ id: 'label0', text: '¡Más alto!' }],
+  labels: [],
   pose(x: number) {
     const s = stretchAmt(x);
     const hold = clamp((s - 0.85) / 0.15);
@@ -338,7 +331,6 @@ export const estiraGigante: Scene = {
       ribbon: { rot: 7 * sin(3 * x) },
       eyesClosed: { op: hold },
       eyesOpen: { op: 1 - hold, sy: blink(x, [0.95], 0.02) },
-      label0: { op: hold, ty: -6 * hold },
     };
     ['star0', 'star1', 'star2'].forEach((id, i) => {
       const pulse = 0.75 + 0.3 * Math.abs(sin(2 * x + i / 3));

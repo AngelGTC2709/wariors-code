@@ -1003,16 +1003,57 @@ export default function UnifiedApp() {
     }));
   };
 
-  const archiveProfile = () => {
+  const deleteProfile = async () => {
     if (role !== 'tutor' || !profileToArchive) return;
-    const key = profileToArchive.key;
+    const profile = profileToArchive;
+    const keys = unique([
+      profile.key,
+      profile.progressKey,
+      ...(profile.nutri ? [profileReference('nutribot', profile.nutri.id)] : []),
+      ...(profile.warrior ? [profileReference('warrior-kids', profile.warrior.id)] : []),
+    ]);
+    const paths: string[] = [];
+    for (const key of keys) {
+      for (const log of Object.values(dataRef.current?.dailyLogs[key] ?? {})) {
+        for (const activity of Object.values(log.activities)) {
+          if (activity.evidenceUri && !activity.evidenceUri.startsWith('data:')) paths.push(activity.evidenceUri);
+        }
+      }
+    }
+    try {
+      for (const path of paths) await deleteEvidence(path);
+    } catch (error) {
+      const reason = errorReason(error);
+      setNotice(reason
+        ? `No se eliminaron las fotos, así que el perfil se conservó. ${reason}`
+        : 'No se eliminaron las fotos, así que el perfil se conservó.');
+      return;
+    }
+    const omit = <T,>(record: Record<string, T>) =>
+      Object.fromEntries(Object.entries(record).filter(([key]) => !keys.includes(key)));
     updateData(current => ({
       ...current,
-      archivedProfiles: unique([...current.archivedProfiles, key]),
+      nutribot: {
+        ...current.nutribot,
+        ninos: current.nutribot.ninos.filter(child => child.id !== profile.nutri?.id),
+      },
+      warriorKids: {
+        ...current.warriorKids,
+        children: current.warriorKids.children.filter(child => child.id !== profile.warrior?.id),
+        selectedChildId: current.warriorKids.selectedChildId === profile.warrior?.id
+          ? null
+          : current.warriorKids.selectedChildId,
+      },
+      profileLinks: current.profileLinks.filter(link => link.id !== profile.link?.id),
+      archivedProfiles: current.archivedProfiles.filter(key => !keys.includes(key)),
+      avatarSelections: omit(current.avatarSelections),
+      dailyLogs: omit(current.dailyLogs),
+      childProgress: omit(current.childProgress),
+      missionClaims: omit(current.missionClaims),
     }));
-    if (selectedProfileKey === key) setSelectedProfileKey(null);
+    if (selectedProfileKey === profile.key) setSelectedProfileKey(null);
     setProfileToArchive(null);
-    setNotice('El perfil se ocultó de la aplicación. Sus datos se conservaron en tu espacio familiar.');
+    setNotice('El perfil y todos sus datos se eliminaron de forma permanente.');
   };
 
   const updateDailyLog = (
@@ -2431,7 +2472,7 @@ export default function UnifiedApp() {
               <Button title="Editar" small variant="outline" onPress={() => createOrEditProfile(profile)} />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Ocultar perfil ${profile.name}`}
+                accessibilityLabel={`Eliminar perfil ${profile.name}`}
                 onPress={() => setProfileToArchive(profile)}
                 style={styles.close}
               >
@@ -3127,13 +3168,13 @@ export default function UnifiedApp() {
 
   const renderArchiveModal = () => (
     <BottomSheet theme={theme} visible={role === 'tutor' && Boolean(profileToArchive)} onClose={() => setProfileToArchive(null)}>
-          <Text style={styles.modalTitle}>¿Ocultar este perfil?</Text>
+          <Text style={styles.modalTitle}>¿Eliminar este perfil?</Text>
           <Text style={[styles.body, { marginVertical: SPACE[12] }]}>
-            “{profileToArchive?.name}” dejará de aparecer en la app. Sus datos no se borrarán y el perfil no se desvinculará de su origen.
+            “{profileToArchive?.name}” se eliminará con todos sus datos, avances y fotos de evidencia. Esta acción no se puede deshacer.
           </Text>
           <View style={styles.horizontal}>
             <Button title="Cancelar" variant="outline" style={styles.flex} onPress={() => setProfileToArchive(null)} />
-            <Button title="Ocultar perfil" variant="danger" style={styles.flex} onPress={archiveProfile} />
+            <Button title="Eliminar perfil" variant="danger" style={styles.flex} onPress={deleteProfile} />
           </View>
     </BottomSheet>
   );
