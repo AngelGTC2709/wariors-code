@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, Field, Icon, styles } from '@/features/unified/ui';
 import { COLORS } from '@/features/unified/constants';
+import { friendlyError } from '@/features/unified/utils';
 import { getSupabaseClient } from '@/lib/supabase';
 
 export default function PasswordRecoveryScreen() {
@@ -49,7 +50,7 @@ export default function PasswordRecoveryScreen() {
 
     void initializeRecovery().catch(error => {
       if (!active) return;
-      setRecoveryError(error instanceof Error ? error.message : 'No se pudo configurar Supabase.');
+      setRecoveryError(friendlyError(error, 'No se pudo configurar Supabase.'));
     });
 
     return () => {
@@ -83,7 +84,7 @@ export default function PasswordRecoveryScreen() {
       setConfirmPassword('');
       setComplete(true);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'No se pudo actualizar la contraseña.');
+      setFormError(friendlyError(error, 'No se pudo actualizar la contraseña.'));
     } finally {
       setBusy(false);
     }

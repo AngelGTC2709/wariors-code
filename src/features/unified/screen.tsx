@@ -89,7 +89,7 @@ import {
   Tag,
   type AppIconName,
 } from '@/features/unified/ui';
-import { cleanText, unique } from '@/features/unified/utils';
+import { cleanText, errorReason, friendlyError, unique, userError } from '@/features/unified/utils';
 
 type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Logros' | 'Ajustes' | 'Ayuda';
 type PhotoDraft = {
@@ -595,7 +595,7 @@ export default function UnifiedApp() {
       return loaded;
     } catch (error) {
       if (generation === loadGeneration.current) {
-        setLoadError(error instanceof Error ? error.message : 'No se pudieron cargar los datos de Supabase.');
+        setLoadError(friendlyError(error, 'No se pudieron cargar los datos de Supabase.'));
       }
       return null;
     } finally {
@@ -652,14 +652,14 @@ export default function UnifiedApp() {
         })
         .catch(error => {
           if (!active) return;
-          setLoadError(error instanceof Error ? error.message : 'No se pudo restaurar la sesión de Supabase.');
+          setLoadError(friendlyError(error, 'No se pudo restaurar la sesión de Supabase.'));
           setLoading(false);
           setAuthReady(true);
         });
     } catch (error) {
       void Promise.resolve().then(() => {
         if (!active) return;
-        setLoadError(error instanceof Error ? error.message : 'No se pudo configurar Supabase.');
+        setLoadError(friendlyError(error, 'No se pudo configurar Supabase.'));
         setLoading(false);
         setAuthReady(true);
       });
@@ -717,7 +717,7 @@ export default function UnifiedApp() {
           },
         );
       } catch (error) {
-        setStorageError(error instanceof Error ? error.message : 'No se pudo iniciar la sincronización en tiempo real.');
+        setStorageError(friendlyError(error, 'No se pudo iniciar la sincronización en tiempo real.'));
       }
     });
 
@@ -757,7 +757,7 @@ export default function UnifiedApp() {
       error => {
         if (authUserId.current === userId) {
           writesBlocked.current = true;
-          setStorageError(error instanceof Error ? error.message : 'No se pudieron guardar los cambios en Supabase.');
+          setStorageError(friendlyError(error, 'No se pudieron guardar los cambios en Supabase.'));
         }
       },
     ).finally(() => {
@@ -846,7 +846,7 @@ export default function UnifiedApp() {
       } else if (normalized.includes('already registered') || normalized.includes('user already')) {
         setAuthError('Ese correo ya tiene una cuenta. Inicia sesión.');
       } else {
-        setAuthError(`No se pudo completar el acceso con Supabase: ${message}`);
+        setAuthError(friendlyError(error, 'No se pudo completar el acceso con Supabase.'));
       }
     } finally {
       setAuthBusy(false);
@@ -870,8 +870,7 @@ export default function UnifiedApp() {
       if (error) throw error;
       setAuthNotice('Si existe una cuenta con ese correo, recibirás instrucciones para restablecer tu contraseña.');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Error desconocido.';
-      setAuthError(`No se pudo enviar el correo de recuperación: ${message}`);
+      setAuthError(friendlyError(error, 'No se pudo enviar el correo de recuperación.'));
     } finally {
       setAuthBusy(false);
     }
@@ -1207,12 +1206,12 @@ export default function UnifiedApp() {
       setActivityError('');
       setNotice('Actividad enviada a la persona tutora para revisión.');
     } catch (error) {
-      setActivityError(error instanceof Error ? error.message : 'No se pudo guardar la evidencia en Supabase.');
+      setActivityError(friendlyError(error, 'No se pudo guardar la evidencia en Supabase.'));
     }
   };
 
   const storeEvidence = async (photo: PhotoDraft): Promise<string> => {
-    if (!session) throw new Error('Inicia sesión para guardar la evidencia.');
+    if (!session) throw userError('Inicia sesión para guardar la evidencia.');
     return uploadEvidence(session.id, photo.uri, photo.fileName, photo.mimeType);
   };
 
@@ -1253,7 +1252,7 @@ export default function UnifiedApp() {
         fileName: asset.fileName,
       });
     } catch (error) {
-      setActivityError(error instanceof Error ? error.message : 'No se pudo abrir la cámara o la galería.');
+      setActivityError(friendlyError(error, 'No se pudo abrir la cámara o la galería.'));
     }
   };
 
@@ -1280,8 +1279,9 @@ export default function UnifiedApp() {
       try {
         await deleteEvidence(activity.evidenceUri);
       } catch (error) {
-        setNotice(error instanceof Error
-          ? `No se eliminó la foto, así que el registro se conservó: ${error.message}`
+        const reason = errorReason(error);
+        setNotice(reason
+          ? `No se eliminó la foto, así que el registro se conservó. ${reason}`
           : 'No se eliminó la foto, así que el registro se conservó.');
         return;
       }
@@ -1445,7 +1445,7 @@ export default function UnifiedApp() {
       setRole('tutor');
       setTab('Familia');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo cerrar la sesión de Supabase.';
+      const message = friendlyError(error, 'No se pudo cerrar la sesión de Supabase.');
       setAuthError(message);
       setStorageError(message);
     }
@@ -1571,11 +1571,11 @@ export default function UnifiedApp() {
         setAuthReady(true);
         setLoading(false);
       }).catch(error => {
-        setLoadError(error instanceof Error ? error.message : 'No se pudo restaurar la sesión de Supabase.');
+        setLoadError(friendlyError(error, 'No se pudo restaurar la sesión de Supabase.'));
         setLoading(false);
       });
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'No se pudo configurar Supabase.');
+      setLoadError(friendlyError(error, 'No se pudo configurar Supabase.'));
       setLoading(false);
     }
   };
@@ -3460,7 +3460,7 @@ export default function UnifiedApp() {
         <View style={styles.loading}>
           <Icon name="warning" size={34} color={COLORS.orange} />
           <Text style={styles.cardTitle}>No se pudieron cargar las tipografías</Text>
-          <Text style={[styles.body, { textAlign: 'center' }]}>{fontError.message}</Text>
+          <Text style={[styles.body, { textAlign: 'center' }]}>Cierra y vuelve a abrir la app.</Text>
         </View>
       </SafeAreaView>
     );

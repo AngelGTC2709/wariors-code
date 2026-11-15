@@ -4,6 +4,7 @@ import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { getEvidenceUrl } from '@/features/unified/cloud-data';
 import { COLORS } from '@/features/unified/constants';
 import { RADIUS, SPACE } from '@/features/unified/tokens';
+import { friendlyError } from '@/features/unified/utils';
 
 type EvidencePhotoProps = {
   path: string;
@@ -22,7 +23,7 @@ export function EvidencePhoto({ path }: EvidencePhotoProps) {
         if (active) {
           setResult({
             path,
-            error: loadError instanceof Error ? loadError.message : 'No se pudo abrir la evidencia.',
+            error: friendlyError(loadError, 'No se pudo abrir la evidencia.'),
           });
         }
       },

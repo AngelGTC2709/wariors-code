@@ -8,6 +8,7 @@ import {
   type LocalAccount,
   type UnifiedData,
 } from '@/features/unified/model';
+import { userError } from '@/features/unified/utils';
 import { getSupabaseClient, type Json } from '@/lib/supabase';
 
 const EVIDENCE_BUCKET = 'activity-evidence';
@@ -19,7 +20,7 @@ export type CloudDataSnapshot = {
 
 export function accountFromUser(user: User): LocalAccount {
   const email = user.email?.trim().toLocaleLowerCase('es-MX') ?? '';
-  if (!email) throw new Error('La cuenta de Supabase no tiene un correo electrónico.');
+  if (!email) throw userError('La cuenta de Supabase no tiene un correo electrónico.');
   const metadataName = user.user_metadata?.name;
   const name = typeof metadataName === 'string' && metadataName.trim()
     ? metadataName.trim()
@@ -51,9 +52,9 @@ export async function loadCloudData(
     .eq('id_padre', user.id)
     .maybeSingle();
 
-  if (error) throw new Error(`No se pudieron cargar los datos de Supabase: ${error.message}`);
+  if (error) throw userError('No se pudieron cargar los datos de Supabase.', error);
   if (!parent) {
-    throw new Error('No encontramos el perfil familiar de esta cuenta. Verifica que se haya aplicado el SQL de configuración.');
+    throw userError('No encontramos el perfil familiar de esta cuenta. Verifica que se haya aplicado el SQL de configuración.');
   }
 
   if (parent.datos_app === null) {
@@ -62,7 +63,7 @@ export async function loadCloudData(
     return { data: initialData, version };
   }
   if (!isUnifiedData(parent.datos_app)) {
-    throw new Error('Los datos familiares en Supabase no tienen el formato esperado. No se sobrescribieron.');
+    throw userError('Los datos familiares en Supabase no tienen el formato esperado. No se sobrescribieron.');
   }
 
   return { data: parent.datos_app, version: parent.datos_app_version };
@@ -74,7 +75,7 @@ export async function saveCloudData(
   expectedVersion: number,
 ): Promise<number> {
   if (!isUnifiedData(data)) {
-    throw new Error('No se guardaron los cambios porque el formato nuevo no pasó la validación.');
+    throw userError('No se guardaron los cambios porque el formato nuevo no pasó la validación.');
   }
   const { data: updated, error } = await getSupabaseClient()
     .from('padres')
@@ -84,9 +85,9 @@ export async function saveCloudData(
     .select('datos_app_version')
     .maybeSingle();
 
-  if (error) throw new Error(`No se pudieron guardar los cambios en Supabase: ${error.message}`);
+  if (error) throw userError('No se pudieron guardar los cambios en Supabase.', error);
   if (!updated) {
-    throw new Error('Los datos cambiaron en otro dispositivo. Vuelve a cargar tu espacio para evitar sobrescribir cambios.');
+    throw userError('Los datos cambiaron en otro dispositivo. Vuelve a cargar tu espacio para evitar sobrescribir cambios.');
   }
   return updated.datos_app_version;
 }
@@ -109,7 +110,7 @@ export function subscribeToCloudData(
       payload => {
         const row = payload.new;
         if (typeof row.datos_app_version !== 'number' || !isUnifiedData(row.datos_app)) {
-          onError(new Error('Supabase envió datos familiares con un formato inesperado.'));
+          onError(userError('Supabase envió datos familiares con un formato inesperado.'));
           return;
         }
         onData({ data: row.datos_app, version: row.datos_app_version });
@@ -117,7 +118,7 @@ export function subscribeToCloudData(
     )
     .subscribe(status => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        onError(new Error('No se pudo mantener la sincronización en tiempo real con Supabase.'));
+        onError(userError('No se pudo mantener la sincronización en tiempo real con Supabase.'));
       }
     });
 }
@@ -141,13 +142,13 @@ export async function uploadEvidence(
     .storage
     .from(EVIDENCE_BUCKET)
     .upload(path, body, { contentType, upsert: false });
-  if (error) throw new Error(`No se pudo subir la evidencia a Supabase: ${error.message}`);
+  if (error) throw userError('No se pudo subir la evidencia a Supabase.', error);
   return data.path;
 }
 
 export async function deleteEvidence(path: string): Promise<void> {
   const { error } = await getSupabaseClient().storage.from(EVIDENCE_BUCKET).remove([path]);
-  if (error) throw new Error(`No se pudo eliminar la evidencia de Supabase: ${error.message}`);
+  if (error) throw userError('No se pudo eliminar la evidencia de Supabase.', error);
 }
 
 export async function getEvidenceUrl(path: string): Promise<string> {
@@ -155,6 +156,6 @@ export async function getEvidenceUrl(path: string): Promise<string> {
     .storage
     .from(EVIDENCE_BUCKET)
     .createSignedUrl(path, 60 * 60);
-  if (error) throw new Error(`No se pudo abrir la evidencia: ${error.message}`);
+  if (error) throw userError('No se pudo abrir la evidencia.', error);
   return data.signedUrl;
 }
