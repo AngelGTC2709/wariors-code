@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -23,6 +24,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import type { AccountRole } from './model';
 import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SHARED, SPACE, tint, useAppTheme } from './tokens';
@@ -476,16 +478,58 @@ export function LoadingDots({ theme }: Themed) {
   );
 }
 
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+const SHEET_SPRING = { duration: 300, dampingRatio: 0.8 } as const;
+
 export function BottomSheet({
   theme, visible, onClose, children,
 }: Themed & { visible: boolean; onClose: () => void; children: ReactNode }) {
+  const reduceMotion = useReduceMotion();
+  const { height: windowHeight } = useWindowDimensions();
+  // El Modal sigue montado hasta que termina la salida.
+  const [mounted, setMounted] = useState(visible);
+  if (visible && !mounted) setMounted(true);
+  // Conserva el último contenido visible para que no se vacíe mientras la hoja baja.
+  const [shownChildren, setShownChildren] = useState(children);
+  if (visible && shownChildren !== children) setShownChildren(children);
+
+  const progress = useSharedValue(0);
+  const sheetHeight = useSharedValue(windowHeight);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const target = visible ? 1 : 0;
+    const onFinish = (finished?: boolean) => {
+      'worklet';
+      if (finished && !visible) scheduleOnRN(setMounted, false);
+    };
+    progress.set(reduceMotion
+      ? withTiming(target, { duration: 200, easing: EASE_OUT }, onFinish)
+      : withSpring(target, { ...SHEET_SPRING, overshootClamping: !visible }, onFinish));
+  }, [mounted, progress, reduceMotion, visible]);
+
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: Math.min(1, Math.max(0, progress.get())) }));
+  const sheetStyle = useAnimatedStyle(() => (reduceMotion
+    ? { opacity: Math.min(1, Math.max(0, progress.get())), transform: [{ translateY: 0 }] }
+    : { opacity: 1, transform: [{ translateY: (1 - progress.get()) * sheetHeight.get() }] }));
+
   return (
-    <Modal transparent visible={visible} onRequestClose={onClose} animationType="none">
-      <KeyboardAvoidingView style={styles.sheetContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <Modal transparent visible={mounted} onRequestClose={onClose} animationType="none">
+      <KeyboardAvoidingView
+        style={[styles.sheetContainer, { pointerEvents: visible ? 'auto' : 'none' }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Animated.View style={[StyleSheet.absoluteFill, styles.sheetBackdrop, backdropStyle]} />
         <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={onClose} style={StyleSheet.absoluteFill} />
-        <View accessibilityViewIsModal style={[styles.sheet, { backgroundColor: theme.colors.fondoFin }]}>
-          {children}
-        </View>
+        <Animated.View
+          accessibilityViewIsModal
+          onLayout={event => sheetHeight.set(event.nativeEvent.layout.height)}
+          style={[styles.sheet, { backgroundColor: theme.colors.fondoFin }, sheetStyle]}
+        >
+          {/* Faldón: cubre el hueco inferior cuando el resorte rebasa un poco hacia arriba. */}
+          <View pointerEvents="none" style={[styles.sheetSkirt, { backgroundColor: theme.colors.fondoFin }]} />
+          {visible ? children : shownChildren}
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -541,6 +585,8 @@ const styles = StyleSheet.create({
   legendDot: { width: 8, height: 8, borderRadius: RADIUS.pildora },
   loadingDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE[8] },
   loadingDot: { width: 12, height: 12, borderRadius: RADIUS.pildora },
-  sheetContainer: { flex: 1, justifyContent: 'flex-end', backgroundColor: SHARED.fondoModal },
+  sheetContainer: { flex: 1, justifyContent: 'flex-end' },
+  sheetBackdrop: { backgroundColor: SHARED.fondoModal },
   sheet: { maxHeight: '90%', borderTopLeftRadius: RADIUS.hero, borderTopRightRadius: RADIUS.hero, padding: SPACE[20] },
+  sheetSkirt: { position: 'absolute', top: '100%', left: 0, right: 0, height: 48 },
 });
