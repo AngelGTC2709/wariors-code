@@ -1,8 +1,9 @@
 {
   "expo": {
     "name": "Warrior Kids",
-    "slug": "FamilyWellnessApp",
-    "version": "1.0.0",
+    "slug": "warior-kids",
+    "owner": "warriors-kids",
+    "version": "5.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "warriorkids",
@@ -18,7 +19,10 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "output": "static",
@@ -53,16 +57,21 @@
           "enableBackgroundPlayback": false,
           "enableBackgroundRecording": false
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
-      "router": {},
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
       "eas": {
-        "projectId": "658f016d-47b0-4089-8df3-35715dee4ff7"
+        "projectId": "0d4ca4dc-5965-4fa6-8690-5d2b5a3d8c5e"
       }
     }
   }
