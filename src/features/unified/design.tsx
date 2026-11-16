@@ -725,7 +725,7 @@ const styles = StyleSheet.create({
   bottomBar: { flexDirection: 'row', backgroundColor: SHARED.fondoInferior, borderTopWidth: BORDER.fino, borderTopLeftRadius: RADIUS.tarjeta, borderTopRightRadius: RADIUS.tarjeta, paddingTop: SPACE[8] },
   bottomTab: { minHeight: 54, flex: 1, alignItems: 'center', justifyContent: 'center' },
   bottomTabContent: { alignItems: 'center' },
-  tabIcon: { width: 52, height: 32, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
+  tabIcon: { width: 52, height: 32, borderRadius: 16, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   heroCard: { borderRadius: RADIUS.hero, overflow: 'hidden', padding: SPACE[24], minHeight: 220 },
   heroContent: { alignItems: 'flex-start', width: '70%', gap: SPACE[12], zIndex: 1 },
   heroSubtitle: { opacity: 0.8 },

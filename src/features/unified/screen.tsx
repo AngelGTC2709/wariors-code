@@ -195,8 +195,8 @@ const screenStyles = StyleSheet.create({
   avatarColor: { width: 38, height: 38, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
   avatarCheck: { width: 22, height: 22, borderRadius: RADIUS.pildora, backgroundColor: SHARED.tarjeta, alignItems: 'center', justifyContent: 'center' },
   helpLogo: { width: 120, height: 120, alignSelf: 'center' },
-  summaryRow: { flexDirection: 'row', gap: SPACE[12] },
-  summaryCard: { flex: 1, minWidth: 0, backgroundColor: SHARED.tarjeta, borderRadius: RADIUS.tarjeta, padding: SPACE[16], gap: SPACE[4], ...SHADOW.tarjeta },
+  summaryRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
+  summaryCard: { width: '48%', backgroundColor: SHARED.tarjeta, borderRadius: RADIUS.tarjeta, padding: SPACE[16], gap: SPACE[4], ...SHADOW.tarjeta },
   selectionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[8] },
   selectionPill: { minHeight: 44, paddingHorizontal: SPACE[16], borderRadius: RADIUS.pildora, justifyContent: 'center', alignItems: 'center' },
   ingredientPill: { borderRadius: RADIUS.pildora, paddingHorizontal: SPACE[8], paddingVertical: SPACE[4] },
@@ -3499,6 +3499,7 @@ export default function UnifiedApp() {
         </View>
         {renderTutorProfileStrip()}
         <ScrollView
+          key={role}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
