@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -92,6 +92,7 @@ import {
 import { cleanText, errorReason, friendlyError, unique, userError } from '@/features/unified/utils';
 
 type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Logros' | 'Ajustes' | 'Ayuda';
+type ChildHomeSection = 'habitos' | 'semana' | 'movimiento' | 'nutribot';
 type PhotoDraft = {
   uri: string;
   mimeType?: string | null;
@@ -202,6 +203,8 @@ const screenStyles = StyleSheet.create({
   waterGlasses: { flexDirection: 'row', flexWrap: 'wrap', maxWidth: 150, gap: SPACE[8] },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE[12], marginBottom: SPACE[12] },
   sheetContent: { gap: SPACE[12], paddingBottom: SPACE[12] },
+  collapsibleHeader: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE[16], borderRadius: RADIUS.habito },
+  collapsibleContent: { gap: SPACE[12] },
 });
 
 const MEALS: { id: keyof WeeklyMeals; title: string; icon: AppIconName }[] = [
@@ -442,13 +445,24 @@ function recipeCategory(recipe: Recipe): 'desayuno' | 'comida' | 'colacion' {
   return 'comida';
 }
 
-function recipeWarnings(recipe: Recipe, concerns: string[]): string[] {
-  const contents = cleanText(`${recipe.title} ${recipe.ingredients.join(' ')}`);
-  return concerns.filter(concern => {
-    const option = FOOD_OPTIONS.find(item => item.id === concern);
-    const terms = option ? [...option.keywords, option.name] : [concern];
-    return terms.some(term => contents.includes(cleanText(term)));
+function recipeMatchesFilter(recipe: Recipe, filter: (typeof RECIPE_FILTERS)[number]['id'], search: string): boolean {
+  const query = cleanText(search);
+  return (filter === 'todas' || recipeCategory(recipe) === filter) &&
+    (!query || cleanText(`${recipe.title} ${recipe.ingredients.join(' ')}`).includes(query));
+}
+
+function matchesConcern(text: string, concern: string): boolean {
+  const option = FOOD_OPTIONS.find(item => item.id === concern);
+  const terms = option ? [...option.keywords, option.name] : [concern];
+  const contents = cleanText(text);
+  return terms.some(term => {
+    const normalized = cleanText(term);
+    return normalized.length > 0 && contents.includes(normalized);
   });
+}
+
+function recipeWarnings(recipe: Recipe, concerns: string[]): string[] {
+  return concerns.filter(concern => matchesConcern(`${recipe.title} ${recipe.ingredients.join(' ')}`, concern));
 }
 
 function getMealName(value: keyof WeeklyMeals): string {
@@ -507,6 +521,9 @@ export default function UnifiedApp() {
   const [selectedProfileKey, setSelectedProfileKey] = useState<string | null>(null);
   const [showChildProfilePicker, setShowChildProfilePicker] = useState(false);
   const [tab, setTab] = useState<AppTab>('Familia');
+  const [childHomeSections, setChildHomeSections] = useState<Record<ChildHomeSection, boolean>>({
+    habitos: true, semana: false, movimiento: false, nutribot: false,
+  });
   const [settingsSection, setSettingsSection] = useState<'main' | 'parental' | 'notifications' | 'help'>('main');
   const [profileStep, setProfileStep] = useState(0);
 
@@ -536,6 +553,8 @@ export default function UnifiedApp() {
   const [menuPicker, setMenuPicker] = useState<{ day: string; meal: keyof WeeklyMeals } | null>(null);
   const [recipeFilter, setRecipeFilter] = useState<(typeof RECIPE_FILTERS)[number]['id']>('todas');
   const [recipeSearch, setRecipeSearch] = useState('');
+  const [menuRecipeFilter, setMenuRecipeFilter] = useState<(typeof RECIPE_FILTERS)[number]['id']>('todas');
+  const [menuRecipeSearch, setMenuRecipeSearch] = useState('');
   const [dietMode, setDietMode] = useState(false);
   const [dietDay, setDietDay] = useState(WEEKDAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]);
   const [recipeDetails, setRecipeDetails] = useState<Recipe | null>(null);
@@ -1320,6 +1339,12 @@ export default function UnifiedApp() {
     setNotice(`Receta agregada a ${getMealName(meal).toLocaleLowerCase('es-MX')} del ${day}.`);
   };
 
+  const openMenuPicker = (day: string, meal: keyof WeeklyMeals) => {
+    setMenuRecipeSearch('');
+    setMenuRecipeFilter('todas');
+    setMenuPicker({ day, meal });
+  };
+
   const sendChatMessage = () => {
     const text = chatInput.trim();
     if (!text) return;
@@ -1724,13 +1749,16 @@ export default function UnifiedApp() {
     </Pressable>
   );
 
-  const renderIngredientPills = (ingredients: string[]) => (
+  const renderIngredientPills = (ingredients: string[], concerns: string[] = []) => (
     <View style={styles.wrap}>
       {ingredients.map(ingredient => {
         const group = RECIPE_INGREDIENT_GROUPS[ingredient];
-        const colors = group ? FOOD_GROUP_COLORS[group] : { fondo: theme.colors.apagada, texto: theme.colors.textoSecundario };
+        const matchesAllergy = concerns.some(concern => matchesConcern(ingredient, concern));
+        const colors = matchesAllergy
+          ? { fondo: SHARED.errorFondo, texto: COLORS.error }
+          : group ? FOOD_GROUP_COLORS[group] : { fondo: theme.colors.apagada, texto: theme.colors.textoSecundario };
         return (
-          <View key={ingredient} style={[screenStyles.ingredientPill, { backgroundColor: colors.fondo }]}>
+          <View key={ingredient} style={[screenStyles.ingredientPill, { backgroundColor: colors.fondo }, matchesAllergy && { borderWidth: BORDER.fino, borderColor: SHARED.error }]}>
             <Text style={[theme.type.counter, { color: colors.texto }]}>{ingredient}</Text>
           </View>
         );
@@ -1748,6 +1776,18 @@ export default function UnifiedApp() {
       </Text>
     </View>
   ) : null;
+
+  const renderRecipeAllergyWarning = (recipe: Recipe) => {
+    const warnings = recipeWarnings(recipe, profileAllergies);
+    if (!warnings.length) return null;
+    return (
+      <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: SHARED.errorFondo, borderColor: SHARED.errorBorde }]}>
+        <Text style={[styles.noticeText, { color: COLORS.error }]}>
+          Revisa estos ingredientes por alergias registradas: {warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.
+        </Text>
+      </View>
+    );
+  };
 
   const renderAvatar = (profile: UnifiedProfile, size: 'large' | 'small' = 'large') => {
     return (
@@ -1804,12 +1844,29 @@ export default function UnifiedApp() {
         values: {
           agua: daily.water,
           alimentacion: foodGroupCount,
-          estudio: 0,
           descanso: daily.sleepHours ?? 0,
         },
       };
     });
     const maxRecentValue = Math.max(8, waterGoal, ...recentDays.flatMap(day => Object.values(day.values)));
+    const section = (id: ChildHomeSection, title: string, children: ReactNode) => {
+      const expanded = childHomeSections[id];
+      return (
+        <View style={screenStyles.collapsibleContent}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={title}
+            accessibilityState={{ expanded }}
+            onPress={() => setChildHomeSections(current => ({ ...current, [id]: !current[id] }))}
+            style={[screenStyles.collapsibleHeader, { backgroundColor: theme.colors.acentoSuave }]}
+          >
+            <Text style={[theme.type.h3, { color: theme.colors.texto }]}>{title}</Text>
+            <Text style={[theme.type.h2, { color: theme.colors.acento }]}>{expanded ? '−' : '+'}</Text>
+          </Pressable>
+          {expanded ? <View style={screenStyles.collapsibleContent}>{children}</View> : null}
+        </View>
+      );
+    };
     return (
       <>
         <HeroCard
@@ -1821,6 +1878,7 @@ export default function UnifiedApp() {
           onAction={openAvatarEditor}
         />
 
+        {section('habitos', 'Mis hábitos y retos', <>
         <View style={screenStyles.sectionHeading}>
           <Text style={[theme.type.h2, { color: theme.colors.texto }]}>Mis hábitos de hoy</Text>
           <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Avanza con calma, a tu manera.</Text>
@@ -1837,7 +1895,13 @@ export default function UnifiedApp() {
           onIncrease={() => addWater(1)}
           points={MISSION_POINTS['water-goal']}
         />
-        <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>Reclama el reto de agua para ganar {MISSION_POINTS['water-goal']} puntos.</Text>
+        <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>
+          {claimList.includes('water-goal')
+            ? '¡Ya completaste el reto de agua de hoy!'
+            : log.water >= waterGoal
+              ? `Tu reto de agua está listo. Reclama ${MISSION_POINTS['water-goal']} puntos en Retos para hoy.`
+              : `Al llegar a tu meta, podrás reclamar ${MISSION_POINTS['water-goal']} puntos en Retos para hoy.`}
+        </Text>
 
         <SectionCard theme={theme} role="child" title="Colores en mi plato" subtitle="Marca los grupos que probaste hoy.">
           <View style={styles.wrap}>
@@ -1918,9 +1982,11 @@ export default function UnifiedApp() {
           })}
         </SectionCard>
 
-        <SectionCard theme={theme} role="child" title="Mi semana" subtitle="Hábitos y actividades registradas en los últimos 7 días.">
+        </>)}
+
+        {section('semana', 'Mi semana', <>
+        <SectionCard theme={theme} role="child" title="Mi semana" subtitle="Hábitos registrados en los últimos 7 días.">
           <BarChart theme={theme} days={recentDays} max={maxRecentValue} />
-          <Text style={styles.muted}>El estudio aún no tiene registros diarios en esta sección.</Text>
           {selectedProfile.nutri && (selectedProfile.nutri.peso || selectedProfile.nutri.altura) ? (
             <View style={styles.wrap}>
               {selectedProfile.nutri.edad ? <Tag title={`${selectedProfile.nutri.edad} años`} color={COLORS.pink} icon="profile" /> : null}
@@ -1941,6 +2007,9 @@ export default function UnifiedApp() {
           <Button title="Ver mis logros" small icon="achievements" variant="secondary" onPress={() => setTab('Logros')} />
         </SectionCard>
 
+        </>)}
+
+        {section('movimiento', 'Movimiento', <>
         <SectionCard theme={theme} role="child" title="Movimiento a tu manera" subtitle="Elige una actividad segura y pide apoyo si lo necesitas.">
           {ACTIVITY_CATALOG.map(activity => {
             const saved = log.activities[activity.id];
@@ -1997,6 +2066,9 @@ export default function UnifiedApp() {
           <Text style={styles.footer}>Elige actividades que se sientan cómodas. Detente si algo duele y pide ayuda a una persona adulta.</Text>
         </SectionCard>
 
+        </>)}
+
+        {section('nutribot', 'NutriBot', <>
         <SectionCard theme={theme} role="child" title="¿Platicamos con NutriBot?">
           <View style={styles.between}>
             <View style={styles.flex}>
@@ -2005,6 +2077,7 @@ export default function UnifiedApp() {
             <Button title="Abrir" small icon="leaf" onPress={() => setChatOpen(true)} />
           </View>
         </SectionCard>
+        </>)}
       </>
     );
   };
@@ -2275,12 +2348,7 @@ export default function UnifiedApp() {
 
   const renderRecipes = () => {
     if (!data) return null;
-    const filteredRecipes = RECIPES.filter(recipe => {
-      const byCategory = recipeFilter === 'todas' || recipeCategory(recipe) === recipeFilter;
-      const query = cleanText(recipeSearch);
-      const byQuery = !query || cleanText(`${recipe.title} ${recipe.ingredients.join(' ')}`).includes(query);
-      return byCategory && byQuery;
-    });
+    const filteredRecipes = RECIPES.filter(recipe => recipeMatchesFilter(recipe, recipeFilter, recipeSearch));
     return (
       <>
         {renderTutorIntro('COCINA EN FAMILIA', 'Recetas con color', 'Ideas sencillas para disfrutar y aprender juntos.')}
@@ -2360,6 +2428,7 @@ export default function UnifiedApp() {
             ))}
           </View>
         </ScrollView>
+        <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Menú del {selectedDay}</Text>
         {renderFoodPreferences()}
         {MEALS.map(meal => {
           const recipe = RECIPES.find(item => item.id === meals[meal.id]);
@@ -2388,7 +2457,7 @@ export default function UnifiedApp() {
                     variant="outline"
                     onPress={() => {
                       setSelectedMeal(meal.id);
-                      setMenuPicker({ day: selectedDay, meal: meal.id });
+                      openMenuPicker(selectedDay, meal.id);
                     }}
                   />
                 ) : null}
@@ -2411,7 +2480,7 @@ export default function UnifiedApp() {
           </Text>
         </Card>
         {role === 'tutor' ? (
-          <Button title="Elegir una receta" icon="add" onPress={() => setMenuPicker({ day: selectedDay, meal: selectedMeal })} />
+          <Button title={`Elegir receta para ${getMealName(selectedMeal).toLocaleLowerCase('es-MX')}`} icon="add" onPress={() => openMenuPicker(selectedDay, selectedMeal)} />
         ) : null}
       </>
     );
@@ -3100,8 +3169,9 @@ export default function UnifiedApp() {
         <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={screenStyles.sheetContent}>
           <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{recipeDetails.groups}</Text>
           {renderFoodPreferences()}
+          {renderRecipeAllergyWarning(recipeDetails)}
           <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Ingredientes</Text>
-          {renderIngredientPills(recipeDetails.ingredients)}
+          {renderIngredientPills(recipeDetails.ingredients, profileAllergies)}
           <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Preparación</Text>
           <Text style={[theme.type.body, { color: theme.colors.texto }]}>{recipeDetails.preparation}</Text>
           <View style={styles.notice}><Text style={styles.noticeText}>{recipeDetails.note}</Text></View>
@@ -3115,19 +3185,32 @@ export default function UnifiedApp() {
     <BottomSheet theme={theme} visible={role === 'tutor' && Boolean(menuPicker)} onClose={() => setMenuPicker(null)}>
       <View style={screenStyles.sheetHeader}>
         <Text style={[theme.type.h2, styles.flex, { color: theme.colors.texto }]}>
-          Elegir receta · {menuPicker ? getMealName(menuPicker.meal) : ''}
+          Elegir receta · {menuPicker ? `${menuPicker.day}, ${getMealName(menuPicker.meal)}` : ''}
         </Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setMenuPicker(null)} style={[styles.close, { minWidth: 44, minHeight: 44 }]}>
           <Icon name="close" size={18} color={theme.colors.texto} />
         </Pressable>
       </View>
       {menuPicker ? (
-        <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={screenStyles.sheetContent}>
+        <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={screenStyles.sheetContent} keyboardShouldPersistTaps="handled">
           {renderFoodPreferences()}
-          {RECIPES.map(recipe => {
+          <Field
+            label="Buscar receta o ingrediente"
+            onChangeText={setMenuRecipeSearch}
+            placeholder="Ej. avena, frijoles…"
+            value={menuRecipeSearch}
+          />
+          <View style={screenStyles.selectionRow}>
+            {RECIPE_FILTERS.map(filter => (
+              <View key={filter.id}>
+                {renderSelectionPill(filter.label, menuRecipeFilter === filter.id, () => setMenuRecipeFilter(filter.id))}
+              </View>
+            ))}
+          </View>
+          {RECIPES.filter(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)).map(recipe => {
             const warnings = recipeWarnings(recipe, profileAllergies);
             const warningText = warnings.length
-              ? `Revisa estos ingredientes: ${warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.`
+              ? `Revisa estos ingredientes por alergias registradas: ${warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.`
               : '';
             return (
               <Pressable
@@ -3137,12 +3220,18 @@ export default function UnifiedApp() {
                 onPress={() => assignRecipe(menuPicker.day, menuPicker.meal, recipe.id)}
               >
                 <SectionCard theme={theme} role="tutor" title={recipe.title} subtitle={recipe.groups}>
-                  {renderIngredientPills(recipe.ingredients)}
-                  {warningText ? <Text style={styles.errorText}>{warningText}</Text> : null}
+                  {renderIngredientPills(recipe.ingredients, profileAllergies)}
+                  {renderRecipeAllergyWarning(recipe)}
                 </SectionCard>
               </Pressable>
             );
           })}
+          {!RECIPES.some(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)) ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.body}>No encontramos recetas con esos filtros.</Text>
+              <Button title="Limpiar búsqueda" small variant="outline" onPress={() => { setMenuRecipeSearch(''); setMenuRecipeFilter('todas'); }} />
+            </View>
+          ) : null}
           <PillButton theme={theme} label="Quitar receta asignada" variant="ghost" onPress={() => assignRecipe(menuPicker.day, menuPicker.meal, null)} />
         </ScrollView>
       ) : null}

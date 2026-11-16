@@ -26,10 +26,12 @@ El perfil `preview` genera un APK para Android. La build interna de iOS requiere
 - Alta y edición de perfiles infantiles en seis fases, con avatar, datos y dictamen opcional del especialista, selección por grupos de alimentos y confirmación.
 - Navegación por rol: el menú semanal aparece en el espacio tutor y la niñez tiene un apartado dedicado a sus logros; las personas tutoras pueden revisar puntos e insignias.
 - Registro de agua, grupos de alimentos, ánimo, descanso, movimiento y evidencia fotográfica opcional.
+- Inicio infantil con secciones plegables y gráfica semanal de agua, alimentación y descanso.
 - Actividades de movimiento con escenas animadas del jaguar, pasos y consejos de seguridad; las animaciones respetan la preferencia de movimiento reducido.
 - Aprobación de actividades, puntos, retos y personalización de avatar con iconos vectoriales.
 - Preferencia de sonido y música sincronizada; por ahora no reproduce audio.
 - Catálogo de recetas, búsqueda y filtros, menú semanal de desayuno, comida y cena, y plan educativo del Plato del Buen Comer.
+- Buscador y filtros al asignar recetas al menú; los ingredientes relacionados con alergias registradas se destacan de forma orientativa.
 - Avisos orientativos de alergias y alimentos que gustan o se prefieren evitar, preguntas frecuentes y respuestas predefinidas de NutriBot. El dictamen no asigna planes automáticamente.
 - Vinculación manual de perfiles de NutriBot Familiar y Warrior Kids. Los valores diferentes y sus fuentes se conservan.
 

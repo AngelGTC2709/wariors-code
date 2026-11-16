@@ -392,7 +392,6 @@ export function ListRow({
 const CHART_SERIES = [
   { key: 'agua', label: 'Agua' },
   { key: 'alimentacion', label: 'Alimentación' },
-  { key: 'estudio', label: 'Estudio' },
   { key: 'descanso', label: 'Descanso' },
 ] as const;
 type ChartSeries = (typeof CHART_SERIES)[number]['key'];
