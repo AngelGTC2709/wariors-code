@@ -9,6 +9,7 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -681,7 +682,7 @@ export function BottomSheet({
           <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={onClose} style={StyleSheet.absoluteFill} />
           <Animated.View
             accessibilityViewIsModal
-            onLayout={event => sheetHeight.set(event.nativeEvent.layout.height)}
+            onLayout={(event: LayoutChangeEvent) => sheetHeight.set(event.nativeEvent.layout.height)}
             style={[styles.sheet, { backgroundColor: theme.colors.fondoFin }, sheetStyle]}
           >
             {/* Faldón: cubre el hueco inferior cuando el resorte o la resistencia suben la hoja. */}
