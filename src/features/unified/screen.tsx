@@ -70,7 +70,7 @@ import {
   uploadEvidence,
   verifyTutorPassword,
 } from '@/features/unified/cloud-data';
-import { BarChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion, type ChartDay } from '@/features/unified/design';
+import { AchievementCelebration, BarChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion, type ChartDay } from '@/features/unified/design';
 import { ActivityAnimation } from '@/features/unified/animations';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
@@ -2071,6 +2071,7 @@ export default function UnifiedApp() {
     return (
       <>
         <HeroCard
+          key={selectedProfile?.key ?? 'sin-perfil'}
           theme={theme}
           title={`¡Hola, ${session?.name ?? 'familia'}!`}
           subtitle={`Acompaña los hábitos de tu familia. Puntos del perfil: ${selectedProfile?.name ?? 'sin seleccionar'}.`}
@@ -3457,6 +3458,17 @@ export default function UnifiedApp() {
                 points={getProgress(data, selectedProfile).points} avatar={renderAvatar(selectedProfile)} />
             ) : null}
           </View>
+        ) : null}
+        {role === 'child' && data && selectedProfile ? (
+          <AchievementCelebration
+            theme={theme}
+            profileKey={selectedProfile.key}
+            badges={unique(getProgress(data, selectedProfile).badges)}
+            describe={badge => ({
+              title: ACHIEVEMENT_INFO[badge]?.title ?? badge.replace(/[-_]/g, ' '),
+              icon: ACHIEVEMENT_INFO[badge]?.icon ?? 'achievements',
+            })}
+          />
         ) : null}
       </View>
       {renderProfileModal()}

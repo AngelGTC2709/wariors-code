@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -23,6 +23,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { GestureDetector, GestureHandlerRootView, usePanGesture } from 'react-native-gesture-handler';
 import Svg, { Circle } from 'react-native-svg';
 import { scheduleOnRN } from 'react-native-worklets';
 
@@ -36,6 +37,7 @@ type Themed = { theme: Theme };
 type FoodGroup = keyof typeof FOOD_GROUP_COLORS;
 
 const LOGO = require('@/assets/images/wk-logo.png');
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 
 export { useReduceMotion };
 
@@ -259,15 +261,33 @@ export function HeroCard({
       offset.set(0);
     }
   }, [offset, reduceMotion]);
+  // Pulso sutil solo cuando los puntos suben; no en el montaje ni cuando bajan.
+  const pointsScale = useSharedValue(1);
+  const pointsOpacity = useSharedValue(1);
+  const pointsStyle = useAnimatedStyle(() => ({ opacity: pointsOpacity.get(), transform: [{ scale: pointsScale.get() }] }));
+  const previousPoints = useRef(points);
+  useEffect(() => {
+    const increased = points > previousPoints.current;
+    previousPoints.current = points;
+    if (!increased) return;
+    if (reduceMotion) {
+      pointsOpacity.set(withSequence(withTiming(0.6, { duration: 0 }), withTiming(1, { duration: 200, easing: EASE_OUT })));
+    } else {
+      pointsScale.set(withSequence(
+        withTiming(1.08, { duration: 150, easing: EASE_OUT }),
+        withSpring(1, { duration: 300, dampingRatio: 1 }),
+      ));
+    }
+  }, [points, pointsOpacity, pointsScale, reduceMotion]);
   return (
     <View style={[styles.heroCard, { backgroundColor: theme.colors.hero }]}>
       <View style={styles.heroContent}>
         <Text style={[theme.type.hero, { color: theme.colors.sobreAcento }]}>{title}</Text>
         <Text style={[theme.type.heroSubtitle ?? theme.type.body, styles.heroSubtitle, { color: theme.colors.sobreAcento }]}>{subtitle}</Text>
-        <View style={[styles.pointsPill, { backgroundColor: tint(SHARED.puntos, 0.2) }]}>
+        <Animated.View style={[styles.pointsPill, { backgroundColor: tint(SHARED.puntos, 0.2) }, pointsStyle]}>
           <Icon name="points" size={16} color={SHARED.puntos} />
           <Text style={[theme.type.caption, { color: theme.colors.sobreAcento }]}>{points} puntos</Text>
-        </View>
+        </Animated.View>
         <PillButton theme={theme} label={actionLabel} onPress={onAction} style={styles.heroButton} />
       </View>
       <Animated.View style={[styles.heroLogo, animatedStyle]}>
@@ -289,15 +309,21 @@ function HabitProgress({ value, max, color }: { value: number; max: number; colo
   const reduceMotion = useReduceMotion();
   const progress = useSharedValue(0);
   const ratio = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
-  const animatedStyle = useAnimatedStyle(() => ({ width: `${progress.get() * 100}%` }));
+  // El relleno ocupa toda la pista y se desliza con translateX: sin relayout por frame y sin deformar la punta redonda.
+  const trackWidth = useSharedValue(0);
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: trackWidth.get() > 0 ? 1 : 0,
+    transform: [{ translateX: (progress.get() - 1) * trackWidth.get() }],
+  }));
   useEffect(() => {
-    progress.set(reduceMotion ? ratio : withTiming(ratio, { duration: 300 }));
+    progress.set(reduceMotion ? ratio : withTiming(ratio, { duration: 200, easing: EASE_OUT }));
     return () => cancelAnimation(progress);
   }, [progress, ratio, reduceMotion]);
   return (
     <View
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: 100, now: Math.round(ratio * 100) }}
+      onLayout={event => trackWidth.set(event.nativeEvent.layout.width)}
       style={[styles.progressTrack, { backgroundColor: SHARED.apagada }]}
     >
       <Animated.View style={[styles.progressFill, { backgroundColor: color }, animatedStyle]} />
@@ -369,18 +395,25 @@ const CHART_SERIES = [
   { key: 'descanso', label: 'Descanso' },
 ] as const;
 type ChartSeries = (typeof CHART_SERIES)[number]['key'];
+const CHART_HEIGHT = 100;
 export type ChartDay = { label: string; values: Record<ChartSeries, number> };
 
+// Las barras tienen altura fija (CHART_HEIGHT) y suben con translateY dentro de un carril que recorta:
+// sin relayout por frame y la tapa redonda no se aplasta como con scaleY.
 function ChartBar({ height, color, index, reduceMotion }: { height: number; color: string; index: number; reduceMotion: boolean }) {
   const animatedHeight = useSharedValue(0);
-  const animatedStyle = useAnimatedStyle(() => ({ height: animatedHeight.get() }));
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ translateY: CHART_HEIGHT - animatedHeight.get() }] }));
   useEffect(() => {
     animatedHeight.set(reduceMotion
       ? height
-      : withDelay(index * 40, withTiming(height, { duration: 600, easing: Easing.out(Easing.cubic) })));
+      : withDelay(index * 40, withTiming(height, { duration: 600, easing: EASE_OUT })));
     return () => cancelAnimation(animatedHeight);
   }, [animatedHeight, height, index, reduceMotion]);
-  return <Animated.View style={[styles.chartBar, { backgroundColor: color }, animatedStyle]} />;
+  return (
+    <View style={styles.chartLane}>
+      <Animated.View style={[styles.chartBar, { backgroundColor: color }, animatedStyle]} />
+    </View>
+  );
 }
 
 export function BarChart({ theme, days, max }: Themed & { days: readonly ChartDay[]; max: number }) {
@@ -398,7 +431,7 @@ export function BarChart({ theme, days, max }: Themed & { days: readonly ChartDa
             <View style={styles.chartBars}>
               {CHART_SERIES.map((series, seriesIndex) => {
                 const value = day.values[series.key];
-                const height = max > 0 ? Math.max(0, Math.min(1, value / max)) * 100 : 0;
+                const height = max > 0 ? Math.max(0, Math.min(1, value / max)) * CHART_HEIGHT : 0;
                 return <ChartBar key={series.key} height={height} color={theme.colors.grafica[series.key]} index={dayIndex * CHART_SERIES.length + seriesIndex} reduceMotion={reduceMotion} />;
               })}
             </View>
@@ -478,8 +511,88 @@ export function LoadingDots({ theme }: Themed) {
   );
 }
 
-const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+type Celebration = { badge: string; id: number };
+
+/**
+ * Celebración breve (800 ms) cuando aparece una insignia nueva en el mismo perfil.
+ * No se dispara al montar ni al cambiar de perfil. Solo transform y opacity.
+ */
+export function AchievementCelebration({
+  theme, profileKey, badges, describe,
+}: Themed & {
+  profileKey: string;
+  badges: readonly string[];
+  describe: (badge: string) => { title: string; icon: AppIconName };
+}) {
+  const reduceMotion = useReduceMotion();
+  const [seen, setSeen] = useState({ profileKey, signature: badges.join('|'), badges });
+  const [celebration, setCelebration] = useState<Celebration | null>(null);
+  const signature = badges.join('|');
+  if (seen.profileKey !== profileKey || seen.signature !== signature) {
+    const fresh = seen.profileKey === profileKey ? badges.find(badge => !seen.badges.includes(badge)) : undefined;
+    setSeen({ profileKey, signature, badges });
+    if (fresh) setCelebration(current => ({ badge: fresh, id: (current?.id ?? 0) + 1 }));
+  }
+
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const ring = useSharedValue(1);
+  const cardStyle = useAnimatedStyle(() => ({ opacity: opacity.get(), transform: [{ scale: scale.get() }] }));
+  const ringStyle = useAnimatedStyle(() => ({
+    opacity: 0.5 * (1 - ring.get()),
+    transform: [{ scale: 0.95 + 0.65 * ring.get() }],
+  }));
+
+  useEffect(() => {
+    if (!celebration) return;
+    // 150 entrada + 450 visible + 200 salida = 800 ms.
+    opacity.set(withSequence(
+      withTiming(1, { duration: 150, easing: EASE_OUT }),
+      withDelay(450, withTiming(0, { duration: 200, easing: EASE_OUT })),
+    ));
+    if (reduceMotion) {
+      scale.set(1);
+      ring.set(1);
+      return;
+    }
+    scale.set(withSequence(withTiming(0.95, { duration: 0 }), withTiming(1, { duration: 250, easing: EASE_OUT })));
+    ring.set(withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: 600, easing: EASE_OUT })));
+  }, [celebration, opacity, reduceMotion, ring, scale]);
+
+  const info = celebration ? describe(celebration.badge) : null;
+  return (
+    <View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[StyleSheet.absoluteFill, styles.celebrationLayer]}
+    >
+      {info ? (
+        <Animated.View style={[styles.celebrationCard, { backgroundColor: theme.colors.tarjeta }, SHADOW.chip, cardStyle]}>
+          <View style={styles.celebrationMedalWrap}>
+            <Animated.View style={[styles.celebrationRing, { borderColor: SHARED.logros }, ringStyle]} />
+            <View style={[styles.celebrationMedal, { borderColor: SHARED.logros, backgroundColor: tint(SHARED.logros, 0.15) }]}>
+              <Icon name={info.icon} size={30} color={SHARED.logros} />
+            </View>
+          </View>
+          <Text style={[theme.type.h3, { color: theme.colors.texto }]}>{info.title}</Text>
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
+
 const SHEET_SPRING = { duration: 300, dampingRatio: 0.8 } as const;
+const SNAP_BACK_SPRING = { duration: 400, dampingRatio: 0.8 } as const;
+const DISMISS_DISTANCE_RATIO = 0.25;
+const DISMISS_VELOCITY = 500;
+const RUBBER_BAND_LIMIT = 80;
+
+// Resistencia hacia arriba: se mueve cada vez menos y nunca pasa de RUBBER_BAND_LIMIT.
+function rubberBand(distance: number) {
+  'worklet';
+  return RUBBER_BAND_LIMIT * (1 - 1 / ((distance * 0.55) / RUBBER_BAND_LIMIT + 1));
+}
 
 export function BottomSheet({
   theme, visible, onClose, children,
@@ -495,42 +608,94 @@ export function BottomSheet({
 
   const progress = useSharedValue(0);
   const sheetHeight = useSharedValue(windowHeight);
+  // Desplazamiento del arrastre: positivo = hacia abajo, 1:1 con el dedo.
+  const dragY = useSharedValue(0);
+  const dragStart = useSharedValue(0);
+  // Velocidad (en unidades de progress/s) que hereda el resorte de salida tras un flick.
+  const releaseVelocity = useSharedValue(0);
 
   useEffect(() => {
     if (!mounted) return;
     const target = visible ? 1 : 0;
+    if (visible) dragY.set(0);
+    const velocity = releaseVelocity.get();
+    releaseVelocity.set(0);
     const onFinish = (finished?: boolean) => {
       'worklet';
       if (finished && !visible) scheduleOnRN(setMounted, false);
     };
     progress.set(reduceMotion
       ? withTiming(target, { duration: 200, easing: EASE_OUT }, onFinish)
-      : withSpring(target, { ...SHEET_SPRING, overshootClamping: !visible }, onFinish));
-  }, [mounted, progress, reduceMotion, visible]);
+      : withSpring(target, { ...SHEET_SPRING, overshootClamping: !visible, velocity }, onFinish));
+  }, [dragY, mounted, progress, reduceMotion, releaseVelocity, visible]);
+
+  const dragGesture = usePanGesture({
+    enabled: visible,
+    hitSlop: { top: SPACE[16] },
+    onActivate: () => {
+      'worklet';
+      cancelAnimation(dragY);
+      dragStart.set(dragY.get());
+    },
+    onUpdate: event => {
+      'worklet';
+      const raw = dragStart.get() + event.translationY;
+      dragY.set(raw >= 0 ? raw : -rubberBand(-raw));
+    },
+    onDeactivate: event => {
+      'worklet';
+      const height = Math.max(1, sheetHeight.get());
+      const distance = dragY.get();
+      const shouldDismiss = event.velocityY > DISMISS_VELOCITY
+        || (distance > height * DISMISS_DISTANCE_RATIO && event.velocityY > -DISMISS_VELOCITY);
+      if (!shouldDismiss) {
+        dragY.set(reduceMotion
+          ? withTiming(0, { duration: 200, easing: EASE_OUT })
+          : withSpring(0, { ...SNAP_BACK_SPRING, velocity: event.velocityY }));
+        return;
+      }
+      if (!reduceMotion) {
+        // Pasa la posición del dedo al progress para que la salida continúe sin salto.
+        progress.set(1 - distance / height);
+        dragY.set(0);
+        releaseVelocity.set(-Math.max(0, event.velocityY) / height);
+      }
+      scheduleOnRN(onClose);
+    },
+  });
 
   const backdropStyle = useAnimatedStyle(() => ({ opacity: Math.min(1, Math.max(0, progress.get())) }));
   const sheetStyle = useAnimatedStyle(() => (reduceMotion
-    ? { opacity: Math.min(1, Math.max(0, progress.get())), transform: [{ translateY: 0 }] }
-    : { opacity: 1, transform: [{ translateY: (1 - progress.get()) * sheetHeight.get() }] }));
+    ? { opacity: Math.min(1, Math.max(0, progress.get())), transform: [{ translateY: dragY.get() }] }
+    : { opacity: 1, transform: [{ translateY: (1 - progress.get()) * sheetHeight.get() + dragY.get() }] }));
 
   return (
     <Modal transparent visible={mounted} onRequestClose={onClose} animationType="none">
-      <KeyboardAvoidingView
-        style={[styles.sheetContainer, { pointerEvents: visible ? 'auto' : 'none' }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <Animated.View style={[StyleSheet.absoluteFill, styles.sheetBackdrop, backdropStyle]} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={onClose} style={StyleSheet.absoluteFill} />
-        <Animated.View
-          accessibilityViewIsModal
-          onLayout={event => sheetHeight.set(event.nativeEvent.layout.height)}
-          style={[styles.sheet, { backgroundColor: theme.colors.fondoFin }, sheetStyle]}
+      {/* En Android el contenido del Modal queda fuera del root de la app: necesita su propio root de gestos. */}
+      <GestureHandlerRootView style={styles.flex}>
+        <KeyboardAvoidingView
+          style={[styles.sheetContainer, { pointerEvents: visible ? 'auto' : 'none' }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          {/* Faldón: cubre el hueco inferior cuando el resorte rebasa un poco hacia arriba. */}
-          <View pointerEvents="none" style={[styles.sheetSkirt, { backgroundColor: theme.colors.fondoFin }]} />
-          {visible ? children : shownChildren}
-        </Animated.View>
-      </KeyboardAvoidingView>
+          <Animated.View style={[StyleSheet.absoluteFill, styles.sheetBackdrop, backdropStyle]} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={onClose} style={StyleSheet.absoluteFill} />
+          <Animated.View
+            accessibilityViewIsModal
+            onLayout={event => sheetHeight.set(event.nativeEvent.layout.height)}
+            style={[styles.sheet, { backgroundColor: theme.colors.fondoFin }, sheetStyle]}
+          >
+            {/* Faldón: cubre el hueco inferior cuando el resorte o la resistencia suben la hoja. */}
+            <View pointerEvents="none" style={[styles.sheetSkirt, { backgroundColor: theme.colors.fondoFin }]} />
+            {/* Zona de agarre: solo aquí se arrastra, para no competir con los ScrollView del contenido. */}
+            <GestureDetector gesture={dragGesture}>
+              <View style={styles.sheetHandleZone}>
+                <View style={[styles.sheetHandle, { backgroundColor: theme.colors.textoInactivo }]} />
+              </View>
+            </GestureDetector>
+            {visible ? children : shownChildren}
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -572,21 +737,29 @@ const styles = StyleSheet.create({
   habitHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
   habitIcon: { width: 48, height: 48, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
   progressTrack: { height: 10, borderRadius: RADIUS.pildora, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: RADIUS.pildora },
+  progressFill: { width: '100%', height: '100%', borderRadius: RADIUS.pildora },
   sectionCard: { padding: SPACE[20], gap: SPACE[8] },
   listRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
   listIcon: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
   chartDays: { flexDirection: 'row', justifyContent: 'space-around', gap: SPACE[4] },
   chartDay: { flex: 1, alignItems: 'center', gap: SPACE[4] },
-  chartBars: { height: 100, flexDirection: 'row', alignItems: 'flex-end', gap: SPACE[4] },
-  chartBar: { width: 6, borderTopLeftRadius: RADIUS.barra, borderTopRightRadius: RADIUS.barra },
+  chartBars: { height: CHART_HEIGHT, flexDirection: 'row', alignItems: 'flex-end', gap: SPACE[4] },
+  chartLane: { width: 6, height: CHART_HEIGHT, overflow: 'hidden' },
+  chartBar: { width: 6, height: CHART_HEIGHT, borderTopLeftRadius: RADIUS.barra, borderTopRightRadius: RADIUS.barra },
   chartLegend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: SPACE[12], marginTop: SPACE[12] },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: SPACE[4] },
   legendDot: { width: 8, height: 8, borderRadius: RADIUS.pildora },
   loadingDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE[8] },
   loadingDot: { width: 12, height: 12, borderRadius: RADIUS.pildora },
+  celebrationLayer: { alignItems: 'center', justifyContent: 'center' },
+  celebrationCard: { alignItems: 'center', gap: SPACE[12], paddingVertical: SPACE[24], paddingHorizontal: SPACE[36], borderRadius: RADIUS.tarjeta },
+  celebrationMedalWrap: { width: 68, height: 68, alignItems: 'center', justifyContent: 'center' },
+  celebrationRing: { position: 'absolute', width: 68, height: 68, borderRadius: RADIUS.pildora, borderWidth: BORDER.avatar },
+  celebrationMedal: { width: 68, height: 68, borderRadius: RADIUS.pildora, borderWidth: BORDER.avatar, alignItems: 'center', justifyContent: 'center' },
   sheetContainer: { flex: 1, justifyContent: 'flex-end' },
   sheetBackdrop: { backgroundColor: SHARED.fondoModal },
   sheet: { maxHeight: '90%', borderTopLeftRadius: RADIUS.hero, borderTopRightRadius: RADIUS.hero, padding: SPACE[20] },
-  sheetSkirt: { position: 'absolute', top: '100%', left: 0, right: 0, height: 48 },
+  sheetSkirt: { position: 'absolute', top: '100%', left: 0, right: 0, height: 120 },
+  sheetHandleZone: { position: 'absolute', top: 0, left: 0, right: 0, height: SPACE[20], alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  sheetHandle: { width: 36, height: 4, borderRadius: RADIUS.pildora, opacity: 0.6 },
 });
