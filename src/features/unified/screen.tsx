@@ -75,6 +75,7 @@ import { ActivityAnimation } from '@/features/unified/animations';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
 import { PlatoDelBuenComer, SelectedFoodPills } from '@/features/unified/plato';
+import { SoundEffectsProvider } from '@/features/unified/sound-effects';
 import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SHARED, SPACE, tint, useAppTheme } from '@/features/unified/tokens';
 import { getSupabaseClient } from '@/lib/supabase';
 import {
@@ -2735,14 +2736,14 @@ export default function UnifiedApp() {
             theme={theme}
             icon="music"
             iconColor={theme.colors.acento}
-            title="Sonido y música"
-            subtitle="Preferencia guardada; todavía no hay audio."
+            title="Efectos de sonido"
+            subtitle="Sonidos suaves al tocar y celebrar tus logros."
             trailing={(
               <Switch
-                accessibilityLabel="Sonido y música"
+                accessibilityLabel="Activar efectos de sonido"
                 value={data.soundEnabled ?? false}
                 onValueChange={value => {
-                  if (role === 'child' && selectedProfile) updateData(current => ({ ...current, soundEnabled: value }));
+                  updateData(current => ({ ...current, soundEnabled: value }));
                 }}
                 trackColor={{ true: theme.colors.acento }}
               />
@@ -3480,6 +3481,7 @@ export default function UnifiedApp() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.fondoInicio }]}>
+    <SoundEffectsProvider enabled={data.soundEnabled ?? false}>
       <View style={[styles.shell, { backgroundColor: theme.colors.fondoInicio }]}>
         <View style={screenStyles.topBar}>
           <TopBar
@@ -3569,6 +3571,7 @@ export default function UnifiedApp() {
       {renderArchiveModal()}
       {renderTutorGateModal()}
       {renderChildProfilePickerModal()}
+    </SoundEffectsProvider>
     </SafeAreaView>
   );
 }

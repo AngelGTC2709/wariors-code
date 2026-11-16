@@ -29,6 +29,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import type { AccountRole } from './model';
+import { useSoundEffects } from './sound-effects';
 import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SHARED, SPACE, tint, useAppTheme } from './tokens';
 import { AnimatedPress, useReduceMotion } from './motion';
 import { Icon, type AppIconName } from './ui';
@@ -525,6 +526,7 @@ export function AchievementCelebration({
   describe: (badge: string) => { title: string; icon: AppIconName };
 }) {
   const reduceMotion = useReduceMotion();
+  const { playCelebration } = useSoundEffects();
   const [seen, setSeen] = useState({ profileKey, signature: badges.join('|'), badges });
   const [celebration, setCelebration] = useState<Celebration | null>(null);
   const signature = badges.join('|');
@@ -545,6 +547,7 @@ export function AchievementCelebration({
 
   useEffect(() => {
     if (!celebration) return;
+    playCelebration();
     // 150 entrada + 450 visible + 200 salida = 800 ms.
     opacity.set(withSequence(
       withTiming(1, { duration: 150, easing: EASE_OUT }),
@@ -557,7 +560,7 @@ export function AchievementCelebration({
     }
     scale.set(withSequence(withTiming(0.95, { duration: 0 }), withTiming(1, { duration: 250, easing: EASE_OUT })));
     ring.set(withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: 600, easing: EASE_OUT })));
-  }, [celebration, opacity, reduceMotion, ring, scale]);
+  }, [celebration, opacity, playCelebration, reduceMotion, ring, scale]);
 
   const info = celebration ? describe(celebration.badge) : null;
   return (

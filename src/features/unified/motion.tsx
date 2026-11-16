@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Animated, { cancelAnimation, useAnimatedStyle, useReducedMotion as useReanimatedReduceMotion, useSharedValue, withSpring } from 'react-native-reanimated';
 
+import { useSoundEffects } from './sound-effects';
 import { SHARED, RADIUS } from './tokens';
 
 export function useReduceMotion() {
@@ -59,6 +60,7 @@ export function AnimatedPress({
   style?: StyleProp<ViewStyle>;
 }) {
   const reduceMotion = useReduceMotion();
+  const { playTap } = useSoundEffects();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
   useEffect(() => {
@@ -75,7 +77,10 @@ export function AnimatedPress({
       accessibilityState={{ disabled, selected }}
       disabled={disabled}
       hitSlop={hitSlop}
-      onPress={onPress}
+      onPress={() => {
+        playTap();
+        onPress();
+      }}
       onPressIn={() => { if (!reduceMotion) scale.set(withSpring(pressedScale)); }}
       onPressOut={() => { if (!reduceMotion) scale.set(withSpring(1)); }}
       style={[styles.pressable, style, animatedStyle]}
