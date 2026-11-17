@@ -164,6 +164,31 @@ on conflict (codigo) do update set
   precauciones = excluded.precauciones,
   como_se_hace = excluded.como_se_hace;
 
+create table if not exists public.catalogo_recetas_warrior_kids (
+  codigo text primary key,
+  id_receta bigint not null unique references public.recetas(id_receta) on delete cascade,
+  nombre_platillo text not null,
+  tipo_comida text not null check (tipo_comida in ('desayuno', 'colacion', 'comida', 'cena')),
+  grupo_edad text not null,
+  combinacion_grupos text not null,
+  ingredientes text not null,
+  porciones_por_grupo text not null,
+  calorias_porcion_kcal integer not null check (calorias_porcion_kcal >= 0),
+  tiempo_preparacion_min integer not null check (tiempo_preparacion_min >= 0),
+  nota_educativa_app text not null,
+  preparacion_completa text not null
+);
+
+alter table public.catalogo_recetas_warrior_kids enable row level security;
+revoke all on public.catalogo_recetas_warrior_kids from anon, authenticated;
+grant select on public.catalogo_recetas_warrior_kids to authenticated;
+
+drop policy if exists catalogo_recetas_warrior_kids_lectura
+  on public.catalogo_recetas_warrior_kids;
+create policy catalogo_recetas_warrior_kids_lectura
+  on public.catalogo_recetas_warrior_kids for select to authenticated
+  using (true);
+
 do $$
 declare
   table_name text;

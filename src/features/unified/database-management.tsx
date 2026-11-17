@@ -24,11 +24,12 @@ import {
   type PlanRecipeInput,
 } from '@/features/unified/cloud-data';
 import { PillButton, SectionCard } from '@/features/unified/design';
+import { DatabaseActivities } from '@/features/unified/database-activities';
 import { useAppTheme } from '@/features/unified/tokens';
 import { friendlyError } from '@/features/unified/utils';
 import { Button, Card, Field, Icon, SectionTitle, styles } from '@/features/unified/ui';
 
-type ManagementSection = 'retos' | 'recompensas' | 'planes';
+type ManagementSection = 'retos' | 'recompensas' | 'planes' | 'actividades';
 type DeleteTarget = { kind: 'reto' | 'asignacion' | 'recompensa' | 'canje' | 'plan'; id: number };
 type ChallengeDraft = {
   id?: number;
@@ -515,12 +516,13 @@ export function DatabaseManagement({ userId }: { userId: string }) {
 
   return (
     <View style={{ gap: 16 }}>
-      <SectionTitle title="Gestión de datos" subtitle="Administra retos, recompensas y planes normalizados de la familia." />
+      <SectionTitle title="Gestión de datos" subtitle="Administra retos, actividades, recompensas y planes normalizados de la familia." />
       {error ? <View accessibilityRole="alert" style={styles.notice}><Text style={styles.errorText}>{error}</Text><Button title="Reintentar" small variant="outline" onPress={() => void reload().catch(cause => setError(friendlyError(cause, 'No se pudieron recargar los datos.')))} /></View> : null}
       {notice ? <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{notice}</Text> : null}
       <View style={styles.wrap}>
         {([
           { id: 'retos', label: 'Retos' },
+          { id: 'actividades', label: 'Actividades' },
           { id: 'recompensas', label: 'Recompensas' },
           { id: 'planes', label: 'Planes' },
         ] as const).map(item => (
@@ -534,6 +536,7 @@ export function DatabaseManagement({ userId }: { userId: string }) {
         ))}
       </View>
       {section === 'retos' ? renderChallengeSection() : null}
+      {section === 'actividades' ? <DatabaseActivities userId={userId} /> : null}
       {section === 'recompensas' ? renderRewardSection() : null}
       {section === 'planes' ? renderPlanSection() : null}
     </View>

@@ -144,6 +144,50 @@ type Database = {
           tipo_comida: 'desayuno' | 'colacion' | 'comida' | 'cena';
         }
       >;
+      cat_tipo_deporte: Table<
+        { id_tipo_deporte: number; nombre: string },
+        { id_tipo_deporte?: number; nombre: string }
+      >;
+      cat_intensidad: Table<
+        { id_intensidad: number; nombre: string },
+        { id_intensidad?: number; nombre: string }
+      >;
+      cat_materia: Table<
+        { id_materia: number; nombre: string },
+        { id_materia?: number; nombre: string }
+      >;
+      actividades_fisicas: Table<
+        {
+          id_actividad_fisica: number;
+          id_reto: number;
+          id_tipo_deporte: number;
+          id_intensidad: number;
+          distancia_km: number | null;
+          tiempo_minutos: number | null;
+        },
+        {
+          id_reto: number;
+          id_tipo_deporte: number;
+          id_intensidad: number;
+          distancia_km?: number | null;
+          tiempo_minutos?: number | null;
+        }
+      >;
+      actividades_didacticas: Table<
+        {
+          id_actividad_didactica: number;
+          id_reto: number;
+          id_materia: number;
+          duracion_horas: number;
+          duracion_minutos: number;
+        },
+        {
+          id_reto: number;
+          id_materia: number;
+          duracion_horas?: number;
+          duracion_minutos?: number;
+        }
+      >;
       ingredientes: Table<
         { id_ingrediente: number; nombre: string; id_padre: string | null },
         { nombre: string; id_padre?: string | null }
@@ -167,6 +211,36 @@ type Database = {
           prep_horas?: number;
           prep_minutos?: number;
           calorias_porcion?: number | null;
+        }
+      >;
+      catalogo_recetas_warrior_kids: Table<
+        {
+          codigo: string;
+          id_receta: number;
+          nombre_platillo: string;
+          tipo_comida: 'desayuno' | 'colacion' | 'comida' | 'cena';
+          grupo_edad: string;
+          combinacion_grupos: string;
+          ingredientes: string;
+          porciones_por_grupo: string;
+          calorias_porcion_kcal: number;
+          tiempo_preparacion_min: number;
+          nota_educativa_app: string;
+          preparacion_completa: string;
+        },
+        {
+          codigo: string;
+          id_receta: number;
+          nombre_platillo: string;
+          tipo_comida: 'desayuno' | 'colacion' | 'comida' | 'cena';
+          grupo_edad: string;
+          combinacion_grupos: string;
+          ingredientes: string;
+          porciones_por_grupo: string;
+          calorias_porcion_kcal: number;
+          tiempo_preparacion_min: number;
+          nota_educativa_app: string;
+          preparacion_completa: string;
         }
       >;
       mediciones_hijo: Table<

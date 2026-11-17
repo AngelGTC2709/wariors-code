@@ -49,12 +49,42 @@ export async function loadPhysicalActivityCatalog(): Promise<PhysicalActivityCat
 
 export async function loadDatabaseRecipes(): Promise<Recipe[]> {
   const supabase = getSupabaseClient();
-  const { data: recipes, error: recipesError } = await supabase
-    .from('recetas')
-    .select('id_receta, nombre_platillo, instrucciones, prep_horas, prep_minutos, calorias_porcion')
-    .order('nombre_platillo');
-  if (recipesError) throw userError('No se pudieron cargar las recetas de la base de datos.', recipesError);
-  if (!recipes.length) return [];
+  const [catalogResult, recipesResult] = await Promise.all([
+    supabase
+      .from('catalogo_recetas_warrior_kids')
+      .select('codigo, id_receta, nombre_platillo, tipo_comida, grupo_edad, combinacion_grupos, ingredientes, porciones_por_grupo, calorias_porcion_kcal, tiempo_preparacion_min, nota_educativa_app, preparacion_completa')
+      .order('nombre_platillo'),
+    supabase
+      .from('recetas')
+      .select('id_receta, nombre_platillo, instrucciones, prep_horas, prep_minutos, calorias_porcion')
+      .order('nombre_platillo'),
+  ]);
+  if (catalogResult.error) throw userError('No se pudo cargar el catálogo de recetas de Warrior Kids.', catalogResult.error);
+  if (recipesResult.error) throw userError('No se pudieron cargar las recetas de la base de datos.', recipesResult.error);
+  const catalogRecipeIds = new Set(catalogResult.data.map(recipe => recipe.id_receta));
+  const recipes = recipesResult.data.filter(recipe => !catalogRecipeIds.has(recipe.id_receta));
+  if (!recipes.length) {
+    return catalogResult.data.map(recipe => {
+      const ingredientDetails = parseRecipeIngredients(recipe.ingredientes);
+      return {
+        id: `database-recipe-${recipe.id_receta}`,
+        databaseId: recipe.id_receta,
+        catalogCode: recipe.codigo,
+        mealType: recipe.tipo_comida,
+        ageGroup: recipe.grupo_edad,
+        portionsByGroup: recipe.porciones_por_grupo,
+        preparationTimeMinutes: recipe.tiempo_preparacion_min,
+        caloriesPerPortion: recipe.calorias_porcion_kcal,
+        title: recipe.nombre_platillo,
+        emoji: '',
+        groups: recipe.combinacion_grupos,
+        ingredients: ingredientDetails.map(ingredient => ingredient.name),
+        ingredientDetails,
+        preparation: recipe.preparacion_completa,
+        note: recipe.nota_educativa_app,
+      };
+    });
+  }
 
   const recipeIds = recipes.map(recipe => recipe.id_receta);
   const { data: relations, error: relationsError } = await supabase
@@ -82,7 +112,7 @@ export async function loadDatabaseRecipes(): Promise<Recipe[]> {
     recipeIngredients.set(relation.id_receta, values);
   }
 
-  return recipes.map(recipe => {
+  const legacyRecipes = recipes.map(recipe => {
     const preparationDetails = [
       recipe.prep_horas ? `${recipe.prep_horas} h` : '',
       recipe.prep_minutos ? `${recipe.prep_minutos} min` : '',
@@ -101,6 +131,38 @@ export async function loadDatabaseRecipes(): Promise<Recipe[]> {
       ingredientDetails: recipeIngredients.get(recipe.id_receta) ?? [],
       preparation: recipe.instrucciones,
       note,
+    };
+  });
+  const catalogRecipes = catalogResult.data.map(recipe => {
+    const ingredientDetails = parseRecipeIngredients(recipe.ingredientes);
+    return {
+      id: `database-recipe-${recipe.id_receta}`,
+      databaseId: recipe.id_receta,
+      catalogCode: recipe.codigo,
+      mealType: recipe.tipo_comida,
+      ageGroup: recipe.grupo_edad,
+      portionsByGroup: recipe.porciones_por_grupo,
+      preparationTimeMinutes: recipe.tiempo_preparacion_min,
+      caloriesPerPortion: recipe.calorias_porcion_kcal,
+      title: recipe.nombre_platillo,
+      emoji: '',
+      groups: recipe.combinacion_grupos,
+      ingredients: ingredientDetails.map(ingredient => ingredient.name),
+      ingredientDetails,
+      preparation: recipe.preparacion_completa,
+      note: recipe.nota_educativa_app,
+    };
+  });
+  return [...catalogRecipes, ...legacyRecipes];
+}
+
+function parseRecipeIngredients(value: string): { name: string; quantity: string | null }[] {
+  return value.split(';').map(part => part.trim()).filter(Boolean).map(part => {
+    const quantityStart = part.lastIndexOf(' (');
+    if (quantityStart < 0 || !part.endsWith(')')) return { name: part, quantity: null };
+    return {
+      name: part.slice(0, quantityStart).trim(),
+      quantity: part.slice(quantityStart + 2, -1).trim(),
     };
   });
 }
@@ -235,6 +297,211 @@ export async function loadNormalizedManagement(userId: string): Promise<Normaliz
     plans: plansResult.data,
     planRecipes: planRecipesResult.data,
   };
+}
+
+export type ActivityManagementSnapshot = {
+  challenges: { id_reto: number; descripcion_reto: string }[];
+  sports: { id_tipo_deporte: number; nombre: string }[];
+  intensities: { id_intensidad: number; nombre: string }[];
+  subjects: { id_materia: number; nombre: string }[];
+  physicalActivities: {
+    id_actividad_fisica: number;
+    id_reto: number;
+    id_tipo_deporte: number;
+    id_intensidad: number;
+    distancia_km: number | null;
+    tiempo_minutos: number | null;
+  }[];
+  didacticActivities: {
+    id_actividad_didactica: number;
+    id_reto: number;
+    id_materia: number;
+    duracion_horas: number;
+    duracion_minutos: number;
+  }[];
+};
+
+export async function loadActivityManagement(userId: string): Promise<ActivityManagementSnapshot> {
+  const supabase = getSupabaseClient();
+  const [challengesResult, sportsResult, intensitiesResult, subjectsResult] = await Promise.all([
+    supabase
+      .from('retos')
+      .select('id_reto, descripcion_reto')
+      .eq('id_padre', userId)
+      .order('fecha_inicio', { ascending: false }),
+    supabase.from('cat_tipo_deporte').select('id_tipo_deporte, nombre').order('nombre'),
+    supabase.from('cat_intensidad').select('id_intensidad, nombre').order('nombre'),
+    supabase.from('cat_materia').select('id_materia, nombre').order('nombre'),
+  ]);
+  if (challengesResult.error) throw userError('No se pudieron cargar los retos para las actividades.', challengesResult.error);
+  if (sportsResult.error) throw userError('No se pudo cargar el catálogo de deportes.', sportsResult.error);
+  if (intensitiesResult.error) throw userError('No se pudo cargar el catálogo de intensidades.', intensitiesResult.error);
+  if (subjectsResult.error) throw userError('No se pudo cargar el catálogo de materias.', subjectsResult.error);
+
+  const challengeIds = challengesResult.data.map(challenge => challenge.id_reto);
+  if (!challengeIds.length) {
+    return {
+      challenges: challengesResult.data,
+      sports: sportsResult.data,
+      intensities: intensitiesResult.data,
+      subjects: subjectsResult.data,
+      physicalActivities: [],
+      didacticActivities: [],
+    };
+  }
+
+  const [physicalResult, didacticResult] = await Promise.all([
+    supabase
+      .from('actividades_fisicas')
+      .select('id_actividad_fisica, id_reto, id_tipo_deporte, id_intensidad, distancia_km, tiempo_minutos')
+      .in('id_reto', challengeIds)
+      .order('id_actividad_fisica'),
+    supabase
+      .from('actividades_didacticas')
+      .select('id_actividad_didactica, id_reto, id_materia, duracion_horas, duracion_minutos')
+      .in('id_reto', challengeIds)
+      .order('id_actividad_didactica'),
+  ]);
+  if (physicalResult.error) throw userError('No se pudieron cargar las actividades físicas.', physicalResult.error);
+  if (didacticResult.error) throw userError('No se pudieron cargar las actividades didácticas.', didacticResult.error);
+
+  return {
+    challenges: challengesResult.data,
+    sports: sportsResult.data,
+    intensities: intensitiesResult.data,
+    subjects: subjectsResult.data,
+    physicalActivities: physicalResult.data,
+    didacticActivities: didacticResult.data,
+  };
+}
+
+export type PhysicalActivityInput = {
+  id_reto: number;
+  id_tipo_deporte: number;
+  id_intensidad: number;
+  distancia_km: number | null;
+  tiempo_minutos: number | null;
+};
+
+async function validateActivityReferences(
+  userId: string,
+  challengeId: number,
+  catalog: 'cat_tipo_deporte' | 'cat_intensidad' | 'cat_materia',
+  catalogId: number,
+): Promise<void> {
+  const supabase = getSupabaseClient();
+  const challengeResult = await supabase
+    .from('retos')
+    .select('id_reto')
+    .eq('id_reto', challengeId)
+    .eq('id_padre', userId)
+    .maybeSingle();
+  if (challengeResult.error) throw userError('No se pudo verificar el reto seleccionado.', challengeResult.error);
+  if (!challengeResult.data) throw userError('Selecciona un reto que pertenezca a esta cuenta.');
+
+  const catalogResult = catalog === 'cat_tipo_deporte'
+    ? await supabase.from('cat_tipo_deporte').select('id_tipo_deporte').eq('id_tipo_deporte', catalogId).maybeSingle()
+    : catalog === 'cat_intensidad'
+      ? await supabase.from('cat_intensidad').select('id_intensidad').eq('id_intensidad', catalogId).maybeSingle()
+      : await supabase.from('cat_materia').select('id_materia').eq('id_materia', catalogId).maybeSingle();
+  if (catalogResult.error) throw userError('No se pudo verificar la opción del catálogo.', catalogResult.error);
+  if (!catalogResult.data) throw userError('La opción seleccionada ya no está disponible en el catálogo.');
+}
+
+export async function savePhysicalChallengeActivity(
+  userId: string,
+  input: PhysicalActivityInput,
+  activityId?: number,
+): Promise<void> {
+  if (!Number.isSafeInteger(input.id_reto) || input.id_reto <= 0 ||
+      !Number.isSafeInteger(input.id_tipo_deporte) || input.id_tipo_deporte <= 0 ||
+      !Number.isSafeInteger(input.id_intensidad) || input.id_intensidad <= 0) {
+    throw userError('Selecciona un reto, deporte e intensidad válidos.');
+  }
+  if ((input.distancia_km !== null && (!Number.isFinite(input.distancia_km) || input.distancia_km < 0)) ||
+      (input.tiempo_minutos !== null && (!Number.isSafeInteger(input.tiempo_minutos) || input.tiempo_minutos < 0))) {
+    throw userError('La distancia y el tiempo deben ser valores válidos y no negativos.');
+  }
+
+  await Promise.all([
+    validateActivityReferences(userId, input.id_reto, 'cat_tipo_deporte', input.id_tipo_deporte),
+    validateActivityReferences(userId, input.id_reto, 'cat_intensidad', input.id_intensidad),
+  ]);
+  const supabase = getSupabaseClient();
+  const values = {
+    id_reto: input.id_reto,
+    id_tipo_deporte: input.id_tipo_deporte,
+    id_intensidad: input.id_intensidad,
+    distancia_km: input.distancia_km,
+    tiempo_minutos: input.tiempo_minutos,
+  };
+  const result = activityId
+    ? await supabase.from('actividades_fisicas').update(values)
+        .eq('id_actividad_fisica', activityId).select('id_actividad_fisica').maybeSingle()
+    : await supabase.from('actividades_fisicas').insert(values)
+        .select('id_actividad_fisica').single();
+  if (result.error) throw userError('No se pudo guardar la actividad física.', result.error);
+  if (!result.data) throw userError('La actividad física ya no está disponible para esta cuenta.');
+}
+
+export async function deletePhysicalChallengeActivity(activityId: number): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from('actividades_fisicas')
+    .delete()
+    .eq('id_actividad_fisica', activityId)
+    .select('id_actividad_fisica')
+    .maybeSingle();
+  if (error) throw userError('No se pudo eliminar la actividad física.', error);
+  if (!data) throw userError('La actividad física ya no está disponible para esta cuenta.');
+}
+
+export type DidacticActivityInput = {
+  id_reto: number;
+  id_materia: number;
+  duracion_horas: number;
+  duracion_minutos: number;
+};
+
+export async function saveDidacticChallengeActivity(
+  userId: string,
+  input: DidacticActivityInput,
+  activityId?: number,
+): Promise<void> {
+  if (!Number.isSafeInteger(input.id_reto) || input.id_reto <= 0 ||
+      !Number.isSafeInteger(input.id_materia) || input.id_materia <= 0) {
+    throw userError('Selecciona un reto y una materia válidos.');
+  }
+  if (!Number.isSafeInteger(input.duracion_horas) || input.duracion_horas < 0 ||
+      !Number.isSafeInteger(input.duracion_minutos) || input.duracion_minutos < 0 || input.duracion_minutos > 59) {
+    throw userError('La duración debe usar horas no negativas y minutos entre 0 y 59.');
+  }
+  await validateActivityReferences(userId, input.id_reto, 'cat_materia', input.id_materia);
+
+  const supabase = getSupabaseClient();
+  const values = {
+    id_reto: input.id_reto,
+    id_materia: input.id_materia,
+    duracion_horas: input.duracion_horas,
+    duracion_minutos: input.duracion_minutos,
+  };
+  const result = activityId
+    ? await supabase.from('actividades_didacticas').update(values)
+        .eq('id_actividad_didactica', activityId).select('id_actividad_didactica').maybeSingle()
+    : await supabase.from('actividades_didacticas').insert(values)
+        .select('id_actividad_didactica').single();
+  if (result.error) throw userError('No se pudo guardar la actividad didáctica.', result.error);
+  if (!result.data) throw userError('La actividad didáctica ya no está disponible para esta cuenta.');
+}
+
+export async function deleteDidacticChallengeActivity(activityId: number): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from('actividades_didacticas')
+    .delete()
+    .eq('id_actividad_didactica', activityId)
+    .select('id_actividad_didactica')
+    .maybeSingle();
+  if (error) throw userError('No se pudo eliminar la actividad didáctica.', error);
+  if (!data) throw userError('La actividad didáctica ya no está disponible para esta cuenta.');
 }
 
 function isIsoDate(value: string): boolean {

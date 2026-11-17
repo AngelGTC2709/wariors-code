@@ -280,7 +280,14 @@ const RECIPE_FILTERS = [
   { id: 'desayuno', label: 'Desayunos' },
   { id: 'comida', label: 'Comidas' },
   { id: 'colacion', label: 'Colaciones' },
+  { id: 'cena', label: 'Cenas' },
 ] as const;
+const RECIPE_MEAL_LABELS: Record<NonNullable<Recipe['mealType']>, string> = {
+  desayuno: 'Desayuno',
+  colacion: 'Colación',
+  comida: 'Comida',
+  cena: 'Cena',
+};
 
 const RECIPE_INGREDIENT_GROUPS: Record<string, keyof typeof FOOD_GROUP_COLORS> = {
   'Tortillas de maíz': 'cereales',
@@ -460,7 +467,8 @@ function getProgress(data: UnifiedData, profile: UnifiedProfile): ChildProgress 
   return data.childProgress[profile.progressKey] ?? imported;
 }
 
-function recipeCategory(recipe: Recipe): 'desayuno' | 'comida' | 'colacion' | null {
+function recipeCategory(recipe: Recipe): NonNullable<Recipe['mealType']> | null {
+  if (recipe.mealType) return recipe.mealType;
   if (recipe.id.startsWith('database-recipe-')) return null;
   if (recipe.id === 'avena') return 'desayuno';
   if (recipe.id === 'frijoles') return 'colacion';
@@ -471,7 +479,16 @@ function recipeMatchesFilter(recipe: Recipe, filter: (typeof RECIPE_FILTERS)[num
   const query = cleanText(search);
   const category = recipeCategory(recipe);
   return (filter === 'todas' || category === filter) &&
-    (!query || cleanText(`${recipe.title} ${recipe.ingredients.join(' ')}`).includes(query));
+    (!query || cleanText([
+      recipe.catalogCode,
+      recipe.title,
+      recipe.mealType,
+      recipe.ageGroup,
+      recipe.groups,
+      recipe.ingredients.join(' '),
+      recipe.portionsByGroup,
+      recipe.note,
+    ].filter(Boolean).join(' ')).includes(query));
 }
 
 function matchesConcern(text: string, concern: string): boolean {
@@ -834,6 +851,13 @@ export default function UnifiedApp() {
             ...existing,
             databaseId: recipe.databaseId,
             title: recipe.title,
+            catalogCode: recipe.catalogCode ?? existing.catalogCode,
+            mealType: recipe.mealType ?? existing.mealType,
+            ageGroup: recipe.ageGroup ?? existing.ageGroup,
+            portionsByGroup: recipe.portionsByGroup ?? existing.portionsByGroup,
+            preparationTimeMinutes: recipe.preparationTimeMinutes ?? existing.preparationTimeMinutes,
+            caloriesPerPortion: recipe.caloriesPerPortion ?? existing.caloriesPerPortion,
+            groups: recipe.catalogCode ? recipe.groups : recipe.groups || existing.groups,
             ingredients: recipe.ingredients.length ? recipe.ingredients : existing.ingredients,
             ingredientDetails: recipe.ingredientDetails,
             preparation: recipe.preparation || existing.preparation,
@@ -2583,8 +2607,14 @@ export default function UnifiedApp() {
             {filteredRecipes.length ? filteredRecipes.map(recipe => {
               const warnings = recipeWarnings(recipe, profileAllergies);
               const dislikes = recipeWarnings(recipe, profileNoLikes);
+              const subtitle = [
+                recipe.catalogCode ? `Clave ${recipe.catalogCode}` : '',
+                recipe.mealType ? RECIPE_MEAL_LABELS[recipe.mealType] : '',
+                recipe.ageGroup,
+                recipe.groups,
+              ].filter(Boolean).join(' · ');
               return (
-                <SectionCard key={recipe.id} theme={theme} role={role} title={recipe.title} subtitle={recipe.groups}>
+                <SectionCard key={recipe.id} theme={theme} role={role} title={recipe.title} subtitle={subtitle}>
                   {renderIngredientPills(recipe.ingredients)}
                   {warnings.length ? (
                     <Text style={styles.errorText}>
@@ -3420,7 +3450,17 @@ export default function UnifiedApp() {
       </View>
       {recipeDetails ? (
         <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={screenStyles.sheetContent}>
+          {recipeDetails.catalogCode ? <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Clave: {recipeDetails.catalogCode}</Text> : null}
+          {recipeDetails.mealType ? <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Tipo de comida: {RECIPE_MEAL_LABELS[recipeDetails.mealType]}</Text> : null}
+          {recipeDetails.ageGroup ? <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Grupo de edad: {recipeDetails.ageGroup}</Text> : null}
           <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{recipeDetails.groups}</Text>
+          {recipeDetails.preparationTimeMinutes !== undefined || recipeDetails.caloriesPerPortion !== undefined ? (
+            <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>
+              {recipeDetails.preparationTimeMinutes === undefined ? '' : `Preparación: ${recipeDetails.preparationTimeMinutes} min`}
+              {recipeDetails.preparationTimeMinutes !== undefined && recipeDetails.caloriesPerPortion !== undefined ? ' · ' : ''}
+              {recipeDetails.caloriesPerPortion === undefined || recipeDetails.caloriesPerPortion === null ? '' : `${recipeDetails.caloriesPerPortion} kcal por porción`}
+            </Text>
+          ) : null}
           {renderFoodPreferences()}
           {renderRecipeAllergyWarning(recipeDetails)}
           <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Ingredientes</Text>
@@ -3436,6 +3476,12 @@ export default function UnifiedApp() {
           ) : null}
           <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Preparación</Text>
           <Text style={[theme.type.body, { color: theme.colors.texto }]}>{recipeDetails.preparation}</Text>
+          {recipeDetails.portionsByGroup ? (
+            <>
+              <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Porciones por grupo</Text>
+              <Text style={[theme.type.body, { color: theme.colors.texto }]}>{recipeDetails.portionsByGroup}</Text>
+            </>
+          ) : null}
           <View style={styles.notice}><Text style={styles.noticeText}>{recipeDetails.note}</Text></View>
           <Text style={styles.footer}>Una persona adulta debe acompañar la preparación y revisar alergias, etiquetas y seguridad alimentaria.</Text>
         </ScrollView>

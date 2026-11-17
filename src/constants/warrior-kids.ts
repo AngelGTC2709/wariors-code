@@ -10,6 +10,12 @@ export type Activity = {
 export type Recipe = {
   id: string;
   databaseId?: number;
+  catalogCode?: string;
+  mealType?: 'desayuno' | 'colacion' | 'comida' | 'cena';
+  ageGroup?: string;
+  portionsByGroup?: string;
+  preparationTimeMinutes?: number;
+  caloriesPerPortion?: number | null;
   title: string;
   emoji: string;
   groups: string;
