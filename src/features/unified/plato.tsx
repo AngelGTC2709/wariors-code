@@ -11,10 +11,10 @@ type FoodGroup = keyof typeof FOOD_GROUP_COLORS;
 type Theme = ReturnType<typeof useAppTheme>;
 
 const GROUPS: { id: FoodGroup; label: string; icon: AppIconName; start: number; end: number; position: { left: `${number}%`; top: `${number}%` } }[] = [
-  { id: 'frutas', label: 'Frutas y verduras', icon: 'food', start: -90, end: 36, position: { left: '65%', top: '25%' } },
-  { id: 'cereales', label: 'Cereales', icon: 'leaf', start: 36, end: 144, position: { left: '34%', top: '72%' } },
-  { id: 'leguminosas', label: 'Leguminosas', icon: 'food', start: 144, end: 216, position: { left: '1%', top: '40%' } },
-  { id: 'animal', label: 'Origen animal', icon: 'paw', start: 216, end: 270, position: { left: '18%', top: '8%' } },
+  { id: 'frutas', label: 'Frutas y verduras', icon: 'produce', start: -90, end: 36, position: { left: '65%', top: '25%' } },
+  { id: 'cereales', label: 'Cereales', icon: 'cereal', start: 36, end: 144, position: { left: '34%', top: '72%' } },
+  { id: 'leguminosas', label: 'Leguminosas', icon: 'legume', start: 144, end: 216, position: { left: '1%', top: '40%' } },
+  { id: 'animal', label: 'Origen animal', icon: 'animal', start: 216, end: 270, position: { left: '18%', top: '8%' } },
 ];
 
 function sectorPath(start: number, end: number): string {

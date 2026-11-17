@@ -507,7 +507,7 @@ export function DatabaseManagement({ userId }: { userId: string }) {
         </SectionCard>
       ))}
       {!snapshot?.plans.length ? <Card><Text style={styles.muted}>Todavía no hay planes alimenticios.</Text></Card> : null}
-      {!snapshot?.children.length ? <Card><Text style={styles.muted}>Para crear un plan, edita el perfil infantil en Ajustes → Control parental, registra su fecha de nacimiento y autoriza guardar sus datos de salud.</Text></Card> : null}
+      {!snapshot?.children.length ? <Card><Text style={styles.muted}>Para crear un plan, edita el perfil infantil en Ajustes, sección Control parental, registra su fecha de nacimiento y autoriza guardar sus datos de salud.</Text></Card> : null}
     </View>
   );
 

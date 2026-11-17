@@ -285,7 +285,8 @@ function isAvatarSelection(value: unknown): value is AvatarSelection {
   if (!isRecord(value)) return false;
   return AVATAR_CATEGORIES.every(category => {
     const index = value[category];
-    return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index <= 5;
+    // El catálogo del avatar (avatar.tsx) crece agregando elementos al final; 15 deja margen.
+    return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index <= 15;
   });
 }
 

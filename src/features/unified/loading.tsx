@@ -6,6 +6,7 @@ import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming
 import { ActivityAnimation } from './animations';
 import { LoadingDots, useReduceMotion } from './design';
 import { BORDER, RADIUS, SHARED, SPACE, tint, useAppTheme } from './tokens';
+import { Icon } from './ui';
 
 type Theme = ReturnType<typeof useAppTheme>;
 type Variant = 'entrada' | 'sesion' | 'perfil' | 'actividad';
@@ -153,7 +154,11 @@ export function LoadingScreen({
         <>
           <Text style={[heading, styles.centerText, { color }]}>¡Qué gusto verte, {name || 'tutor'}!</Text>
           <View style={styles.card}>
-            {['Cuenta verificada ✓', 'Perfiles', 'Menú de la semana'].map(item => (
+            <View style={[styles.listItem, styles.checkRow]}>
+              <Text style={[body, { color }]}>Cuenta verificada</Text>
+              <Icon name="check" size={18} color={theme.colors.completado} label="Verificada" />
+            </View>
+            {['Perfiles', 'Menú de la semana'].map(item => (
               <Text key={item} style={[body, styles.listItem, { color }]}>{item}</Text>
             ))}
           </View>
@@ -166,9 +171,9 @@ export function LoadingScreen({
       {variant === 'perfil' ? (
         <>
           <View style={[styles.avatarHalo, { borderColor: theme.colors.bordeAvatar, backgroundColor: theme.colors.acentoSuave }]}>
-            <Text style={[styles.star, styles.starLeft]}>★</Text>
+            <View style={[styles.star, styles.starLeft]}><Icon name="sparkles" size={28} color={SHARED.estrella} /></View>
             {avatar}
-            <Text style={[styles.star, styles.starRight]}>★</Text>
+            <View style={[styles.star, styles.starRight]}><Icon name="sparkles" size={28} color={SHARED.estrella} /></View>
           </View>
           <Text style={[heading, styles.centerText, { color }]}>¡Hola, {name}!</Text>
           <Text style={[body, { color }]}>{points ?? 0} puntos te esperan</Text>
@@ -199,7 +204,8 @@ const styles = StyleSheet.create({
   card: { width: '100%', maxWidth: 360, backgroundColor: SHARED.tarjeta, borderRadius: RADIUS.tarjeta, padding: SPACE[16], gap: SPACE[8] },
   listItem: { paddingVertical: SPACE[4] },
   avatarHalo: { width: 160, height: 160, borderRadius: 80, borderWidth: BORDER.avatar, alignItems: 'center', justifyContent: 'center' },
-  star: { position: 'absolute', color: SHARED.estrella, fontSize: 28 },
+  star: { position: 'absolute' },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE[8] },
   starLeft: { left: -12, top: 8 },
   starRight: { right: -12, bottom: 8 },
   count: { fontSize: 42, lineHeight: 50 },

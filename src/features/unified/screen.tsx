@@ -38,7 +38,8 @@ import {
   type Activity,
   type Recipe,
 } from '@/constants/warrior-kids';
-import { AVATAR_OPCIONES, type AvatarKey } from '@/constants/family-wellness';
+import type { AvatarKey } from '@/constants/family-wellness';
+import { AVATAR_BACKGROUNDS, AVATAR_CATALOG, AvatarFigure, isUnlocked, SKIN_TONES, type AvatarPart } from '@/features/unified/avatar';
 import {
   CHILD_MOODS,
   COLORS,
@@ -75,7 +76,7 @@ import {
   verifyTutorPassword,
   type PhysicalActivityCatalog,
 } from '@/features/unified/cloud-data';
-import { AchievementCelebration, BarChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, HomeGrid, HomeTile, ListRow, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
+import { AchievementCelebration, BottomBar, BottomSheet, ChallengeRow, FoodChip, HabitCard, HabitProgress, HeroCard, HomeGrid, HomeTile, ListRow, ChartTitle, DonutChart, PillBar, WaterWeekChart, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
 import { DatabaseManagement } from '@/features/unified/database-management';
@@ -90,6 +91,7 @@ import {
   Field,
   Icon,
   ProgressMeter,
+  IconWeightContext,
   SectionTitle,
   styles,
   Tag,
@@ -105,27 +107,11 @@ type PhotoDraft = {
   mimeType?: string | null;
   fileName?: string | null;
 };
-const AVATAR_COLORS: Record<AvatarKey, string[]> = {
-  piel: ['#F8D5B8', '#E6B98E', '#C88C61', '#A96845', '#805137', '#57392E'],
-  cabello: ['#6F4939', '#B45D3D', '#302B32', '#D6C49A', '#784AA8', '#1C1B20'],
-  ropa: ['#E66B9A', '#805AD5', '#2B6CB0', '#48A878', '#ED8936', '#344255'],
-  accesorio: ['#ED64A6', '#805AD5', '#F6C445', '#48BB78', '#2B6CB0', '#ED8936'],
-  fondo: ['#FFF0F5', '#F0FAF5', '#EAF4FF', '#F0EEFF', '#FFFBEA', '#F5F0FF'],
-};
 const ACHIEVEMENT_INFO: Record<string, { title: string; icon: AppIconName; description: string }> = {
   'primer-reto': { title: 'Primer reto', icon: 'check', description: 'Completaste tu primer reto.' },
   'familia-en-equipo': { title: 'Familia en equipo', icon: 'tutor', description: 'Compartiste un avance con tu familia.' },
   actividad: { title: 'En movimiento', icon: 'activity', description: 'Registraste una actividad.' },
   mision: { title: 'Reto cumplido', icon: 'achievements', description: 'Terminaste un reto diario.' },
-};
-const MOOD_ICONS: Record<string, AppIconName> = {
-  feliz: 'mood',
-  bien: 'check',
-  tranquilo: 'mood',
-  normal: 'mood',
-  cansado: 'sleep',
-  triste: 'mood',
-  estresada: 'activity',
 };
 type UnifiedProfile = {
   key: string;
@@ -199,9 +185,14 @@ const screenStyles = StyleSheet.create({
   loginLogo: { width: 64, height: 64 },
   topBar: { paddingHorizontal: SPACE[16], paddingTop: SPACE[12], paddingBottom: SPACE[12] },
   sectionHeading: { gap: SPACE[4], marginTop: SPACE[4] },
-  moodGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[8] },
-  moodChoice: { width: '30%', minHeight: 76, alignItems: 'center', justifyContent: 'center', gap: SPACE[4], borderRadius: RADIUS.md, borderWidth: BORDER.fino },
-  moodIcon: { width: 44, height: 44, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
+  sleepSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
+  sleepBadge: { width: 72, height: 72, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
+  allDone: { alignItems: 'center', gap: SPACE[6], padding: SPACE[16], borderRadius: RADIUS.md, backgroundColor: '#FFF3C4' },
+  moodGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -SPACE[4] },
+  moodCell: { width: '50%', padding: SPACE[4] },
+  moodTile: { minHeight: 104, alignItems: 'center', justifyContent: 'center', gap: SPACE[6], padding: SPACE[12], borderRadius: RADIUS.md, borderWidth: 3 },
+  moodCheck: { position: 'absolute', top: SPACE[6], right: SPACE[6], width: 26, height: 26, borderRadius: RADIUS.pildora, backgroundColor: SHARED.tarjeta, alignItems: 'center', justifyContent: 'center' },
+  sleepSummary: { padding: SPACE[12], borderRadius: RADIUS.md },
   activityScene: { width: 56, alignItems: 'center', justifyContent: 'center' },
   activityScreen: { flex: 1 },
   activityContent: { padding: SPACE[20], gap: SPACE[16] },
@@ -215,10 +206,12 @@ const screenStyles = StyleSheet.create({
   avatarPreview: { alignItems: 'center', borderRadius: RADIUS.habito, padding: SPACE[20], gap: SPACE[8] },
   avatarTabs: { flexDirection: 'row', gap: SPACE[8] },
   avatarTab: { minHeight: 44, paddingHorizontal: SPACE[14], borderRadius: RADIUS.pildora, flexDirection: 'row', alignItems: 'center', gap: SPACE[6] },
-  avatarOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[12] },
-  avatarOption: { width: 52, height: 52, borderRadius: RADIUS.pildora, borderWidth: BORDER.avatar, alignItems: 'center', justifyContent: 'center' },
-  avatarColor: { width: 38, height: 38, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
-  avatarCheck: { width: 22, height: 22, borderRadius: RADIUS.pildora, backgroundColor: SHARED.tarjeta, alignItems: 'center', justifyContent: 'center' },
+  // Tres celdas por fila en cualquier ancho; el espacio entre tarjetas va dentro de cada celda.
+  avatarOptions: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -SPACE[4] },
+  avatarCell: { width: '33.333%', padding: SPACE[4] },
+  avatarItem: { flex: 1, minHeight: 124, alignItems: 'center', justifyContent: 'flex-end', gap: SPACE[4], padding: SPACE[8], borderRadius: RADIUS.md, borderWidth: BORDER.avatar },
+  avatarSwatch: { width: 56, height: 56, borderRadius: RADIUS.pildora },
+  avatarBadge: { position: 'absolute', top: SPACE[6], right: SPACE[6], width: 24, height: 24, borderRadius: RADIUS.pildora, backgroundColor: SHARED.tarjeta, alignItems: 'center', justifyContent: 'center' },
   helpLogo: { width: 120, height: 120, alignSelf: 'center' },
   summaryRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' },
   summaryCard: { width: '48%', backgroundColor: SHARED.tarjeta, borderRadius: RADIUS.tarjeta, padding: SPACE[16], gap: SPACE[4], ...SHADOW.tarjeta },
@@ -327,8 +320,14 @@ const AVATAR_LABELS: Record<AvatarKey, string> = {
   piel: 'Piel',
   cabello: 'Cabello',
   ropa: 'Ropa',
-  accesorio: 'Accesorio',
+  accesorio: 'Accesorios',
   fondo: 'Fondo',
+};
+const AVATAR_HINTS: Record<AvatarPart, string> = {
+  piel: '¡Elige tu color de piel!',
+  cabello: '¡Prueba nuevos peinados!',
+  ropa: '¡Combina tu atuendo!',
+  accesorio: '¡Añade los toques finales!',
 };
 const AVATAR_TAB_ICONS: Record<AvatarKey, AppIconName> = {
   piel: 'profile',
@@ -345,7 +344,7 @@ const EXERCISE_ICONS: Record<(typeof EXERCISE_CATEGORIES)[number]['id'], AppIcon
 };
 
 function defaultAvatarSelection(theme: UnifiedProfile['theme']): AvatarSelection {
-  return { piel: 0, cabello: 0, ropa: theme === 'nina' ? 0 : 2, accesorio: 0, fondo: theme === 'nina' ? 0 : 2 };
+  return { piel: 0, cabello: theme === 'nina' ? 1 : 0, ropa: theme === 'nina' ? 0 : 2, accesorio: 0, fondo: theme === 'nina' ? 0 : 2 };
 }
 
 function createId(prefix: string): string {
@@ -655,7 +654,9 @@ export default function UnifiedApp() {
   const [chatMessages, setChatMessages] = useState<{ from: 'bot' | 'child'; text: string }[]>([
     { from: 'bot', text: '¡Hola! Soy NutriBot. Podemos hablar de hábitos, comida y cómo te sientes.' },
   ]);
-  const [avatarCategory, setAvatarCategory] = useState<AvatarKey>('cabello');
+  const [avatarCategory, setAvatarCategory] = useState<AvatarPart>('cabello');
+  // Aviso junto a las prendas cuando se toca una bloqueada.
+  const [avatarHint, setAvatarHint] = useState('');
   const [childSettingsSection, setChildSettingsSection] = useState<'main' | 'avatar'>('main');
   const [avatarDraft, setAvatarDraft] = useState<{
     profileKey: string;
@@ -1610,6 +1611,7 @@ export default function UnifiedApp() {
       changed: [],
     });
     setAvatarCategory('piel');
+    setAvatarHint('');
     setChildSettingsSection('avatar');
     setTab('Ajustes');
   };
@@ -1623,13 +1625,16 @@ export default function UnifiedApp() {
   };
 
   const surpriseAvatar = () => {
+    if (!data || !selectedProfile) return;
+    const points = getProgress(data, selectedProfile).points;
     const categories = AVATAR_KEYS.filter(key => key !== 'fondo');
-    const randomized = {
-      piel: Math.floor(Math.random() * AVATAR_OPCIONES.piel.length),
-      cabello: Math.floor(Math.random() * AVATAR_OPCIONES.cabello.length),
-      ropa: Math.floor(Math.random() * AVATAR_OPCIONES.ropa.length),
-      accesorio: Math.floor(Math.random() * AVATAR_OPCIONES.accesorio.length),
+    // Solo elige entre lo que el perfil ya desbloqueó.
+    const pick = (part: AvatarPart) => {
+      const unlocked = AVATAR_CATALOG[part].map((item, index) => ({ item, index })).filter(({ item }) => isUnlocked(item, points));
+      return unlocked[Math.floor(Math.random() * unlocked.length)]?.index ?? 0;
     };
+    const randomized = { piel: pick('piel'), cabello: pick('cabello'), ropa: pick('ropa'), accesorio: pick('accesorio') };
+    setAvatarHint('');
     setAvatarDraft(current => current ? {
       ...current,
       selection: { ...current.selection, ...randomized },
@@ -2138,26 +2143,36 @@ export default function UnifiedApp() {
           onIncrease={() => addWater(1)}
           points={MISSION_POINTS['water-goal']}
         />
-        <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>
-          {claimList.includes('water-goal')
-            ? '¡Ya completaste el reto de agua de hoy!'
-            : log.water >= waterGoal
-              ? `Tu reto de agua está listo. Reclama ${MISSION_POINTS['water-goal']} puntos en Retos para hoy.`
-              : `Al llegar a tu meta, podrás reclamar ${MISSION_POINTS['water-goal']} puntos en Retos para hoy.`}
-        </Text>
+        <View style={styles.horizontal}>
+          <Icon
+            name={claimList.includes('water-goal') ? 'check' : log.water >= waterGoal ? 'achievements' : 'water'}
+            size={16}
+            color={claimList.includes('water-goal') ? theme.colors.completado : log.water >= waterGoal ? theme.colors.puntos : theme.colors.agua}
+          />
+          <Text style={[theme.type.counter, styles.flex, { color: theme.colors.textoSecundario }]}>
+            {claimList.includes('water-goal')
+              ? '¡Completaste tu reto de agua de hoy!'
+              : log.water >= waterGoal
+                ? `¡Llegaste a tu meta! Reclama ${MISSION_POINTS['water-goal']} puntos en Retos para hoy.`
+                : log.water === 0
+                  ? 'Empieza con un vaso de agua cuando quieras.'
+                  : `¡Vas muy bien! Te ${waterGoal - log.water === 1 ? 'falta 1 vaso' : `faltan ${waterGoal - log.water} vasos`} para tu meta.`}
+          </Text>
+        </View>
 
         <SectionCard theme={theme} role="child" title="Colores en mi plato" subtitle="Marca los grupos que probaste hoy.">
           <View style={styles.wrap}>
             {([
-              { id: 'frutas-verduras', label: 'Frutas y verduras', group: 'frutas' },
-              { id: 'cereales', label: 'Cereales', group: 'cereales' },
-              { id: 'leguminosas', label: 'Leguminosas', group: 'leguminosas' },
-              { id: 'origen-animal', label: 'Origen animal', group: 'animal' },
+              { id: 'frutas-verduras', label: 'Frutas y verduras', group: 'frutas', icon: 'produce' },
+              { id: 'cereales', label: 'Cereales', group: 'cereales', icon: 'cereal' },
+              { id: 'leguminosas', label: 'Leguminosas', group: 'leguminosas', icon: 'legume' },
+              { id: 'origen-animal', label: 'Origen animal', group: 'animal', icon: 'animal' },
             ] as const).map(group => (
               <FoodChip
                 key={group.id}
                 theme={theme}
                 label={group.label}
+                icon={group.icon}
                 group={group.group}
                 selected={log.foodGroups.some(value => canonicalFoodGroup(value) === group.id)}
                 onPress={() => toggleFoodGroup(group.id)}
@@ -2166,26 +2181,49 @@ export default function UnifiedApp() {
           </View>
         </SectionCard>
 
-        <SectionCard theme={theme} role="child" title="¿Cómo te sientes?" subtitle="Puedes elegir más de una vez durante el día.">
+        <SectionCard theme={theme} role="child" title="¿Cómo te sientes?" subtitle="Toca cómo te sientes hoy. Puedes cambiarlo durante el día.">
           <View style={screenStyles.moodGrid}>
-            {CHILD_MOODS.map(mood => (
-              <Pressable
-                accessibilityRole="button"
-                aria-selected={log.mood === mood.id}
-                key={mood.id}
-                onPress={() => setMood(mood.id)}
-                style={[screenStyles.moodChoice, { borderColor: log.mood === mood.id ? mood.color : 'transparent' }]}
-              >
-                <View style={[screenStyles.moodIcon, { backgroundColor: tint(mood.color, 0.15) }]}>
-                  <Icon name={MOOD_ICONS[mood.id] ?? 'mood'} size={24} color={mood.color} />
+            {CHILD_MOODS.filter(mood => !('retired' in mood)).map(mood => {
+              const selected = log.mood === mood.id;
+              return (
+                <View key={mood.id} style={screenStyles.moodCell}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={mood.label}
+                    aria-selected={selected}
+                    onPress={() => setMood(mood.id)}
+                    style={[
+                      screenStyles.moodTile,
+                      { backgroundColor: mood.color, borderColor: selected ? theme.colors.texto : 'transparent' },
+                    ]}
+                  >
+                    <Icon name={mood.icon} size={40} color={mood.ink} />
+                    <Text style={[theme.type.h3, { color: mood.ink, textAlign: 'center' }]}>{mood.label}</Text>
+                    {selected ? (
+                      <View style={screenStyles.moodCheck}><Icon name="save" size={16} color={theme.colors.texto} /></View>
+                    ) : null}
+                  </Pressable>
                 </View>
-                <Text style={[theme.type.tab, { color: theme.colors.texto }]}>{mood.label}</Text>
-              </Pressable>
-            ))}
+              );
+            })}
           </View>
+          {log.mood === 'triste' || log.mood === 'cansado' || log.mood === 'enojado' ? (
+            <View style={styles.horizontal}>
+              <Icon name="heart" size={16} color={theme.colors.puntos} />
+              <Text style={[theme.type.counter, styles.flex, { color: theme.colors.textoSecundario }]}>
+                Gracias por contarnos. Si quieres, platícalo con una persona adulta de confianza.
+              </Text>
+            </View>
+          ) : null}
         </SectionCard>
 
-        <SectionCard theme={theme} role="child" title="Mi descanso" subtitle="Registra cuántas horas dormiste anoche.">
+        <SectionCard theme={theme} role="child" title="Mi descanso" subtitle="¿Cuántas horas dormiste anoche?">
+          <View style={[styles.horizontal, screenStyles.sleepSummary, { backgroundColor: tint(COLORS.purple, 0.12) }]}>
+            <Icon name="sleep" size={32} color={COLORS.purple} />
+            <Text style={[theme.type.h3, styles.flex, { color: theme.colors.texto }]}>
+              {log.sleepHours === null ? 'Aún no registras tu descanso' : `${log.sleepHours} h registradas`}
+            </Text>
+          </View>
           <View style={styles.horizontal}>
             <Field
               label="Horas de sueño"
@@ -2195,34 +2233,31 @@ export default function UnifiedApp() {
               value={sleepInput}
               style={styles.flex}
             />
-            <Button title="Guardar" small onPress={saveSleep} />
+            <Button title="Registrar" small icon="sleep" onPress={saveSleep} />
           </View>
-          {log.sleepHours !== null ? (
-            <Tag title={`Registraste ${log.sleepHours} horas`} color={COLORS.purple} icon="sleep" />
-          ) : null}
         </SectionCard>
 
-        <SectionCard theme={theme} role="child" title="Retos para hoy" subtitle="Se activan cuando completas el hábito.">
-          {missions.map(mission => {
-            const claimed = claimList.includes(mission.id);
-            return (
-              <ListRow
-                key={mission.id}
-                theme={theme}
-                icon={mission.icon}
-                iconColor={theme.colors.acento}
-                title={mission.title}
-                subtitle={mission.detail}
-                trailing={<Button
-                  title={claimed ? 'Listo' : `+${mission.points} puntos`}
-                  small
-                  variant={claimed ? 'success' : 'secondary'}
-                  disabled={!mission.ready || claimed}
-                  onPress={() => claimMission(mission.id, mission.points)}
-                />}
-              />
-            );
-          })}
+        <SectionCard theme={theme} role="child" title="Retos para hoy" subtitle="Completa el hábito y reclama tus puntos.">
+          <View style={styles.horizontal}>
+            {claimedMissions === missions.length ? <Icon name="sparkles" size={16} color={theme.colors.puntos} /> : null}
+            <Text style={[theme.type.counter, styles.flex, { color: theme.colors.textoSecundario }]}>
+              {claimedMissions === missions.length ? '¡Completaste todos los retos de hoy!' : `${claimedMissions} de ${missions.length} retos completados`}
+            </Text>
+          </View>
+          <HabitProgress value={claimedMissions} max={missions.length} color={theme.colors.completado} />
+          {missions.map(mission => (
+            <ChallengeRow
+              key={mission.id}
+              theme={theme}
+              icon={mission.icon}
+              title={mission.title}
+              detail={mission.detail}
+              points={mission.points}
+              ready={mission.ready}
+              claimed={claimList.includes(mission.id)}
+              onClaim={() => claimMission(mission.id, mission.points)}
+            />
+          ))}
         </SectionCard>
 
         </>)}
@@ -2358,30 +2393,29 @@ export default function UnifiedApp() {
       const label = new Intl.DateTimeFormat('es-MX', { weekday: 'short' }).format(new Date(`${date}T12:00:00`)).replace('.', '');
       return { label, log: getDailyLog(data, selectedProfile, date) };
     }) : [];
-    const dayColors = ['#FFB5C5', '#FFD6A5', '#FDFFB6', '#B5EAD7', '#A0E7E5', '#B4B8F5', '#E0BBE4'];
-    const foodSlices = [
-      { id: 'frutas-verduras', label: 'Frutas y verduras', color: '#9BE5A8' },
-      { id: 'cereales', label: 'Cereales', color: '#FFD98A' },
-      { id: 'leguminosas', label: 'Leguminosas', color: '#C9B3F5' },
-      { id: 'origen-animal', label: 'Origen animal', color: '#9CCBFF' },
-    ].map(group => ({
-      label: group.label,
-      color: group.color,
-      value: weekDays.filter(day => day.log.foodGroups.some(value => canonicalFoodGroup(value) === group.id)).length,
-    })).map(item => ({ ...item, valueLabel: `${plural(item.value, 'día')} de 7` }));
-    const moodCounts = CHILD_MOODS.map(mood => ({
-      label: mood.label,
-      color: tint(mood.color, 0.55),
-      value: weekDays.filter(day => day.log.mood === mood.id).length,
-    })).filter(item => item.value > 0).map(item => ({ ...item, valueLabel: plural(item.value, 'día') }));
+    // Resumen semanal del perfil seleccionado (últimos 7 días).
     const waterGoal = data.warriorKids.waterGoal;
-    const waterSlices = weekDays.map((day, index) => ({
-      label: day.label, color: dayColors[index], value: day.log.water, valueLabel: `${day.log.water} de ${waterGoal}`,
-    }));
-    const sleepSlices = weekDays.map((day, index) => ({
-      label: day.label, color: dayColors[index], value: day.log.sleepHours ?? 0,
-      valueLabel: day.log.sleepHours === null ? 'Sin dato' : `${day.log.sleepHours} h`,
-    }));
+    const dayLabel = (label: string) => label.charAt(0).toLocaleUpperCase('es-MX') + label.slice(1);
+    const groupsPerDay = weekDays.map(day => new Set(day.log.foodGroups.map(canonicalFoodGroup).filter(Boolean)));
+    const waterDays = weekDays.filter(day => day.log.water >= waterGoal).length;
+    const foodDays = groupsPerDay.filter(groups => groups.size > 0).length;
+    const foodItems = ([
+      { id: 'frutas-verduras', label: 'Frutas y verduras', color: '#5CC27A', icon: 'produce' },
+      { id: 'cereales', label: 'Cereales', color: '#F2B544', icon: 'cereal' },
+      { id: 'leguminosas', label: 'Leguminosas', color: '#9C7BE0', icon: 'legume' },
+      { id: 'origen-animal', label: 'Origen animal', color: '#F28A7A', icon: 'animal' },
+    ] as const).map(group => {
+      const days = groupsPerDay.filter(groups => groups.has(group.id)).length;
+      return { label: group.label, color: group.color, icon: group.icon, value: days, valueLabel: plural(days, 'día') };
+    });
+    const moodDays = weekDays.filter(day => day.log.mood).length;
+    const moodRows = CHILD_MOODS
+      .map(mood => ({ mood, days: weekDays.filter(day => day.log.mood === mood.id).length }))
+      .filter(item => item.days > 0)
+      .sort((a, b) => b.days - a.days);
+    const sleepRows = weekDays
+      .filter(day => day.log.sleepHours !== null)
+      .map(day => ({ label: dayLabel(day.label), hours: day.log.sleepHours ?? 0 }));
     const selectedNutri = selectedProfile?.nutri;
     const selectedAge = ageFromBirth(selectedNutri?.nacimiento);
     return (
@@ -2414,7 +2448,13 @@ export default function UnifiedApp() {
           const missionPoints = claims.reduce((total, id) => total + (MISSION_POINTS[id] ?? 0), 0);
           const approvedCount = Object.values(log.activities).filter(item => item.status === 'approved').length;
           return (
-            <SectionCard key={profile.key} theme={theme} role="tutor" title={profile.name}>
+            <SectionCard
+              key={profile.key}
+              theme={theme}
+              role="tutor"
+              title={profile.name}
+              style={selectedProfile?.key === profile.key ? { borderWidth: 2, borderColor: theme.colors.acento } : undefined}
+            >
               <View style={styles.between}>
                 <View style={styles.horizontal}>
                   {renderAvatar(profile, 'small')}
@@ -2446,33 +2486,34 @@ export default function UnifiedApp() {
                     ))}
                   </View>
                   <Text style={[theme.type.counter, styles.flex, { color: theme.colors.textoSecundario }]}>
-                    {log.water}/{data.warriorKids.waterGoal} vasos · {missionPoints} puntos en retos de hoy
+                    {log.water}/{data.warriorKids.waterGoal} vasos · +{missionPoints} pts en retos
                   </Text>
                 </View>
               ) : null}
-              <View style={{ gap: SPACE[4] }}>
-                <Text style={styles.inputLabel}>Logros de {profile.name}</Text>
-                {unique(progress.badges).length ? (
+              {(() => {
+                const mood = CHILD_MOODS.find(item => item.id === log.mood);
+                const badges = unique(progress.badges);
+                const hasToday = data.progressSharingEnabled && (Boolean(mood) || log.sleepHours !== null || log.foodGroups.length > 0 || approvedCount > 0);
+                if (!badges.length && !hasToday) {
+                  return <Text style={styles.muted}>No se registra actividad del día de hoy.</Text>;
+                }
+                return (
                   <View style={styles.wrap}>
-                    {unique(progress.badges).map(badge => (
+                    {badges.map(badge => (
                       <Tag
                         key={badge}
                         title={ACHIEVEMENT_INFO[badge]?.title ?? badge.replace(/[-_]/g, ' ')}
                         color={COLORS.orange}
-                        icon="achievements"
+                        icon={ACHIEVEMENT_INFO[badge]?.icon ?? 'achievements'}
                       />
                     ))}
+                    {data.progressSharingEnabled && mood ? <Tag title={`Ánimo: ${mood.label}`} color={COLORS.purple} icon={mood.icon} /> : null}
+                    {data.progressSharingEnabled && log.sleepHours !== null ? <Tag title={`${log.sleepHours} h de sueño`} color={COLORS.blue} icon="sleep" /> : null}
+                    {data.progressSharingEnabled && log.foodGroups.length ? <Tag title={`${plural(log.foodGroups.length, 'grupo')} de alimentos`} color={COLORS.green} icon="food" /> : null}
+                    {data.progressSharingEnabled && approvedCount ? <Tag title={`${plural(approvedCount, 'actividad aprobada', 'actividades aprobadas')} hoy`} color={COLORS.green} icon="activity" /> : null}
                   </View>
-                ) : <Text style={styles.muted}>Aún no tiene insignias desbloqueadas.</Text>}
-              </View>
-              {data.progressSharingEnabled ? (
-                <View style={styles.wrap}>
-                  {log.mood ? <Tag title={`Ánimo: ${CHILD_MOODS.find(item => item.id === log.mood)?.label ?? log.mood}`} color={COLORS.purple} /> : null}
-                  {log.sleepHours !== null ? <Tag title={`${log.sleepHours} horas de sueño`} color={COLORS.blue} icon="sleep" /> : null}
-                  {log.foodGroups.length ? <Tag title={`${log.foodGroups.length} ${log.foodGroups.length === 1 ? 'grupo' : 'grupos'} de alimentos`} color={COLORS.green} icon="food" /> : null}
-                  <Tag title={`${approvedCount} ${approvedCount === 1 ? 'actividad aprobada' : 'actividades aprobadas'} hoy`} color={COLORS.green} />
-                </View>
-              ) : null}
+                );
+              })()}
             </SectionCard>
           );
         })}
@@ -2486,10 +2527,30 @@ export default function UnifiedApp() {
                 {selectedNutri?.altura ? <Tag title={`${selectedNutri.altura} cm`} color={COLORS.blue} icon="height" /> : null}
               </View>
             ) : null}
-            <BarChart theme={theme} title="Agua por día" note={`Vasos contra la meta de ${plural(waterGoal, 'vaso')} al día.`} items={waterSlices} max={waterGoal} emptyText="Aún no hay vasos de agua registrados." />
-            <BarChart theme={theme} title="Grupos de alimentos" note="Días de la semana en que se registró cada grupo." items={foodSlices} max={7} labelWidth={112} emptyText="Aún no hay grupos de alimentos registrados." />
-            <BarChart theme={theme} title="Ánimo" note="Días en que se eligió cada ánimo." items={moodCounts} max={7} labelWidth={112} emptyText="Aún no hay estados de ánimo registrados." />
-            <BarChart theme={theme} title="Descanso por día" note="Referencia: 9 a 12 horas para niñas y niños de 6 a 12 años." items={sleepSlices} max={12} emptyText="Aún no hay horas de sueño registradas." />
+            <ChartTitle theme={theme} title="Agua por día" note={`Llegó a su meta ${waterDays} de 7 días`} />
+            <WaterWeekChart theme={theme} days={weekDays.map(day => ({ label: dayLabel(day.label).slice(0, 2), value: day.log.water }))} goal={waterGoal} />
+
+            <ChartTitle theme={theme} title="Grupos de alimentos" note={`Registró alimentos ${foodDays} de 7 días`} />
+            <DonutChart theme={theme} items={foodItems} center={`${foodDays}/7`} emptyText="Aún no hay grupos de alimentos registrados." />
+
+            <ChartTitle theme={theme} title="Ánimo" note={`Contó cómo se sentía ${moodDays} de 7 días`} />
+            {moodRows.length ? moodRows.map(({ mood, days }) => (
+              <PillBar key={mood.id} theme={theme} icon={mood.icon} color={mood.color} text={`${mood.label}: ${plural(days, 'día')}`} ratio={days / 7} />
+            )) : <Text style={styles.muted}>Aún no hay estados de ánimo registrados.</Text>}
+
+            <ChartTitle theme={theme} title="Descanso por día" note="Recomendado: 9 a 12 horas" />
+            {sleepRows.length ? (
+              <View style={screenStyles.sleepSummaryRow}>
+                <View style={[screenStyles.sleepBadge, { backgroundColor: '#3E3A7A' }]}>
+                  <Icon name="moonStars" size={36} color="#FFD84D" />
+                </View>
+                <View style={[styles.flex, { gap: SPACE[8] }]}>
+                  {sleepRows.map(row => (
+                    <PillBar key={row.label} theme={theme} icon="sleep" color={COLORS.purple} text={`${row.label}: ${row.hours} h`} ratio={row.hours / 12} />
+                  ))}
+                </View>
+              </View>
+            ) : <Text style={styles.muted}>Aún no hay horas de sueño registradas.</Text>}
           </SectionCard>
         ) : null}
 
@@ -2539,15 +2600,16 @@ export default function UnifiedApp() {
                 </View>
               );
             }) : (
-              <View style={styles.emptyState}>
-                <Icon name="achievements" size={34} color={COLORS.orange} />
-                <Text style={styles.body}>No hay actividades pendientes. ¡Gracias por acompañar!</Text>
+              <View style={screenStyles.allDone}>
+                <Icon name="achievements" size={40} color={COLORS.orange} />
+                <Text style={[theme.type.h3, { color: theme.colors.texto }]}>¡Todo al día!</Text>
+                <Text style={[styles.body, { textAlign: 'center' }]}>No hay actividades pendientes. ¡Gracias por acompañar!</Text>
               </View>
             )}
           </SectionCard>
         )}
         <SectionCard theme={theme} role="tutor" title="Accesos rápidos">
-          <Button title="Agregar perfil infantil" icon="add" variant="secondary" onPress={() => createOrEditProfile(null)} />
+          <Button title="Agregar perfil infantil" icon="add" onPress={() => createOrEditProfile(null)} />
           <Button title="Ver recetas" icon="recipes" variant="outline" onPress={() => setTab('Recetas')} />
           <Button title="Abrir menú" icon="menu" variant="outline" onPress={() => setTab('Menú')} />
         </SectionCard>
@@ -2755,8 +2817,9 @@ export default function UnifiedApp() {
   };
 
   const renderAvatarEditor = () => {
-    if (!selectedProfile || !avatarDraft || avatarDraft.profileKey !== selectedProfile.key) return renderNoProfile();
-    const options = AVATAR_OPCIONES[avatarCategory];
+    if (!data || !selectedProfile || !avatarDraft || avatarDraft.profileKey !== selectedProfile.key) return renderNoProfile();
+    const points = getProgress(data, selectedProfile).points;
+    const items = AVATAR_CATALOG[avatarCategory];
     const selection = avatarDraft.selection;
     return (
       <>
@@ -2766,19 +2829,25 @@ export default function UnifiedApp() {
           variant="outline"
           onPress={() => { setAvatarDraft(null); setChildSettingsSection('main'); }}
         />
-        <View style={[screenStyles.avatarPreview, { backgroundColor: theme.colors.acentoSuave }]}>
-          <AvatarIllustration theme={selectedProfile.theme} selection={selection} />
+        <View style={[screenStyles.avatarPreview, { backgroundColor: AVATAR_BACKGROUNDS[selection.fondo] ?? theme.colors.acentoSuave }]}>
+          <View accessible accessibilityRole="image" accessibilityLabel={`Avatar de ${selectedProfile.name}`}>
+            <AvatarFigure selection={selection} variant="full" width={132} />
+          </View>
           <Text style={[theme.type.h2, { color: theme.colors.texto }]}>{selectedProfile.name}</Text>
+          <View style={styles.horizontal}>
+            <Icon name="points" size={16} color={theme.colors.puntos} />
+            <Text style={[theme.type.counter, { color: theme.colors.texto }]}>Tienes {plural(points, 'punto')}</Text>
+          </View>
         </View>
-        <SectionCard theme={theme} role="child" title="Personaliza tu avatar" subtitle="Elige cada detalle para crear tu personaje.">
+        <SectionCard theme={theme} role="child" title="Personaliza tu avatar" subtitle={AVATAR_HINTS[avatarCategory]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }}>
             <View style={screenStyles.avatarTabs}>
-              {AVATAR_KEYS.filter(key => key !== 'fondo').map(key => (
+              {(['piel', 'cabello', 'ropa', 'accesorio'] as const).map(key => (
                 <Pressable
                   accessibilityRole="tab"
                   aria-selected={avatarCategory === key}
                   key={key}
-                  onPress={() => setAvatarCategory(key)}
+                  onPress={() => { setAvatarCategory(key); setAvatarHint(''); }}
                   style={[screenStyles.avatarTab, { backgroundColor: avatarCategory === key ? theme.colors.acento : theme.colors.apagada }]}
                 >
                   <Icon name={AVATAR_TAB_ICONS[key]} size={16} color={avatarCategory === key ? theme.colors.sobreAcento : theme.colors.texto} />
@@ -2790,27 +2859,64 @@ export default function UnifiedApp() {
             </View>
           </ScrollView>
           <View style={screenStyles.avatarOptions}>
-            {options.map((_, index) => {
+            {items.map((item, index) => {
               const selected = selection[avatarCategory] === index;
+              const unlocked = isUnlocked(item, points);
+              const preview = { ...selection, [avatarCategory]: index };
               return (
+                <View key={`${avatarCategory}-${index}`} style={screenStyles.avatarCell}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`${AVATAR_LABELS[avatarCategory]}, opción ${index + 1}`}
+                  accessibilityLabel={unlocked ? item.label : `${item.label}, se desbloquea con ${item.cost} puntos`}
                   aria-selected={selected}
-                  key={`${avatarCategory}-${index}`}
-                  onPress={() => setAvatarPart(index)}
-                  style={[screenStyles.avatarOption, { borderColor: selected ? theme.colors.acento : 'transparent' }]}
+                  aria-disabled={!unlocked}
+                  onPress={() => {
+                    if (unlocked) {
+                      setAvatarHint('');
+                      setAvatarPart(index);
+                    } else {
+                      setAvatarHint(`Junta ${item.cost} puntos para desbloquear ${item.label}. ¡Te ${item.cost - points === 1 ? 'falta 1 punto' : `faltan ${item.cost - points} puntos`}!`);
+                    }
+                  }}
+                  style={[
+                    screenStyles.avatarItem,
+                    {
+                      borderColor: selected ? theme.colors.acento : theme.colors.bordeSutil,
+                      backgroundColor: unlocked ? SHARED.tarjeta : SHARED.apagada,
+                    },
+                  ]}
                 >
-                  <View style={[screenStyles.avatarColor, { backgroundColor: AVATAR_COLORS[avatarCategory][index] }]}>
-                    {selected ? <View style={screenStyles.avatarCheck}><Icon name="check" size={16} color={theme.colors.texto} /></View> : null}
+                  <View style={{ opacity: unlocked ? 1 : 0.45 }}>
+                    {avatarCategory === 'piel' ? (
+                      <View style={[screenStyles.avatarSwatch, { backgroundColor: SKIN_TONES[index]?.color }]} />
+                    ) : (
+                      <AvatarFigure selection={preview} variant={avatarCategory === 'ropa' ? 'torso' : 'bust'} width={60} />
+                    )}
                   </View>
+                  {!unlocked ? (
+                    <View style={screenStyles.avatarBadge}><Icon name="lock" size={14} color={theme.colors.textoSecundario} /></View>
+                  ) : selected ? (
+                    <View style={[screenStyles.avatarBadge, { backgroundColor: theme.colors.acento }]}><Icon name="save" size={14} color={theme.colors.sobreAcento} /></View>
+                  ) : null}
+                  <Text numberOfLines={2} style={[theme.type.tab, { textAlign: 'center', color: unlocked ? theme.colors.texto : theme.colors.textoSecundario }]}>
+                    {unlocked ? item.label : `${item.label} · ${item.cost} pts`}
+                  </Text>
                 </Pressable>
+                </View>
               );
             })}
           </View>
-          <PillButton theme={theme} label="Guardar avatar" onPress={saveAvatar} />
+          {avatarHint ? (
+            <View accessibilityLiveRegion="polite" style={styles.horizontal}>
+              <Icon name="lock" size={16} color={theme.colors.puntos} />
+              <Text style={[theme.type.counter, styles.flex, { color: theme.colors.texto }]}>{avatarHint}</Text>
+            </View>
+          ) : null}
+          <PillButton theme={theme} label="¡Guardar mi estilo!" onPress={saveAvatar} />
           <PillButton theme={theme} label="Sorpréndeme" variant="ghost" onPress={surpriseAvatar} />
-          <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>El avatar se guarda en el espacio privado de tu cuenta.</Text>
+          <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>
+            Las prendas con candado se desbloquean solas cuando juntas sus puntos. Tus puntos no se gastan.
+          </Text>
         </SectionCard>
       </>
     );
@@ -3826,6 +3932,7 @@ export default function UnifiedApp() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.fondoInicio }]}>
+    <IconWeightContext.Provider value={role === 'child' ? 'duotone' : 'regular'}>
     <SoundEffectsProvider enabled={data.soundEnabled ?? false}>
       <SoundCue cue={soundCue} onPlayed={clearSoundCue} />
       <View style={[styles.shell, { backgroundColor: theme.colors.fondoInicio }]}>
@@ -3928,6 +4035,7 @@ export default function UnifiedApp() {
       {renderTutorGateModal()}
       {renderChildProfilePickerModal()}
     </SoundEffectsProvider>
+    </IconWeightContext.Provider>
     </SafeAreaView>
   );
 }

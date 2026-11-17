@@ -1,3 +1,4 @@
+import type { AppIconName } from './ui';
 import { PLAN_DIETA } from '@/constants/family-wellness';
 import { SHARED, THEMES } from '@/features/unified/tokens';
 
@@ -20,15 +21,21 @@ export const COLORS = {
   paleOrange: THEMES.tutor.acentoSuave,
 } as const;
 
+// Ánimos del selector (en orden). `ink` es el color del texto e ícono sobre `color`.
+// Los que tienen `retired` ya no se ofrecen, pero se conservan para leer días registrados antes.
 export const CHILD_MOODS = [
-  { id: 'feliz', emoji: '😄', label: 'A gusto', color: COLORS.green },
-  { id: 'bien', emoji: '🙂', label: 'Bien', color: COLORS.blue },
-  { id: 'tranquilo', emoji: '😌', label: 'Tranquilo', color: COLORS.purple },
-  { id: 'normal', emoji: '😐', label: 'Más o menos', color: COLORS.orange },
-  { id: 'cansado', emoji: '😴', label: 'Cansado', color: COLORS.blueDeep },
-  { id: 'triste', emoji: '😢', label: 'Triste', color: COLORS.pink },
-  { id: 'estresada', emoji: '😤', label: 'Con energía', color: COLORS.orange },
-] as const;
+  { id: 'feliz', label: 'Feliz', color: '#FFD84D', ink: '#5A3D00', icon: 'sun' },
+  { id: 'emocionado', label: 'Emocionado', color: '#FFA94D', ink: '#5A2A00', icon: 'confetti' },
+  { id: 'tranquilo', label: 'Tranquilo', color: '#7FCF9C', ink: '#0F3D22', icon: 'leaf' },
+  { id: 'cansado', label: 'Cansado', color: '#34508F', ink: '#FFFFFF', icon: 'moonStars' },
+  { id: 'triste', label: 'Triste', color: '#8EC9F2', ink: '#0B3556', icon: 'cloudRain' },
+  { id: 'enojado', label: 'Enojado', color: '#E5604D', ink: '#FFFFFF', icon: 'fire' },
+  { id: 'estresada', label: 'Con energía', color: '#8E4BD6', ink: '#FFFFFF', icon: 'lightning' },
+  { id: 'bien', label: 'Bien', color: '#4C9BE8', ink: '#FFFFFF', icon: 'mood', retired: true },
+  { id: 'normal', label: 'Más o menos', color: '#B8B8C4', ink: '#2B2B35', icon: 'mood', retired: true },
+] as const satisfies readonly {
+  id: string; label: string; color: string; ink: string; icon: AppIconName; retired?: boolean;
+}[];
 
 export const FOOD_OPTIONS = [
   { id: 'leche', group: 'animal', emoji: '🥛', name: 'Leche y lácteos', keywords: ['leche', 'yogur', 'queso', 'crema'] },

@@ -1,9 +1,66 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import Svg, { Path } from 'react-native-svg';
+import type { Icon as PhosphorIcon, IconWeight } from 'phosphor-react-native';
+// Cada ícono se importa por su ruta para no meter los ~1,500 de Phosphor al bundle.
+import { ArrowLeftIcon } from 'phosphor-react-native/src/icons/ArrowLeft';
+import { ArrowRightIcon } from 'phosphor-react-native/src/icons/ArrowRight';
+import { BabyIcon } from 'phosphor-react-native/src/icons/Baby';
+import { BarbellIcon } from 'phosphor-react-native/src/icons/Barbell';
+import { BellIcon } from 'phosphor-react-native/src/icons/Bell';
+import { BowlFoodIcon } from 'phosphor-react-native/src/icons/BowlFood';
+import { BreadIcon } from 'phosphor-react-native/src/icons/Bread';
+import { LightningIcon } from 'phosphor-react-native/src/icons/Lightning';
+import { FireIcon } from 'phosphor-react-native/src/icons/Fire';
+import { CloudRainIcon } from 'phosphor-react-native/src/icons/CloudRain';
+import { MoonStarsIcon } from 'phosphor-react-native/src/icons/MoonStars';
+import { ConfettiIcon } from 'phosphor-react-native/src/icons/Confetti';
+import { SunIcon } from 'phosphor-react-native/src/icons/Sun';
+import { CalendarIcon } from 'phosphor-react-native/src/icons/Calendar';
+import { CameraIcon } from 'phosphor-react-native/src/icons/Camera';
+import { CarrotIcon } from 'phosphor-react-native/src/icons/Carrot';
+import { ChartBarIcon } from 'phosphor-react-native/src/icons/ChartBar';
+import { CheckIcon } from 'phosphor-react-native/src/icons/Check';
+import { CheckCircleIcon } from 'phosphor-react-native/src/icons/CheckCircle';
+import { DropIcon } from 'phosphor-react-native/src/icons/Drop';
+import { EggIcon } from 'phosphor-react-native/src/icons/Egg';
+import { ForkKnifeIcon } from 'phosphor-react-native/src/icons/ForkKnife';
+import { GearIcon } from 'phosphor-react-native/src/icons/Gear';
+import { GrainsIcon } from 'phosphor-react-native/src/icons/Grains';
+import { HeartIcon } from 'phosphor-react-native/src/icons/Heart';
+import { HouseIcon } from 'phosphor-react-native/src/icons/House';
+import { ImageIcon } from 'phosphor-react-native/src/icons/Image';
+import { LeafIcon } from 'phosphor-react-native/src/icons/Leaf';
+import { LinkIcon } from 'phosphor-react-native/src/icons/Link';
+import { LockIcon } from 'phosphor-react-native/src/icons/Lock';
+import { MagnifyingGlassIcon } from 'phosphor-react-native/src/icons/MagnifyingGlass';
+import { MoonIcon } from 'phosphor-react-native/src/icons/Moon';
+import { MusicNoteIcon } from 'phosphor-react-native/src/icons/MusicNote';
+import { PackageIcon } from 'phosphor-react-native/src/icons/Package';
+import { PaletteIcon } from 'phosphor-react-native/src/icons/Palette';
+import { PaperPlaneRightIcon } from 'phosphor-react-native/src/icons/PaperPlaneRight';
+import { PauseIcon } from 'phosphor-react-native/src/icons/Pause';
+import { PawPrintIcon } from 'phosphor-react-native/src/icons/PawPrint';
+import { PencilSimpleIcon } from 'phosphor-react-native/src/icons/PencilSimple';
+import { PersonSimpleRunIcon } from 'phosphor-react-native/src/icons/PersonSimpleRun';
+import { PlusIcon } from 'phosphor-react-native/src/icons/Plus';
+import { QuestionIcon } from 'phosphor-react-native/src/icons/Question';
+import { RepeatIcon } from 'phosphor-react-native/src/icons/Repeat';
+import { RulerIcon } from 'phosphor-react-native/src/icons/Ruler';
+import { ScalesIcon } from 'phosphor-react-native/src/icons/Scales';
+import { ShieldIcon } from 'phosphor-react-native/src/icons/Shield';
+import { SmileyIcon } from 'phosphor-react-native/src/icons/Smiley';
+import { SparkleIcon } from 'phosphor-react-native/src/icons/Sparkle';
+import { StarIcon } from 'phosphor-react-native/src/icons/Star';
+import { TreeIcon } from 'phosphor-react-native/src/icons/Tree';
+import { TrophyIcon } from 'phosphor-react-native/src/icons/Trophy';
+import { UserCircleIcon } from 'phosphor-react-native/src/icons/UserCircle';
+import { UsersThreeIcon } from 'phosphor-react-native/src/icons/UsersThree';
+import { WarningIcon } from 'phosphor-react-native/src/icons/Warning';
+import { WavesIcon } from 'phosphor-react-native/src/icons/Waves';
+import { XIcon } from 'phosphor-react-native/src/icons/X';
 
+import { AVATAR_BACKGROUNDS, AvatarFigure } from './avatar';
 import { AnimatedPress } from './motion';
 import { COLORS } from './constants';
 import { BORDER, RADIUS, SHADOW, SHARED, SPACE, THEMES, tint } from './tokens';
@@ -55,57 +112,81 @@ export type AppIconName =
   | 'chest'
   | 'chart'
   | 'bell'
-  | 'shield';
+  | 'shield'
+  | 'cereal'
+  | 'legume'
+  | 'produce'
+  | 'animal'
+  | 'sun'
+  | 'confetti'
+  | 'moonStars'
+  | 'cloudRain'
+  | 'fire'
+  | 'lightning';
 
-const ICON_SYMBOLS = {
-  home: { ios: 'house.fill', android: 'home', web: 'home' },
-  recipes: { ios: 'fork.knife', android: 'restaurant', web: 'restaurant' },
-  menu: { ios: 'calendar', android: 'calendar_month', web: 'calendar_month' },
-  settings: { ios: 'gearshape.fill', android: 'settings', web: 'settings' },
-  help: { ios: 'questionmark.circle', android: 'help', web: 'help' },
-  achievements: { ios: 'trophy.fill', android: 'emoji_events', web: 'emoji_events' },
-  points: { ios: 'star.fill', android: 'stars', web: 'stars' },
-  water: { ios: 'mug', android: 'local_drink', web: 'local_drink' },
-  food: { ios: 'leaf.fill', android: 'nutrition', web: 'nutrition' },
-  mood: { ios: 'face.smiling', android: 'sentiment_satisfied', web: 'sentiment_satisfied' },
-  sleep: { ios: 'bed.double.fill', android: 'bedtime', web: 'bedtime' },
-  activity: { ios: 'figure.run', android: 'directions_run', web: 'directions_run' },
-  avatar: { ios: 'paintpalette.fill', android: 'palette', web: 'palette' },
-  profile: { ios: 'person.crop.circle.fill', android: 'face_3', web: 'face_3' },
-  tutor: { ios: 'person.2.fill', android: 'family_restroom', web: 'family_restroom' },
-  child: { ios: 'figure.child', android: 'child_care', web: 'child_care' },
-  add: { ios: 'plus', android: 'add', web: 'add' },
-  edit: { ios: 'pencil', android: 'edit', web: 'edit' },
-  link: { ios: 'link', android: 'link', web: 'link' },
-  pin: { ios: 'lock.fill', android: 'lock', web: 'lock' },
-  logout: { ios: 'arrow.left', android: 'arrow_back', web: 'arrow_back' },
-  next: { ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' },
-  camera: { ios: 'camera', android: 'photo_camera', web: 'photo_camera' },
-  gallery: { ios: 'photo', android: 'image', web: 'image' },
-  send: { ios: 'paperplane.fill', android: 'send', web: 'send' },
-  save: { ios: 'checkmark', android: 'done', web: 'done' },
-  close: { ios: 'xmark', android: 'close', web: 'close' },
-  warning: { ios: 'exclamationmark.triangle.fill', android: 'warning', web: 'warning' },
-  search: { ios: 'magnifyingglass', android: 'search', web: 'search' },
-  check: { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' },
-  scale: { ios: 'scalemass.fill', android: 'scale', web: 'scale' },
-  height: { ios: 'ruler', android: 'straighten', web: 'straighten' },
-  heart: { ios: 'heart.fill', android: 'favorite', web: 'favorite' },
-  sparkles: { ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' },
-  leaf: { ios: 'leaf.fill', android: 'nutrition', web: 'nutrition' },
-  music: { ios: 'music.note', android: 'music_note', web: 'music_note' },
-  paw: { ios: 'pawprint.fill', android: 'pets', web: 'pets' },
-  forest: { ios: 'tree.fill', android: 'forest', web: 'forest' },
-  dumbbell: { ios: 'dumbbell.fill', android: 'fitness_center', web: 'fitness_center' },
-  waves: { ios: 'water.waves', android: 'waves', web: 'waves' },
-  pause: { ios: 'pause.fill', android: 'pause', web: 'pause' },
-  repeat: { ios: 'repeat', android: 'repeat', web: 'repeat' },
-  lock: { ios: 'lock.fill', android: 'lock', web: 'lock' },
-  chest: { ios: 'shippingbox.fill', android: 'inventory_2', web: 'inventory_2' },
-  chart: { ios: 'chart.bar.fill', android: 'bar_chart', web: 'bar_chart' },
-  bell: { ios: 'bell.fill', android: 'notifications', web: 'notifications' },
-  shield: { ios: 'shield.fill', android: 'shield', web: 'shield' },
-} as const satisfies Record<AppIconName, SymbolViewProps['name']>;
+// Íconos Phosphor: duotone en el modo Niñez y regular en el modo Tutor (ver IconWeightContext).
+const ICONS: Record<AppIconName, PhosphorIcon> = {
+  home: HouseIcon,
+  recipes: ForkKnifeIcon,
+  menu: CalendarIcon,
+  settings: GearIcon,
+  help: QuestionIcon,
+  achievements: TrophyIcon,
+  points: StarIcon,
+  water: DropIcon,
+  food: BowlFoodIcon,
+  mood: SmileyIcon,
+  sleep: MoonIcon,
+  activity: PersonSimpleRunIcon,
+  avatar: PaletteIcon,
+  profile: UserCircleIcon,
+  tutor: UsersThreeIcon,
+  child: BabyIcon,
+  add: PlusIcon,
+  edit: PencilSimpleIcon,
+  link: LinkIcon,
+  pin: LockIcon,
+  logout: ArrowLeftIcon,
+  next: ArrowRightIcon,
+  camera: CameraIcon,
+  gallery: ImageIcon,
+  send: PaperPlaneRightIcon,
+  save: CheckIcon,
+  close: XIcon,
+  warning: WarningIcon,
+  search: MagnifyingGlassIcon,
+  check: CheckCircleIcon,
+  scale: ScalesIcon,
+  height: RulerIcon,
+  heart: HeartIcon,
+  sparkles: SparkleIcon,
+  leaf: LeafIcon,
+  music: MusicNoteIcon,
+  paw: PawPrintIcon,
+  forest: TreeIcon,
+  dumbbell: BarbellIcon,
+  waves: WavesIcon,
+  pause: PauseIcon,
+  repeat: RepeatIcon,
+  lock: LockIcon,
+  chest: PackageIcon,
+  chart: ChartBarIcon,
+  bell: BellIcon,
+  shield: ShieldIcon,
+  cereal: BreadIcon,
+  legume: GrainsIcon,
+  produce: CarrotIcon,
+  animal: EggIcon,
+  sun: SunIcon,
+  confetti: ConfettiIcon,
+  moonStars: MoonStarsIcon,
+  cloudRain: CloudRainIcon,
+  fire: FireIcon,
+  lightning: LightningIcon,
+};
+
+/** Estilo de los íconos de la pantalla: 'duotone' en Niñez, 'regular' en Tutor. */
+export const IconWeightContext = createContext<IconWeight>('regular');
 
 const EMOJI_ICON_PREFIXES: [string, AppIconName][] = [
   ['⚠️', 'warning'],
@@ -145,24 +226,32 @@ const EMOJI_ICON_PREFIXES: [string, AppIconName][] = [
   ['🔗', 'link'],
 ];
 
+/**
+ * Ícono de la app (Phosphor). Sin `label` es decorativo y queda oculto para lectores de pantalla
+ * (el texto de al lado ya lo describe); con `label` se anuncia como imagen.
+ */
 export function Icon({
   name,
   size = 18,
   color = COLORS.blue,
+  label,
 }: {
   name: AppIconName;
   size?: number;
   color?: string;
+  label?: string;
 }) {
-  if (name === 'water') {
-    // SF Symbols has no plain drinking glass; keep the same glass on every platform.
-    return (
-      <Svg width={size} height={size} viewBox="0 0 24 24">
-        <Path d="M4 3h16l-1.6 16.1A2 2 0 0 1 16.4 21H7.6a2 2 0 0 1-2-1.9L4 3Zm2.3 7 .9 9h9.6l.9-9H6.3Z" fill={color} fillRule="evenodd" />
-      </Svg>
-    );
+  const weight = useContext(IconWeightContext);
+  const Glyph = ICONS[name];
+  const glyph = <Glyph size={size} color={color} weight={weight} duotoneColor={color} />;
+  if (label) {
+    return <View accessible accessibilityRole="image" accessibilityLabel={label}>{glyph}</View>;
   }
-  return <SymbolView name={ICON_SYMBOLS[name]} size={size} tintColor={color} />;
+  return (
+    <View aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {glyph}
+    </View>
+  );
 }
 
 export function AvatarIllustration({
@@ -174,117 +263,29 @@ export function AvatarIllustration({
   selection?: { piel: number; cabello: number; ropa: number; accesorio: number; fondo: number };
   size?: 'large' | 'small';
 }) {
-  const scale = size === 'small' ? 0.62 : 1;
-  const skinColors = ['#F8D5B8', '#E6B98E', '#C88C61', '#A96845', '#805137', '#57392E'];
-  const hairColors = ['#6F4939', '#B45D3D', '#302B32', '#D6C49A', '#784AA8', '#1C1B20'];
-  const clothingColors = ['#E66B9A', '#805AD5', '#2B6CB0', '#48A878', '#ED8936', '#344255'];
-  const accessoryColors = ['#ED64A6', '#805AD5', '#F6C445', '#48BB78', '#2B6CB0', '#ED8936'];
-  const backgroundColors = ['#FFF0F5', '#F0FAF5', '#EAF4FF', '#F0EEFF', '#FFFBEA', '#F5F0FF'];
-  const skin = skinColors[selection?.piel ?? 0] ?? skinColors[0];
-  const hair = hairColors[selection?.cabello ?? 0] ?? hairColors[0];
-  const clothing = clothingColors[selection?.ropa ?? (theme === 'nina' ? 0 : 2)] ?? clothingColors[0];
-  const background = backgroundColors[selection?.fondo ?? (theme === 'nina' ? 0 : 2)] ?? backgroundColors[0];
+  const fallback = { piel: 0, cabello: theme === 'nina' ? 1 : 0, ropa: theme === 'nina' ? 0 : 2, accesorio: 0, fondo: theme === 'nina' ? 0 : 2 };
+  const current = selection ?? fallback;
+  const background = AVATAR_BACKGROUNDS[current.fondo] ?? AVATAR_BACKGROUNDS[0];
   const dimension = size === 'small' ? 52 : 88;
 
   return (
     <View
+      accessible
+      accessibilityRole="image"
       accessibilityLabel="Avatar ilustrado"
       style={{
         width: dimension,
         height: dimension,
         borderRadius: dimension / 2,
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'flex-end',
         backgroundColor: background,
         borderWidth: 2,
         borderColor: theme === 'nina' ? '#F4A0B8' : '#8BBFE8',
         overflow: 'hidden',
       }}
     >
-      <View
-        style={{
-          position: 'absolute',
-          bottom: -5 * scale,
-          width: 52 * scale,
-          height: 36 * scale,
-          borderTopLeftRadius: 28 * scale,
-          borderTopRightRadius: 28 * scale,
-          backgroundColor: clothing,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          top: 17 * scale,
-          width: 8 * scale,
-          height: 12 * scale,
-          borderRadius: 6 * scale,
-          backgroundColor: skin,
-          left: 17 * scale,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          top: 17 * scale,
-          width: 8 * scale,
-          height: 12 * scale,
-          borderRadius: 6 * scale,
-          backgroundColor: skin,
-          right: 17 * scale,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          top: 8 * scale,
-          width: 41 * scale,
-          height: 45 * scale,
-          borderRadius: 22 * scale,
-          backgroundColor: skin,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          top: 7 * scale,
-          width: 44 * scale,
-          height: 23 * scale,
-          borderTopLeftRadius: 24 * scale,
-          borderTopRightRadius: 24 * scale,
-          borderBottomRightRadius: 12 * scale,
-          borderBottomLeftRadius: 12 * scale,
-          backgroundColor: hair,
-        }}
-      />
-      <View style={{ position: 'absolute', top: 33 * scale, flexDirection: 'row', gap: 12 * scale }}>
-        <View style={{ width: 3 * scale, height: 3 * scale, borderRadius: 2 * scale, backgroundColor: '#302B32' }} />
-        <View style={{ width: 3 * scale, height: 3 * scale, borderRadius: 2 * scale, backgroundColor: '#302B32' }} />
-      </View>
-      <View
-        style={{
-          position: 'absolute',
-          top: 42 * scale,
-          width: 9 * scale,
-          height: 4 * scale,
-          borderBottomWidth: 1.5 * scale,
-          borderColor: '#9B514D',
-          borderRadius: 8 * scale,
-        }}
-      />
-      {selection ? (
-        <View
-          style={{
-            position: 'absolute',
-            right: 8 * scale,
-            top: 7 * scale,
-            width: 10 * scale,
-            height: 10 * scale,
-            borderRadius: 5 * scale,
-            backgroundColor: accessoryColors[selection.accesorio] ?? accessoryColors[0],
-          }}
-        />
-      ) : null}
+      <AvatarFigure selection={current} variant="bust" width={dimension - 4} />
     </View>
   );
 }

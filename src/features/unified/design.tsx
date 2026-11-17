@@ -113,8 +113,8 @@ export function WaterCounter({
 }
 
 export function FoodChip({
-  theme, group, label, selected, onPress,
-}: Themed & { group: FoodGroup; label: string; selected: boolean; onPress: () => void }) {
+  theme, group, label, icon, selected, onPress,
+}: Themed & { group: FoodGroup; label: string; icon?: AppIconName; selected: boolean; onPress: () => void }) {
   const reduceMotion = useReduceMotion();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
@@ -139,6 +139,7 @@ export function FoodChip({
         ]}
       >
         {selected ? <Icon name="check" size={16} color={colors.texto} /> : null}
+        {icon && !selected ? <Icon name={icon} size={16} color={colors.texto} /> : null}
         <Text style={[theme.type.caption, { color: colors.texto }]}>{label}</Text>
       </Pressable>
     </Animated.View>
@@ -307,7 +308,7 @@ export function HeroCard({
   );
 }
 
-function HabitProgress({ value, max, color }: { value: number; max: number; color: string }) {
+export function HabitProgress({ value, max, color }: { value: number; max: number; color: string }) {
   const reduceMotion = useReduceMotion();
   const progress = useSharedValue(0);
   const ratio = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
@@ -363,11 +364,54 @@ export function HabitCard({
   );
 }
 
-export function SectionCard({
-  theme, role, title, subtitle, children,
-}: Themed & { role: AccountRole; title: string; subtitle?: string; children: ReactNode }) {
+// Fila de reto diario: ícono, texto y su estado (pendiente, listo para reclamar o completado).
+export function ChallengeRow({
+  theme, icon, title, detail, points, ready, claimed, onClaim,
+}: Themed & {
+  icon: AppIconName;
+  title: string;
+  detail: string;
+  points: number;
+  ready: boolean;
+  claimed: boolean;
+  onClaim: () => void;
+}) {
   return (
-    <View style={[styles.sectionCard, { backgroundColor: theme.colors.tarjeta, borderRadius: role === 'child' ? RADIUS.habito : RADIUS.tarjeta }, SHADOW.tarjeta]}>
+    <View
+      style={[
+        styles.challengeRow,
+        claimed
+          ? { backgroundColor: tint(SHARED.completado, 0.1), borderColor: tint(SHARED.completado, 0.45) }
+          : { backgroundColor: SHARED.tarjeta, borderColor: theme.colors.bordeSutil },
+      ]}
+    >
+      <View style={[styles.challengeEmoji, { backgroundColor: theme.colors.acentoSuave }]}>
+        <Icon name={icon} size={24} color={theme.colors.acento} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[theme.type.h3, { color: theme.colors.texto }]}>{title}</Text>
+        <Text style={[theme.type.tab, { color: theme.colors.textoSecundario }]}>{detail}</Text>
+      </View>
+      {claimed ? (
+        <View accessible accessibilityLabel={`${title}: completado`} style={[styles.challengeCheck, { backgroundColor: SHARED.completado }]}>
+          <Icon name="check" size={22} color={SHARED.sobreAcento} />
+        </View>
+      ) : ready ? (
+        <PillButton theme={theme} label={`Reclamar +${points}`} onPress={onClaim} style={styles.challengeClaim} />
+      ) : (
+        <View accessible accessibilityLabel={`${title}: ${points} puntos al completarlo`} style={[styles.pointsPill, { backgroundColor: SHARED.apagada }]}>
+          <Text style={[theme.type.caption, { color: theme.colors.textoSecundario }]}>+{points}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+export function SectionCard({
+  theme, role, title, subtitle, children, style,
+}: Themed & { role: AccountRole; title: string; subtitle?: string; children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[styles.sectionCard, { backgroundColor: theme.colors.tarjeta, borderRadius: role === 'child' ? RADIUS.habito : RADIUS.tarjeta }, SHADOW.tarjeta, style]}>
       <Text role="heading" aria-level={3} style={[theme.type.h2, { color: theme.colors.texto }]}>{title}</Text>
       {subtitle ? <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{subtitle}</Text> : null}
       {children}
@@ -413,32 +457,122 @@ export function ListRow({
   );
 }
 
-export type BarItem = { label: string; value: number; color: string; valueLabel: string };
+const CHART_HEIGHT = 120;
 
-// Barras horizontales contra un máximo (meta diaria o días de la semana), para leer cada valor sin comparar porciones.
-export function BarChart({
-  theme, title, items, max, note, emptyText, labelWidth = 44,
-}: Themed & { title: string; items: readonly BarItem[]; max: number; note?: string; emptyText: string; labelWidth?: number }) {
-  const hasData = items.some(item => item.value > 0);
+/** Subtítulo de cada gráfica del resumen semanal. */
+export function ChartTitle({ theme, title, note }: Themed & { title: string; note?: string }) {
+  return (
+    <View style={{ gap: 2 }}>
+      <Text role="heading" aria-level={4} style={[theme.type.h3, { color: theme.colors.texto }]}>{title}</Text>
+      {note ? <Text style={[theme.type.tab, { color: theme.colors.textoSecundario }]}>{note}</Text> : null}
+    </View>
+  );
+}
+
+/** Barras verticales de agua por día con una línea punteada en la meta. */
+export function WaterWeekChart({
+  theme, days, goal,
+}: Themed & { days: readonly { label: string; value: number }[]; goal: number }) {
+  const max = Math.max(goal, ...days.map(day => day.value), 1);
+  const goalOffset = (goal / max) * CHART_HEIGHT;
   return (
     <View
       accessible
-      accessibilityLabel={`${title}: ${hasData ? items.map(item => `${item.label} ${item.valueLabel}`).join(', ') : emptyText}`}
-      style={styles.chartBlock}
+      accessibilityLabel={`Agua por día. Meta de ${goal} vasos. ${days.map(day => `${day.label} ${day.value}`).join(', ')}`}
+      style={{ gap: SPACE[4] }}
     >
-      <Text role="heading" aria-level={4} style={[theme.type.h3, { color: theme.colors.texto }]}>{title}</Text>
-      {note ? <Text style={[theme.type.tab, { color: theme.colors.textoSecundario }]}>{note}</Text> : null}
-      {hasData ? items.map(item => (
-        <View key={item.label} style={styles.barRow}>
-          <Text numberOfLines={2} style={[theme.type.tab, { width: labelWidth, color: theme.colors.texto }]}>{item.label}</Text>
-          <View style={[styles.barTrack, { backgroundColor: theme.colors.apagada }]}>
-            <View style={[styles.barFill, { width: `${Math.round(Math.min(1, max > 0 ? item.value / max : 0) * 100)}%`, backgroundColor: item.color }]} />
+      <View style={styles.waterPlot}>
+        <View style={[styles.goalLine, { bottom: goalOffset, borderColor: theme.colors.textoSecundario }]} />
+        <Text style={[theme.type.tab, styles.goalLabel, { bottom: goalOffset + 2, color: theme.colors.textoSecundario }]}>Meta {goal}</Text>
+        {days.map((day, index) => (
+          <View key={`${day.label}-${index}`} style={styles.waterColumn}>
+            {day.value > 0 ? <Text style={[theme.type.tab, { color: theme.colors.texto }]}>{day.value}</Text> : null}
+            <View
+              style={[
+                styles.waterBar,
+                {
+                  height: Math.max(day.value > 0 ? 4 : 0, (day.value / max) * CHART_HEIGHT),
+                  backgroundColor: day.value >= goal ? theme.colors.agua : tint(theme.colors.agua, 0.55),
+                },
+              ]}
+            />
           </View>
-          <Text style={[theme.type.tab, styles.barValue, { color: theme.colors.textoSecundario }]}>{item.valueLabel}</Text>
-        </View>
-      )) : (
-        <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{emptyText}</Text>
-      )}
+        ))}
+      </View>
+      <View style={styles.chartLabels}>
+        {days.map((day, index) => (
+          <Text key={`${day.label}-${index}`} style={[theme.type.tab, styles.chartLabel, { color: theme.colors.textoSecundario }]}>{day.label}</Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+export type DonutItem = { label: string; value: number; color: string; icon: AppIconName; valueLabel: string };
+const DONUT_SIZE = 120;
+const DONUT_STROKE = 22;
+
+/** Dona con leyenda de íconos; cada segmento es proporcional a su valor. */
+export function DonutChart({
+  theme, items, center, emptyText,
+}: Themed & { items: readonly DonutItem[]; center: string; emptyText: string }) {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  const radius = (DONUT_SIZE - DONUT_STROKE) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  return (
+    <View
+      accessible
+      accessibilityLabel={total ? items.map(item => `${item.label}: ${item.valueLabel}`).join(', ') : emptyText}
+      style={styles.donutRow}
+    >
+      <View style={{ width: DONUT_SIZE, height: DONUT_SIZE, alignItems: 'center', justifyContent: 'center' }}>
+        <Svg width={DONUT_SIZE} height={DONUT_SIZE} style={StyleSheet.absoluteFill}>
+          <Circle cx={DONUT_SIZE / 2} cy={DONUT_SIZE / 2} r={radius} stroke={SHARED.apagada} strokeWidth={DONUT_STROKE} fill="none" />
+          {total ? items.filter(item => item.value > 0).map(item => {
+            const length = (item.value / total) * circumference;
+            const segment = (
+              <Circle
+                key={item.label}
+                cx={DONUT_SIZE / 2}
+                cy={DONUT_SIZE / 2}
+                r={radius}
+                stroke={item.color}
+                strokeWidth={DONUT_STROKE}
+                strokeDasharray={`${length} ${circumference - length}`}
+                strokeDashoffset={-offset}
+                transform={`rotate(-90 ${DONUT_SIZE / 2} ${DONUT_SIZE / 2})`}
+                fill="none"
+              />
+            );
+            offset += length;
+            return segment;
+          }) : null}
+        </Svg>
+        <Text style={[theme.type.h3, { color: theme.colors.texto, textAlign: 'center' }]}>{center}</Text>
+      </View>
+      <View style={styles.donutLegend}>
+        {total ? items.map(item => (
+          <View key={item.label} style={styles.legendItem}>
+            <Icon name={item.icon} size={18} color={item.color} />
+            <Text style={[theme.type.tab, styles.flex, { color: theme.colors.texto }]}>{item.label}</Text>
+            <Text style={[theme.type.tab, { color: theme.colors.textoSecundario }]}>{item.valueLabel}</Text>
+          </View>
+        )) : <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{emptyText}</Text>}
+      </View>
+    </View>
+  );
+}
+
+/** Barra horizontal en forma de píldora con ícono y texto adentro. */
+export function PillBar({
+  theme, icon, color, text, ratio,
+}: Themed & { icon: AppIconName; color: string; text: string; ratio: number }) {
+  return (
+    <View accessible accessibilityLabel={text} style={[styles.pillBar, { backgroundColor: tint(color, 0.16) }]}>
+      <View style={[styles.pillFill, { width: `${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%`, backgroundColor: tint(color, 0.45) }]} />
+      <Icon name={icon} size={18} color={color} />
+      <Text style={[theme.type.tab, styles.flex, { color: theme.colors.texto }]}>{text}</Text>
     </View>
   );
 }
@@ -732,17 +866,28 @@ const styles = StyleSheet.create({
   progressTrack: { height: 10, borderRadius: RADIUS.pildora, overflow: 'hidden' },
   progressFill: { width: '100%', height: '100%', borderRadius: RADIUS.pildora },
   sectionCard: { padding: SPACE[20], gap: SPACE[8] },
+  challengeRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12], padding: SPACE[12], borderRadius: RADIUS.md, borderWidth: BORDER.tarjeta },
+  challengeEmoji: { width: 48, height: 48, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
+  challengeCheck: { width: 44, height: 44, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
+  challengeClaim: { minHeight: 44, paddingHorizontal: SPACE[12] },
   homeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[12] },
   homeTile: { flexGrow: 1, flexBasis: '45%', minHeight: 156, borderRadius: RADIUS.habito, borderWidth: BORDER.tarjeta, padding: SPACE[16], gap: SPACE[8] },
   homeTileIcon: { width: 60, height: 60, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
   homeTileText: { textAlign: 'center' },
   listRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
   listIcon: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
-  chartBlock: { gap: SPACE[8], paddingVertical: SPACE[8] },
-  barRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE[8] },
-  barTrack: { flex: 1, height: 12, borderRadius: RADIUS.pildora, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: RADIUS.pildora },
-  barValue: { minWidth: 72, textAlign: 'right' },
+  waterPlot: { height: CHART_HEIGHT + 20, flexDirection: 'row', alignItems: 'flex-end', gap: SPACE[6], paddingTop: 20 },
+  waterColumn: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 2 },
+  waterBar: { width: '70%', borderTopLeftRadius: RADIUS.sm, borderTopRightRadius: RADIUS.sm },
+  goalLine: { position: 'absolute', left: 0, right: 0, borderTopWidth: 1.5, borderStyle: 'dashed' },
+  goalLabel: { position: 'absolute', right: 0 },
+  chartLabels: { flexDirection: 'row', gap: SPACE[6] },
+  chartLabel: { flex: 1, textAlign: 'center' },
+  donutRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: SPACE[16] },
+  donutLegend: { flex: 1, minWidth: 160, gap: SPACE[8] },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: SPACE[8] },
+  pillBar: { minHeight: 36, borderRadius: RADIUS.pildora, flexDirection: 'row', alignItems: 'center', gap: SPACE[8], paddingHorizontal: SPACE[12], overflow: 'hidden' },
+  pillFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: RADIUS.pildora },
   loadingDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE[8] },
   loadingDot: { width: 12, height: 12, borderRadius: RADIUS.pildora },
   celebrationLayer: { alignItems: 'center', justifyContent: 'center' },
