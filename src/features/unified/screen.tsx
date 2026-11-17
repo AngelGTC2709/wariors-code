@@ -77,6 +77,7 @@ import {
 import { AchievementCelebration, PieChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
+import { DatabaseManagement } from '@/features/unified/database-management';
 import { PlatoDelBuenComer, SelectedFoodPills } from '@/features/unified/plato';
 import { SoundCue, SoundEffectsProvider, type SoundCueName } from '@/features/unified/sound-effects';
 import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SHARED, SPACE, tint, useAppTheme } from '@/features/unified/tokens';
@@ -95,7 +96,7 @@ import {
 } from '@/features/unified/ui';
 import { ageFromBirth, cleanText, errorReason, formatBirthDate, maskBirthDate, parseBirthDate, friendlyError, unique, userError } from '@/features/unified/utils';
 
-type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Logros' | 'Ajustes' | 'Ayuda';
+type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Gestión' | 'Logros' | 'Ajustes' | 'Ayuda';
 type ChildHomeSection = 'habitos' | 'semana' | 'movimiento' | 'nutribot';
 type PhotoDraft = {
   uri: string;
@@ -180,6 +181,7 @@ const NAV_ITEMS = {
     { id: 'Familia', icon: 'home', label: 'Familia' },
     { id: 'Recetas', icon: 'recipes', label: 'Recetas' },
     { id: 'Menú', icon: 'menu', label: 'Menú' },
+    { id: 'Gestión', icon: 'shield', label: 'Gestión' },
     { id: 'Ajustes', icon: 'settings', label: 'Ajustes' },
   ],
   child: [
@@ -3673,6 +3675,8 @@ export default function UnifiedApp() {
         return renderRecipes();
       case 'Menú':
         return role === 'tutor' ? renderWeeklyMenu() : null;
+      case 'Gestión':
+        return role === 'tutor' && authUser ? <DatabaseManagement userId={authUser.id} /> : null;
       case 'Logros':
         return role === 'child' ? renderAchievements() : null;
       case 'Ajustes':

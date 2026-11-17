@@ -43,6 +43,107 @@ type Database = {
           consentimiento_salud_en: string;
         }
       >;
+      retos: Table<
+        {
+          id_reto: number;
+          id_padre: string;
+          descripcion_reto: string;
+          puntos_de_recompensa: number;
+          fecha_inicio: string;
+          fecha_limite: string;
+        },
+        {
+          id_padre: string;
+          descripcion_reto: string;
+          puntos_de_recompensa: number;
+          fecha_inicio: string;
+          fecha_limite: string;
+        }
+      >;
+      hijo_reto: Table<
+        {
+          id_hijo_reto: number;
+          id_hijo: number;
+          id_reto: number;
+          estado: 'asignado' | 'en_progreso' | 'completado' | 'verificado' | 'rechazado';
+          fecha_asignacion: string;
+          fecha_completado: string | null;
+          fecha_verificacion: string | null;
+          puntos_otorgados: number | null;
+        },
+        {
+          id_hijo: number;
+          id_reto: number;
+          estado?: 'asignado' | 'en_progreso' | 'completado' | 'verificado' | 'rechazado';
+          fecha_asignacion?: string;
+          fecha_completado?: string | null;
+          fecha_verificacion?: string | null;
+          puntos_otorgados?: number | null;
+        }
+      >;
+      recompensas: Table<
+        {
+          id_recompensa: number;
+          id_padre: string;
+          nombre_premio: string;
+          costo_en_puntos: number;
+          cantidad_disponible: number;
+          estado: 'activa' | 'inactiva' | 'agotada';
+        },
+        {
+          id_padre: string;
+          nombre_premio: string;
+          costo_en_puntos: number;
+          cantidad_disponible?: number;
+          estado?: 'activa' | 'inactiva' | 'agotada';
+        }
+      >;
+      canjes_recompensa: Table<
+        {
+          id_canje: number;
+          id_hijo: number;
+          id_recompensa: number;
+          fecha_canje: string;
+          puntos_gastados: number;
+          estado: 'solicitado' | 'entregado' | 'cancelado';
+        },
+        {
+          id_hijo: number;
+          id_recompensa: number;
+          fecha_canje?: string;
+          puntos_gastados: number;
+          estado?: 'solicitado' | 'entregado' | 'cancelado';
+        }
+      >;
+      planes_alimenticios: Table<
+        {
+          id_plan: number;
+          id_hijo: number;
+          meta_calorias_diarias: number;
+          fecha_inicio: string;
+          fecha_fin: string;
+        },
+        {
+          id_hijo: number;
+          meta_calorias_diarias: number;
+          fecha_inicio: string;
+          fecha_fin: string;
+        }
+      >;
+      plan_receta: Table<
+        {
+          id_plan: number;
+          id_receta: number;
+          fecha: string;
+          tipo_comida: 'desayuno' | 'colacion' | 'comida' | 'cena';
+        },
+        {
+          id_plan: number;
+          id_receta: number;
+          fecha: string;
+          tipo_comida: 'desayuno' | 'colacion' | 'comida' | 'cena';
+        }
+      >;
       ingredientes: Table<
         { id_ingrediente: number; nombre: string; id_padre: string | null },
         { nombre: string; id_padre?: string | null }

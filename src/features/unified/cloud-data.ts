@@ -105,6 +105,446 @@ export async function loadDatabaseRecipes(): Promise<Recipe[]> {
   });
 }
 
+export type NormalizedManagementSnapshot = {
+  children: { id_hijo: number; nombre: string }[];
+  challenges: {
+    id_reto: number;
+    descripcion_reto: string;
+    puntos_de_recompensa: number;
+    fecha_inicio: string;
+    fecha_limite: string;
+  }[];
+  assignments: {
+    id_hijo_reto: number;
+    id_hijo: number;
+    id_reto: number;
+    estado: 'asignado' | 'en_progreso' | 'completado' | 'verificado' | 'rechazado';
+    fecha_asignacion: string;
+    fecha_completado: string | null;
+    fecha_verificacion: string | null;
+    puntos_otorgados: number | null;
+  }[];
+  rewards: {
+    id_recompensa: number;
+    nombre_premio: string;
+    costo_en_puntos: number;
+    cantidad_disponible: number;
+    estado: 'activa' | 'inactiva' | 'agotada';
+  }[];
+  redemptions: {
+    id_canje: number;
+    id_hijo: number;
+    id_recompensa: number;
+    fecha_canje: string;
+    puntos_gastados: number;
+    estado: 'solicitado' | 'entregado' | 'cancelado';
+  }[];
+  plans: {
+    id_plan: number;
+    id_hijo: number;
+    meta_calorias_diarias: number;
+    fecha_inicio: string;
+    fecha_fin: string;
+  }[];
+  planRecipes: {
+    id_plan: number;
+    id_receta: number;
+    fecha: string;
+    tipo_comida: 'desayuno' | 'colacion' | 'comida' | 'cena';
+  }[];
+};
+
+export async function loadNormalizedManagement(userId: string): Promise<NormalizedManagementSnapshot> {
+  const supabase = getSupabaseClient();
+  const { data: childrenRows, error: childrenError } = await supabase
+    .from('hijos')
+    .select('id_hijo, nombres, apellidos')
+    .eq('id_padre', userId)
+    .order('nombres')
+    .order('apellidos');
+  if (childrenError) throw userError('No se pudieron cargar los perfiles infantiles normalizados.', childrenError);
+
+  const childIds = childrenRows.map(child => child.id_hijo);
+  const [challengesResult, rewardsResult] = await Promise.all([
+    supabase
+      .from('retos')
+      .select('id_reto, descripcion_reto, puntos_de_recompensa, fecha_inicio, fecha_limite')
+      .eq('id_padre', userId)
+      .order('fecha_inicio', { ascending: false }),
+    supabase
+      .from('recompensas')
+      .select('id_recompensa, nombre_premio, costo_en_puntos, cantidad_disponible, estado')
+      .eq('id_padre', userId)
+      .order('nombre_premio'),
+  ]);
+  if (challengesResult.error) throw userError('No se pudieron cargar los retos.', challengesResult.error);
+  if (rewardsResult.error) throw userError('No se pudieron cargar las recompensas.', rewardsResult.error);
+
+  if (!childIds.length) {
+    return {
+      children: [],
+      challenges: challengesResult.data,
+      assignments: [],
+      rewards: rewardsResult.data,
+      redemptions: [],
+      plans: [],
+      planRecipes: [],
+    };
+  }
+
+  const [assignmentsResult, redemptionsResult, plansResult] = await Promise.all([
+    supabase
+      .from('hijo_reto')
+      .select('id_hijo_reto, id_hijo, id_reto, estado, fecha_asignacion, fecha_completado, fecha_verificacion, puntos_otorgados')
+      .in('id_hijo', childIds)
+      .order('fecha_asignacion', { ascending: false }),
+    supabase
+      .from('canjes_recompensa')
+      .select('id_canje, id_hijo, id_recompensa, fecha_canje, puntos_gastados, estado')
+      .in('id_hijo', childIds)
+      .order('fecha_canje', { ascending: false }),
+    supabase
+      .from('planes_alimenticios')
+      .select('id_plan, id_hijo, meta_calorias_diarias, fecha_inicio, fecha_fin')
+      .in('id_hijo', childIds)
+      .order('fecha_inicio', { ascending: false }),
+  ]);
+  if (assignmentsResult.error) throw userError('No se pudieron cargar las asignaciones de retos.', assignmentsResult.error);
+  if (redemptionsResult.error) throw userError('No se pudieron cargar los canjes de recompensas.', redemptionsResult.error);
+  if (plansResult.error) throw userError('No se pudieron cargar los planes alimenticios.', plansResult.error);
+
+  const planIds = plansResult.data.map(plan => plan.id_plan);
+  const planRecipesResult = planIds.length
+    ? await supabase
+        .from('plan_receta')
+        .select('id_plan, id_receta, fecha, tipo_comida')
+        .in('id_plan', planIds)
+        .order('fecha')
+    : { data: [], error: null };
+  if (planRecipesResult.error) throw userError('No se pudieron cargar las recetas de los planes.', planRecipesResult.error);
+
+  return {
+    children: childrenRows.map(child => ({
+      id_hijo: child.id_hijo,
+      nombre: [child.nombres, child.apellidos].filter(Boolean).join(' ').trim(),
+    })),
+    challenges: challengesResult.data,
+    assignments: assignmentsResult.data,
+    rewards: rewardsResult.data,
+    redemptions: redemptionsResult.data,
+    plans: plansResult.data,
+    planRecipes: planRecipesResult.data,
+  };
+}
+
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+export type ChallengeInput = {
+  descripcion_reto: string;
+  puntos_de_recompensa: number;
+  fecha_inicio: string;
+  fecha_limite: string;
+};
+
+export async function saveChallenge(
+  userId: string,
+  input: ChallengeInput,
+  challengeId?: number,
+): Promise<void> {
+  const description = input.descripcion_reto.trim();
+  if (!description || !Number.isSafeInteger(input.puntos_de_recompensa) || input.puntos_de_recompensa < 0) {
+    throw userError('Escribe la descripción del reto y una cantidad válida de puntos.');
+  }
+  if (!isIsoDate(input.fecha_inicio) || !isIsoDate(input.fecha_limite) || input.fecha_limite < input.fecha_inicio) {
+    throw userError('Revisa las fechas del reto; la fecha límite no puede ser anterior al inicio.');
+  }
+
+  const supabase = getSupabaseClient();
+  const values = {
+    descripcion_reto: description,
+    puntos_de_recompensa: input.puntos_de_recompensa,
+    fecha_inicio: input.fecha_inicio,
+    fecha_limite: input.fecha_limite,
+  };
+  const result = challengeId
+    ? await supabase.from('retos').update(values).eq('id_reto', challengeId).eq('id_padre', userId).select('id_reto').maybeSingle()
+    : await supabase.from('retos').insert({ ...values, id_padre: userId }).select('id_reto').single();
+  if (result.error) throw userError('No se pudo guardar el reto.', result.error);
+  if (!result.data) throw userError('El reto ya no está disponible para esta cuenta.');
+}
+
+export async function deleteChallenge(userId: string, challengeId: number): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from('retos')
+    .delete()
+    .eq('id_reto', challengeId)
+    .eq('id_padre', userId)
+    .select('id_reto')
+    .maybeSingle();
+  if (error) throw userError('No se pudo eliminar el reto.', error);
+  if (!data) throw userError('El reto ya no está disponible para esta cuenta.');
+}
+
+export type AssignmentStatus = NormalizedManagementSnapshot['assignments'][number]['estado'];
+
+export async function createChallengeAssignment(
+  userId: string,
+  childId: number,
+  challengeId: number,
+): Promise<void> {
+  const supabase = getSupabaseClient();
+  const [child, challenge] = await Promise.all([
+    supabase.from('hijos').select('id_hijo').eq('id_hijo', childId).eq('id_padre', userId).maybeSingle(),
+    supabase.from('retos').select('id_reto').eq('id_reto', challengeId).eq('id_padre', userId).maybeSingle(),
+  ]);
+  if (child.error) throw userError('No se pudo verificar el perfil infantil.', child.error);
+  if (challenge.error) throw userError('No se pudo verificar el reto.', challenge.error);
+  if (!child.data || !challenge.data) throw userError('El perfil y el reto deben pertenecer a esta cuenta.');
+
+  const { error } = await supabase
+    .from('hijo_reto')
+    .insert({ id_hijo: childId, id_reto: challengeId })
+    .select('id_hijo_reto')
+    .single();
+  if (error) throw userError('No se pudo asignar el reto a este perfil.', error);
+}
+
+export async function updateChallengeAssignment(
+  assignmentId: number,
+  status: AssignmentStatus,
+  pointsAwarded?: number,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const updates: {
+    estado: AssignmentStatus;
+    fecha_completado: string | null;
+    fecha_verificacion: string | null;
+    puntos_otorgados?: number;
+  } = {
+    estado: status,
+    fecha_completado: status === 'completado' || status === 'verificado' ? now : null,
+    fecha_verificacion: status === 'verificado' ? now : null,
+  };
+  if (status === 'verificado' && pointsAwarded !== undefined) updates.puntos_otorgados = pointsAwarded;
+  const { data, error } = await getSupabaseClient()
+    .from('hijo_reto')
+    .update(updates)
+    .eq('id_hijo_reto', assignmentId)
+    .select('id_hijo_reto')
+    .maybeSingle();
+  if (error) throw userError('No se pudo actualizar el estado de la asignación.', error);
+  if (!data) throw userError('La asignación ya no está disponible para esta cuenta.');
+}
+
+export async function deleteChallengeAssignment(assignmentId: number): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from('hijo_reto')
+    .delete()
+    .eq('id_hijo_reto', assignmentId)
+    .select('id_hijo_reto')
+    .maybeSingle();
+  if (error) throw userError('No se pudo retirar la asignación del reto.', error);
+  if (!data) throw userError('La asignación ya no está disponible para esta cuenta.');
+}
+
+export type RewardInput = {
+  nombre_premio: string;
+  costo_en_puntos: number;
+  cantidad_disponible: number;
+  estado: 'activa' | 'inactiva' | 'agotada';
+};
+
+export async function saveReward(userId: string, input: RewardInput, rewardId?: number): Promise<void> {
+  const name = input.nombre_premio.trim();
+  if (
+    !name ||
+    !Number.isSafeInteger(input.costo_en_puntos) ||
+    input.costo_en_puntos < 0 ||
+    !Number.isSafeInteger(input.cantidad_disponible) ||
+    input.cantidad_disponible < 0
+  ) {
+    throw userError('Revisa el nombre, costo en puntos y cantidad disponible de la recompensa.');
+  }
+  const values = {
+    nombre_premio: name,
+    costo_en_puntos: input.costo_en_puntos,
+    cantidad_disponible: input.cantidad_disponible,
+    estado: input.estado,
+  };
+  const supabase = getSupabaseClient();
+  const result = rewardId
+    ? await supabase.from('recompensas').update(values).eq('id_recompensa', rewardId).eq('id_padre', userId).select('id_recompensa').maybeSingle()
+    : await supabase.from('recompensas').insert({ ...values, id_padre: userId }).select('id_recompensa').single();
+  if (result.error) throw userError('No se pudo guardar la recompensa.', result.error);
+  if (!result.data) throw userError('La recompensa ya no está disponible para esta cuenta.');
+}
+
+export async function deleteReward(userId: string, rewardId: number): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from('recompensas')
+    .delete()
+    .eq('id_recompensa', rewardId)
+    .eq('id_padre', userId)
+    .select('id_recompensa')
+    .maybeSingle();
+  if (error) {
+    if (error.code === '23503') {
+      throw userError('No se puede eliminar una recompensa con canjes registrados. Puedes cambiarla a inactiva.');
+    }
+    throw userError('No se pudo eliminar la recompensa.', error);
+  }
+  if (!data) throw userError('La recompensa ya no está disponible para esta cuenta.');
+}
+
+export async function createRewardRedemption(
+  userId: string,
+  childId: number,
+  rewardId: number,
+  pointsSpent: number,
+): Promise<void> {
+  if (!Number.isSafeInteger(pointsSpent) || pointsSpent < 0) {
+    throw userError('Los puntos registrados para el canje no son válidos.');
+  }
+  const supabase = getSupabaseClient();
+  const [child, reward] = await Promise.all([
+    supabase.from('hijos').select('id_hijo').eq('id_hijo', childId).eq('id_padre', userId).maybeSingle(),
+    supabase
+      .from('recompensas')
+      .select('id_recompensa, costo_en_puntos, cantidad_disponible, estado')
+      .eq('id_recompensa', rewardId)
+      .eq('id_padre', userId)
+      .maybeSingle(),
+  ]);
+  if (child.error) throw userError('No se pudo verificar el perfil infantil.', child.error);
+  if (reward.error) throw userError('No se pudo verificar la recompensa.', reward.error);
+  if (!child.data || !reward.data) throw userError('El perfil y la recompensa deben pertenecer a esta cuenta.');
+  if (reward.data.estado !== 'activa' || reward.data.cantidad_disponible < 1) {
+    throw userError('La recompensa ya no está disponible.');
+  }
+  if (pointsSpent !== reward.data.costo_en_puntos) {
+    throw userError('El costo del canje debe coincidir con el costo actual de la recompensa.');
+  }
+
+  const { error } = await supabase
+    .from('canjes_recompensa')
+    .insert({
+      id_hijo: childId,
+      id_recompensa: rewardId,
+      puntos_gastados: pointsSpent,
+    })
+    .select('id_canje')
+    .single();
+  if (error) throw userError('No se pudo registrar el canje.', error);
+}
+
+export async function updateRewardRedemption(
+  redemptionId: number,
+  updates: { estado: 'solicitado' | 'entregado' | 'cancelado'; puntos_gastados: number },
+): Promise<void> {
+  if (!Number.isSafeInteger(updates.puntos_gastados) || updates.puntos_gastados < 0) {
+    throw userError('Los puntos registrados para el canje no son válidos.');
+  }
+  const { data, error } = await getSupabaseClient()
+    .from('canjes_recompensa')
+    .update(updates)
+    .eq('id_canje', redemptionId)
+    .select('id_canje')
+    .maybeSingle();
+  if (error) throw userError('No se pudo actualizar el canje.', error);
+  if (!data) throw userError('El canje ya no está disponible para esta cuenta.');
+}
+
+export async function deleteRewardRedemption(redemptionId: number): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from('canjes_recompensa')
+    .delete()
+    .eq('id_canje', redemptionId)
+    .select('id_canje')
+    .maybeSingle();
+  if (error) throw userError('No se pudo eliminar el canje.', error);
+  if (!data) throw userError('El canje ya no está disponible para esta cuenta.');
+}
+
+export type MealPlanInput = {
+  id_hijo: number;
+  meta_calorias_diarias: number;
+  fecha_inicio: string;
+  fecha_fin: string;
+};
+
+export async function saveMealPlan(input: MealPlanInput, planId?: number): Promise<void> {
+  if (
+    !Number.isSafeInteger(input.meta_calorias_diarias) ||
+    input.meta_calorias_diarias <= 0 ||
+    !isIsoDate(input.fecha_inicio) ||
+    !isIsoDate(input.fecha_fin) ||
+    input.fecha_fin < input.fecha_inicio
+  ) {
+    throw userError('Revisa la meta calórica y el periodo del plan.');
+  }
+  const values = {
+    id_hijo: input.id_hijo,
+    meta_calorias_diarias: input.meta_calorias_diarias,
+    fecha_inicio: input.fecha_inicio,
+    fecha_fin: input.fecha_fin,
+  };
+  const supabase = getSupabaseClient();
+  const result = planId
+    ? await supabase.from('planes_alimenticios').update(values).eq('id_plan', planId).select('id_plan').maybeSingle()
+    : await supabase.from('planes_alimenticios').insert(values).select('id_plan').single();
+  if (result.error) throw userError('No se pudo guardar el plan alimenticio.', result.error);
+  if (!result.data) throw userError('El plan ya no está disponible para esta cuenta.');
+}
+
+export async function deleteMealPlan(planId: number): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from('planes_alimenticios')
+    .delete()
+    .eq('id_plan', planId)
+    .select('id_plan')
+    .maybeSingle();
+  if (error) throw userError('No se pudo eliminar el plan alimenticio.', error);
+  if (!data) throw userError('El plan ya no está disponible para esta cuenta.');
+}
+
+export type PlanRecipeInput = {
+  id_plan: number;
+  id_receta: number;
+  fecha: string;
+  tipo_comida: 'desayuno' | 'colacion' | 'comida' | 'cena';
+};
+
+export async function addPlanRecipe(input: PlanRecipeInput): Promise<void> {
+  if (!isIsoDate(input.fecha)) throw userError('Escribe una fecha válida para la receta del plan.');
+  const { error } = await getSupabaseClient()
+    .from('plan_receta')
+    .insert(input)
+    .select('id_plan')
+    .single();
+  if (error) {
+    if (error.code === '23505') throw userError('Esta receta ya está agregada en esa fecha y momento de comida.');
+    throw userError('No se pudo agregar la receta al plan.', error);
+  }
+}
+
+export async function removePlanRecipe(input: PlanRecipeInput): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from('plan_receta')
+    .delete()
+    .eq('id_plan', input.id_plan)
+    .eq('id_receta', input.id_receta)
+    .eq('fecha', input.fecha)
+    .eq('tipo_comida', input.tipo_comida)
+    .select('id_plan')
+    .maybeSingle();
+  if (error) throw userError('No se pudo quitar la receta del plan.', error);
+  if (!data) throw userError('La receta ya no estaba asignada a este plan.');
+}
+
 function normalizeFoodName(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-MX').trim();
 }
