@@ -18,6 +18,7 @@ export type NutriChild = {
   peso: string;
   altura: string;
   edad?: string;
+  nacimiento?: string;
   alergias: string[];
   noGusta: string[];
   otrasAlergias: string;
@@ -185,6 +186,7 @@ function isNutriChild(value: unknown): value is NutriChild {
     typeof value.peso === 'string' &&
     typeof value.altura === 'string' &&
     (value.edad === undefined || typeof value.edad === 'string') &&
+    (value.nacimiento === undefined || typeof value.nacimiento === 'string') &&
     isStringArray(value.alergias) &&
     isStringArray(value.noGusta) &&
     typeof value.otrasAlergias === 'string' &&

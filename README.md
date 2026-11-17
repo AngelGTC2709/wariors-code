@@ -23,9 +23,9 @@ El perfil `preview` genera un APK para Android. La build interna de iOS requiere
 ## Experiencia
 
 - Perfiles infantiles privados por cuenta tutora, con sincronización entre dispositivos.
-- Alta y edición de perfiles infantiles en seis fases, con avatar, datos y dictamen opcional del especialista, selección por grupos de alimentos y confirmación.
+- Alta y edición de perfiles infantiles en seis fases, con avatar, datos (fecha de nacimiento con edad calculada) y dictamen del especialista, selección por grupos de alimentos y confirmación.
 - Navegación por rol: el menú semanal aparece en el espacio tutor y la niñez tiene un apartado dedicado a sus logros; las personas tutoras pueden revisar puntos e insignias.
-- Registro de agua, grupos de alimentos, ánimo, descanso, movimiento y evidencia fotográfica opcional.
+- Registro de agua, grupos de alimentos, ánimo, descanso, movimiento y evidencia fotográfica.
 - Inicio infantil con secciones plegables y gráfica semanal de agua, alimentación y descanso.
 - Actividades de movimiento con escenas animadas del jaguar, pasos y consejos de seguridad; las animaciones respetan la preferencia de movimiento reducido.
 - Aprobación de actividades, puntos, retos y personalización de avatar con iconos vectoriales.

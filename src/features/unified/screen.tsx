@@ -70,7 +70,7 @@ import {
   uploadEvidence,
   verifyTutorPassword,
 } from '@/features/unified/cloud-data';
-import { AchievementCelebration, BarChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion, type ChartDay } from '@/features/unified/design';
+import { AchievementCelebration, PieChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
 import { ActivityAnimation } from '@/features/unified/animations';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
@@ -90,7 +90,7 @@ import {
   Tag,
   type AppIconName,
 } from '@/features/unified/ui';
-import { cleanText, errorReason, friendlyError, unique, userError } from '@/features/unified/utils';
+import { ageFromBirth, cleanText, errorReason, formatBirthDate, maskBirthDate, parseBirthDate, friendlyError, unique, userError } from '@/features/unified/utils';
 
 type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Logros' | 'Ajustes' | 'Ayuda';
 type ChildHomeSection = 'habitos' | 'semana' | 'movimiento' | 'nutribot';
@@ -135,7 +135,7 @@ type ProfileDraft = {
   name: string;
   theme: 'nina' | 'nino';
   avatar: string;
-  age: string;
+  birthDate: string;
   weight: string;
   height: string;
   allergies: string[];
@@ -470,12 +470,22 @@ function getMealName(value: keyof WeeklyMeals): string {
   return MEALS.find(meal => meal.id === value)?.title ?? value;
 }
 
+function formatElapsed(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}
+
+function ageLabel(age: number | null): string {
+  return age === null ? 'No registrada' : `${age} ${age === 1 ? 'año' : 'años'}`;
+}
+
 function emptyProfileDraft(): ProfileDraft {
   return {
     name: '',
     theme: 'nina',
     avatar: CHILD_AVATARS[0],
-    age: '',
+    birthDate: '',
     weight: '',
     height: '',
     allergies: [],
@@ -565,7 +575,9 @@ export default function UnifiedApp() {
 
   const [activityModal, setActivityModal] = useState<Activity | null>(null);
   const [activityStage, setActivityStage] = useState<'details' | 'form'>('details');
-  const [activityPlaying, setActivityPlaying] = useState(true);
+  const [activityPlaying, setActivityPlaying] = useState(false);
+  const [activityStarted, setActivityStarted] = useState(false);
+  const [activityElapsed, setActivityElapsed] = useState(0);
   const [activityReplay, setActivityReplay] = useState(0);
   const [activityDuration, setActivityDuration] = useState('');
   const [activityPhoto, setActivityPhoto] = useState<PhotoDraft | null>(null);
@@ -903,7 +915,7 @@ export default function UnifiedApp() {
           name: profile.name,
           theme: profile.theme,
           avatar: profile.avatar,
-          age: profile.nutri?.edad ?? '',
+          birthDate: formatBirthDate(profile.nutri?.nacimiento),
           weight: profile.nutri?.peso ?? '',
           height: profile.nutri?.altura ?? '',
           allergies: profile.nutri?.alergias ?? [],
@@ -925,6 +937,10 @@ export default function UnifiedApp() {
       setProfileError('Escribe un nombre de al menos dos letras.');
       return;
     }
+    if (profileDraft.birthDate && !parseBirthDate(profileDraft.birthDate)) {
+      setProfileError('Escribe una fecha de nacimiento válida (DD/MM/AAAA).');
+      return;
+    }
     let updatedKey = editingProfile?.key ?? '';
     const queued = updateData(current => {
       const existing = editingProfile;
@@ -939,7 +955,8 @@ export default function UnifiedApp() {
             ...existing.nutri,
             nombre: existing.link ? existing.nutri.nombre : name,
             genero: existing.link ? existing.nutri.genero : profileDraft.theme,
-            edad: profileDraft.age.trim(),
+            nacimiento: parseBirthDate(profileDraft.birthDate) ?? undefined,
+            edad: undefined,
             peso: profileDraft.weight.trim(),
             altura: profileDraft.height.trim(),
             alergias: profileDraft.allergies,
@@ -954,7 +971,8 @@ export default function UnifiedApp() {
             id: nutriId,
             nombre: name,
             genero: profileDraft.theme,
-            edad: profileDraft.age.trim(),
+            nacimiento: parseBirthDate(profileDraft.birthDate) ?? undefined,
+            edad: undefined,
             peso: profileDraft.weight.trim(),
             altura: profileDraft.height.trim(),
             alergias: profileDraft.allergies,
@@ -1182,6 +1200,19 @@ export default function UnifiedApp() {
     setSleepInput('');
     setNotice('Registramos tus horas de sueño.');
   };
+
+  useEffect(() => {
+    if (!activityPlaying || !activityModal) return undefined;
+    let last = Date.now();
+    const flush = () => {
+      const now = Date.now();
+      const delta = now - last;
+      last = now;
+      setActivityElapsed(current => current + delta);
+    };
+    const id = setInterval(flush, 250);
+    return () => { clearInterval(id); flush(); };
+  }, [activityPlaying, activityModal]);
 
   const submitActivity = async () => {
     if (!selectedProfile || !activityModal || !data || activitySubmittingRef.current) return;
@@ -1847,21 +1878,6 @@ export default function UnifiedApp() {
       { id: 'mood-check', title: 'Cuéntanos cómo estás', detail: 'Elige un ánimo para hoy.', icon: 'mood' as const, points: MISSION_POINTS['mood-check'], ready: Boolean(log.mood) },
     ];
     const approvedActivities = Object.values(log.activities).filter(activity => activity.status === 'approved').length;
-    const recentDays: ChartDay[] = Array.from({ length: 7 }, (_, index) => {
-      const date = dateOffsetKey(6 - index);
-      const daily = getDailyLog(data, selectedProfile, date);
-      const foodGroupCount = new Set(daily.foodGroups.map(canonicalFoodGroup).filter(Boolean)).size;
-      const label = new Intl.DateTimeFormat('es-MX', { weekday: 'short' }).format(new Date(`${date}T12:00:00`)).replace('.', '');
-      return {
-        label,
-        values: {
-          agua: daily.water,
-          alimentacion: foodGroupCount,
-          descanso: daily.sleepHours ?? 0,
-        },
-      };
-    });
-    const maxRecentValue = Math.max(8, waterGoal, ...recentDays.flatMap(day => Object.values(day.values)));
     const section = (id: ChildHomeSection, title: string, children: ReactNode) => {
       const expanded = childHomeSections[id];
       return (
@@ -1997,16 +2013,8 @@ export default function UnifiedApp() {
 
         </>)}
 
-        {section('semana', 'Mi semana', <>
-        <SectionCard theme={theme} role="child" title="Mi semana" subtitle="Hábitos registrados en los últimos 7 días.">
-          <BarChart theme={theme} days={recentDays} max={maxRecentValue} />
-          {selectedProfile.nutri && (selectedProfile.nutri.peso || selectedProfile.nutri.altura) ? (
-            <View style={styles.wrap}>
-              {selectedProfile.nutri.edad ? <Tag title={`${selectedProfile.nutri.edad} años`} color={COLORS.pink} icon="profile" /> : null}
-              {selectedProfile.nutri.peso ? <Tag title={`${selectedProfile.nutri.peso} kg`} color={COLORS.purple} icon="scale" /> : null}
-              {selectedProfile.nutri.altura ? <Tag title={`${selectedProfile.nutri.altura} cm`} color={COLORS.blue} icon="height" /> : null}
-            </View>
-          ) : null}
+        {section('semana', 'Mis insignias', <>
+        <SectionCard theme={theme} role="child" title="Lo que he logrado" subtitle="Tus insignias de hábitos y retos.">
           <View style={styles.wrap}>
             {unique(progress.badges).length ? unique(progress.badges).map(badge => (
               <Tag
@@ -2035,7 +2043,9 @@ export default function UnifiedApp() {
                   if (authUser) startTransition('actividad', selectedProfile.key, authUser.id);
                   setActivityModal(activity);
                   setActivityStage('details');
-                  setActivityPlaying(true);
+                  setActivityPlaying(false);
+                  setActivityStarted(false);
+                  setActivityElapsed(0);
                   setActivityReplay(0);
                   setActivityDuration(String(activity.minutes));
                   setActivityPhoto(null);
@@ -2154,6 +2164,31 @@ export default function UnifiedApp() {
       ),
     );
     const pendingActivities = allPendingActivities.slice(0, 8);
+    const weekDays = selectedProfile ? Array.from({ length: 7 }, (_, index) => {
+      const date = dateOffsetKey(6 - index);
+      const label = new Intl.DateTimeFormat('es-MX', { weekday: 'short' }).format(new Date(`${date}T12:00:00`)).replace('.', '');
+      return { label, log: getDailyLog(data, selectedProfile, date) };
+    }) : [];
+    const dayColors = ['#FFB5C5', '#FFD6A5', '#FDFFB6', '#B5EAD7', '#A0E7E5', '#B4B8F5', '#E0BBE4'];
+    const foodSlices = [
+      { id: 'frutas-verduras', label: 'Frutas y verduras', color: '#9BE5A8' },
+      { id: 'cereales', label: 'Cereales', color: '#FFD98A' },
+      { id: 'leguminosas', label: 'Leguminosas', color: '#C9B3F5' },
+      { id: 'origen-animal', label: 'Origen animal', color: '#9CCBFF' },
+    ].map(group => ({
+      label: group.label,
+      color: group.color,
+      value: weekDays.filter(day => day.log.foodGroups.some(value => canonicalFoodGroup(value) === group.id)).length,
+    }));
+    const moodCounts = CHILD_MOODS.map(mood => ({
+      label: mood.label,
+      color: tint(mood.color, 0.55),
+      value: weekDays.filter(day => day.log.mood === mood.id).length,
+    }));
+    const waterSlices = weekDays.map((day, index) => ({ label: day.label, color: dayColors[index], value: day.log.water }));
+    const sleepSlices = weekDays.map((day, index) => ({ label: day.label, color: dayColors[index], value: day.log.sleepHours ?? 0 }));
+    const selectedNutri = selectedProfile?.nutri;
+    const selectedAge = ageFromBirth(selectedNutri?.nacimiento);
     return (
       <>
         <HeroCard
@@ -2246,6 +2281,22 @@ export default function UnifiedApp() {
             </SectionCard>
           );
         })}
+
+        {selectedProfile && data.progressSharingEnabled ? (
+          <SectionCard theme={theme} role="tutor" title={`Resumen semanal de ${selectedProfile.name}`} subtitle="Registros de los últimos 7 días.">
+            {selectedAge !== null || selectedNutri?.peso || selectedNutri?.altura ? (
+              <View style={styles.wrap}>
+                {selectedAge !== null ? <Tag title={ageLabel(selectedAge)} color={COLORS.pink} icon="profile" /> : null}
+                {selectedNutri?.peso ? <Tag title={`${selectedNutri.peso} kg`} color={COLORS.purple} icon="scale" /> : null}
+                {selectedNutri?.altura ? <Tag title={`${selectedNutri.altura} cm`} color={COLORS.blue} icon="height" /> : null}
+              </View>
+            ) : null}
+            <PieChart theme={theme} title="Agua por día" unit="vasos" slices={waterSlices} emptyText="Aún no hay vasos de agua registrados." />
+            <PieChart theme={theme} title="Grupos de alimentos" unit="días" slices={foodSlices} emptyText="Aún no hay grupos de alimentos registrados." />
+            <PieChart theme={theme} title="Ánimo" unit="días" slices={moodCounts} emptyText="Aún no hay estados de ánimo registrados." />
+            <PieChart theme={theme} title="Descanso por día" unit="h" slices={sleepSlices} emptyText="Aún no hay horas de sueño registradas." />
+          </SectionCard>
+        ) : null}
 
         {!data.progressSharingEnabled ? (
           <Card style={{ backgroundColor: COLORS.paleOrange, borderColor: SHARED.advertenciaBorde }}>
@@ -2908,15 +2959,21 @@ export default function UnifiedApp() {
                   ))}
                 </View>
                 <Field
-                  label="Edad (años, opcional)"
+                  label="Fecha de nacimiento"
                   keyboardType="number-pad"
-                  onChangeText={value => setProfileDraft(current => ({ ...current, age: value }))}
-                  placeholder="Ej. 8"
-                  value={profileDraft.age}
+                  maxLength={10}
+                  onChangeText={value => setProfileDraft(current => ({ ...current, birthDate: maskBirthDate(value) }))}
+                  placeholder="DD/MM/AAAA"
+                  value={profileDraft.birthDate}
                 />
+                {profileDraft.birthDate ? (
+                  <Text style={styles.muted}>
+                    {parseBirthDate(profileDraft.birthDate) ? `Edad: ${ageLabel(ageFromBirth(parseBirthDate(profileDraft.birthDate) ?? undefined))}` : 'Escribe una fecha válida, por ejemplo 15/03/2016.'}
+                  </Text>
+                ) : null}
                 <View style={styles.horizontal}>
                   <Field
-                    label="Peso (opcional)"
+                    label="Peso"
                     keyboardType="decimal-pad"
                     onChangeText={value => setProfileDraft(current => ({ ...current, weight: value }))}
                     placeholder="kg"
@@ -2924,7 +2981,7 @@ export default function UnifiedApp() {
                     style={styles.flex}
                   />
                   <Field
-                    label="Estatura (opcional)"
+                    label="Estatura"
                     keyboardType="decimal-pad"
                     onChangeText={value => setProfileDraft(current => ({ ...current, height: value }))}
                     placeholder="cm"
@@ -2932,7 +2989,7 @@ export default function UnifiedApp() {
                     style={styles.flex}
                   />
                 </View>
-                <SectionTitle title="Dictamen del especialista (opcional)" subtitle="Selecciona solo un dictamen proporcionado por una persona especialista." />
+                <SectionTitle title="Dictamen del especialista" subtitle="Selecciona solo un dictamen proporcionado por una persona especialista." />
                 <View style={screenStyles.selectionRow}>
                   <View>{renderSelectionPill('Sin registrar', !profileDraft.diagnosis, () => setProfileDraft(current => ({ ...current, diagnosis: '' })))}</View>
                   {DIAGNOSES.map(option => (
@@ -2981,7 +3038,7 @@ export default function UnifiedApp() {
                     </View>
                   </View>
                   <View style={styles.divider} />
-                  <Text style={styles.body}>Edad: {profileDraft.age.trim() || 'No registrada'}</Text>
+                  <Text style={styles.body}>Fecha de nacimiento: {profileDraft.birthDate || 'No registrada'}</Text>
                   <Text style={styles.body}>Peso: {profileDraft.weight.trim() ? `${profileDraft.weight.trim()} kg` : 'No registrado'}</Text>
                   <Text style={styles.body}>Estatura: {profileDraft.height.trim() ? `${profileDraft.height.trim()} cm` : 'No registrada'}</Text>
                   <Text style={styles.body}>Sexo: {profileDraft.theme === 'nina' ? 'Niña' : 'Niño'}</Text>
@@ -3015,6 +3072,10 @@ export default function UnifiedApp() {
                   onPress={() => {
                     if (profileStep === 0 && profileDraft.name.trim().length < 2) {
                       setProfileError('Escribe un nombre de al menos dos letras.');
+                      return;
+                    }
+                    if (profileStep === 1 && profileDraft.birthDate && !parseBirthDate(profileDraft.birthDate)) {
+                      setProfileError('Escribe una fecha de nacimiento válida (DD/MM/AAAA).');
                       return;
                     }
                     setProfileError('');
@@ -3068,11 +3129,17 @@ export default function UnifiedApp() {
               playing={activityPlaying}
               style={screenStyles.activitySceneLarge}
             />
+            <Text accessibilityLabel={`Tiempo transcurrido ${formatElapsed(activityElapsed)}`} accessibilityRole="timer"
+              style={[theme.type.metric, { color: theme.colors.texto, textAlign: 'center' }]}>
+              {formatElapsed(activityElapsed)}
+            </Text>
             <View style={styles.horizontal}>
-              <Button title={activityPlaying ? 'Pausa' : 'Continuar'} icon={activityPlaying ? 'pause' : 'activity'}
-                variant="outline" style={styles.flex} onPress={() => setActivityPlaying(current => !current)} />
+              <Button title={!activityStarted ? 'Empezar' : activityPlaying ? 'Pausa' : 'Reanudar'}
+                icon={activityPlaying ? 'pause' : 'activity'}
+                variant={activityPlaying ? 'outline' : 'primary'} style={styles.flex}
+                onPress={() => { setActivityStarted(true); setActivityPlaying(current => !current); }} />
               <Button title="Repetir" icon="repeat" variant="outline" style={styles.flex}
-                onPress={() => { setActivityReplay(current => current + 1); setActivityPlaying(true); }} />
+                onPress={() => { setActivityReplay(current => current + 1); setActivityElapsed(0); setActivityStarted(true); setActivityPlaying(true); }} />
             </View>
             <View style={styles.wrap}>
               <Tag title={`${activityModal.minutes} min`} color={theme.colors.acento} />
@@ -3088,12 +3155,8 @@ export default function UnifiedApp() {
                 <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{guide.safety}</Text>
               </SectionCard>
             ) : null}
-            <PillButton theme={theme} label="¡Empezar!" onPress={() => {
-              setActivityReplay(current => current + 1);
-              setActivityPlaying(true);
-            }} />
             <PillButton theme={theme} label="Ya la hice · Registrar" variant="ghost" disabled={!canRegister}
-              onPress={() => { if (canRegister) setActivityStage('form'); }} />
+              onPress={() => { if (canRegister) { setActivityPlaying(false); setActivityStage('form'); } }} />
             {!canRegister ? (
               <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>
                 {!selectedProfile ? 'Este perfil ya no está disponible. Pide ayuda a la persona tutora.' :
@@ -3132,7 +3195,7 @@ export default function UnifiedApp() {
                 <>
                   <Image accessible accessibilityLabel="Foto elegida como evidencia" onError={() => setActivityError('No se pudo mostrar la foto. Elige otra o regístrala sin foto.')} source={{ uri: activityPhoto.uri }} style={styles.imagePreview} resizeMode="cover" />
                   <View style={styles.between}>
-                    <Text style={styles.muted}>Foto opcional · guardada en el espacio privado de tu cuenta.</Text>
+                    <Text style={styles.muted}>Foto · guardada en el espacio privado de tu cuenta.</Text>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Quitar foto"
@@ -3144,7 +3207,7 @@ export default function UnifiedApp() {
                   </View>
                 </>
               ) : (
-                <Text style={styles.footer}>La foto es opcional; puedes registrar la actividad sin evidencia.</Text>
+                <Text style={styles.footer}>Puedes registrar la actividad sin foto como evidencia.</Text>
               )}
               {activityError ? <Text accessibilityRole="alert" style={styles.errorText}>{activityError}</Text> : null}
               {!canRegister ? (

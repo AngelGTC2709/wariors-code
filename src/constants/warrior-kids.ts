@@ -85,7 +85,7 @@ export const RECIPES: Recipe[] = [
     title: 'Avena con fruta',
     emoji: '🍎',
     groups: 'Cereales + verduras y frutas',
-    ingredients: ['Avena', 'Leche o bebida de tu preferencia', 'Manzana o plátano', 'Canela opcional'],
+    ingredients: ['Avena', 'Leche o bebida de tu preferencia', 'Manzana o plátano', 'Canela'],
     preparation: 'Cocina la avena con la leche siguiendo las instrucciones del empaque. Agrega fruta lavada y picada; una persona adulta puede ayudar.',
     note: 'La avena es un cereal y la fruta aporta color y variedad.',
   },
