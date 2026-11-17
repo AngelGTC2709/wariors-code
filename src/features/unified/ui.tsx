@@ -332,11 +332,12 @@ export const styles = StyleSheet.create({
   buttonTextSecondary: { color: COLORS.blueDeep },
   buttonTextOutline: { color: COLORS.ink },
   buttonTextDanger: { color: COLORS.error },
-  buttonSmall: { minHeight: 44, borderRadius: RADIUS.sm, paddingVertical: SPACE[4], paddingHorizontal: SPACE[8] },
+  buttonSmall: { minHeight: 44, minWidth: 44, borderRadius: RADIUS.sm, paddingVertical: SPACE[4], paddingHorizontal: SPACE[8] },
   buttonSmallText: { fontSize: 10 },
   linkButton: { minHeight: 44, paddingVertical: SPACE[8], alignItems: 'center', justifyContent: 'center' },
   linkText: { color: COLORS.blue, fontFamily: TYPE.bold, fontSize: 11 },
-  profileStrip: { backgroundColor: COLORS.white, paddingHorizontal: SPACE[16], paddingTop: SPACE[8], paddingBottom: SPACE[8], borderBottomWidth: BORDER.fino, borderBottomColor: COLORS.line, flexDirection: 'row', gap: SPACE[8] },
+  profileStripScroll: { flexGrow: 0, flexShrink: 0, backgroundColor: COLORS.white, borderBottomWidth: BORDER.fino, borderBottomColor: COLORS.line },
+  profileStrip: { paddingHorizontal: SPACE[16], paddingTop: SPACE[8], paddingBottom: SPACE[8], flexDirection: 'row', gap: SPACE[8] },
   profileChip: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: SPACE[4], paddingVertical: SPACE[8], paddingHorizontal: SPACE[12], borderRadius: RADIUS.md, borderWidth: BORDER.fino, borderColor: COLORS.line, backgroundColor: COLORS.white },
   profileChipActive: { borderColor: COLORS.blue, backgroundColor: COLORS.paleBlue },
   profileChipText: { color: COLORS.ink, fontFamily: TYPE.medium, fontSize: 10 },
@@ -502,7 +503,7 @@ export function Tag({
     { backgroundColor: selected ? color : `${color}18`, borderWidth: 1, borderColor: selected ? color : `${color}40` },
   ];
   return onPress ? (
-    <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={style}>
+    <Pressable accessibilityRole="button" aria-selected={selected} onPress={onPress} style={style}>
       {content}
     </Pressable>
   ) : (
@@ -522,7 +523,7 @@ export function SectionTitle({
   return (
     <View style={styles.sectionRow}>
       <View style={styles.flex}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text role="heading" aria-level={2} style={styles.sectionTitle}>{title}</Text>
         {subtitle ? <Text style={styles.sectionHint}>{subtitle}</Text> : null}
       </View>
       {action}

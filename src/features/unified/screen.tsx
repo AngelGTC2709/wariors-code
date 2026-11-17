@@ -12,6 +12,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { User } from '@supabase/supabase-js';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -74,7 +75,7 @@ import {
   verifyTutorPassword,
   type PhysicalActivityCatalog,
 } from '@/features/unified/cloud-data';
-import { AchievementCelebration, PieChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
+import { AchievementCelebration, BarChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
 import { DatabaseManagement } from '@/features/unified/database-management';
@@ -94,6 +95,7 @@ import {
   Tag,
   type AppIconName,
 } from '@/features/unified/ui';
+import { formatMinutes, plural } from '@/features/unified/format';
 import { ageFromBirth, cleanText, errorReason, formatBirthDate, maskBirthDate, parseBirthDate, friendlyError, unique, userError } from '@/features/unified/utils';
 
 type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Gestión' | 'Logros' | 'Ajustes' | 'Ayuda';
@@ -422,6 +424,17 @@ function todayKey(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
+const DAILY_ACTIVITY_COUNT = 4;
+
+// Toma un bloque distinto del catálogo cada día; recorre todas las actividades antes de repetir.
+function activitiesForDay<T>(items: T[], dateKey: string, count = DAILY_ACTIVITY_COUNT): T[] {
+  if (items.length <= count) return items;
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const dayNumber = Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+  const start = (dayNumber * count) % items.length;
+  return Array.from({ length: count }, (_, index) => items[(start + index) % items.length]);
+}
+
 function dateOffsetKey(daysBack: number): string {
   const date = new Date();
   date.setDate(date.getDate() - daysBack);
@@ -515,6 +528,11 @@ function formatElapsed(ms: number): string {
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 }
 
+// Redondea el cronómetro a minutos completos dentro del rango que acepta el registro (1 a 180).
+function minutesFromElapsed(ms: number): number {
+  return Math.min(180, Math.max(1, Math.round(ms / 60_000)));
+}
+
 function ageLabel(age: number | null): string {
   return age === null ? 'No registrada' : `${age} ${age === 1 ? 'año' : 'años'}`;
 }
@@ -577,6 +595,11 @@ export default function UnifiedApp() {
     habitos: true, semana: false, movimiento: false, nutribot: false,
   });
   const [settingsSection, setSettingsSection] = useState<'main' | 'parental' | 'notifications' | 'help'>('main');
+  const mainScrollRef = useRef<ScrollViewInstance>(null);
+  // Cada pestaña o sección de ajustes abre desde arriba, no donde se quedó la anterior.
+  useEffect(() => {
+    mainScrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [tab, settingsSection]);
   const [profileStep, setProfileStep] = useState(0);
 
   const [registerMode, setRegisterMode] = useState(false);
@@ -870,6 +893,12 @@ export default function UnifiedApp() {
       ...RECIPES.filter(recipe => !databaseTitles.has(cleanText(recipe.title))),
     ];
   }, [databaseRecipes]);
+  // Las recetas locales solo se muestran si el catálogo de Supabase está vacío; siguen en `recipes`
+  // para resolver menús que ya las tenían asignadas.
+  const browsableRecipes = useMemo(
+    () => (databaseRecipes.length ? recipes.filter(recipe => recipe.databaseId !== undefined) : recipes),
+    [databaseRecipes.length, recipes],
+  );
   const catalogActivityFor = (id: string) => physicalActivities.find(activity => activity.codigo === id);
   const activityFor = (id: string) =>
     activityCatalog.find(activity => activity.id === id) ??
@@ -1574,14 +1603,6 @@ export default function UnifiedApp() {
     }));
   };
 
-  const toggleReminder = (value: boolean) => {
-    if (role !== 'tutor') return;
-    updateData(current => ({
-      ...current,
-      warriorKids: { ...current.warriorKids, remindersEnabled: value },
-    }));
-  };
-
   const openAvatarEditor = () => {
     if (role !== 'child' || !selectedProfile || !data) return;
     setAvatarDraft({
@@ -1897,12 +1918,12 @@ export default function UnifiedApp() {
 
   const renderTutorProfileStrip = () => (
     role === 'tutor' && profiles.length > 0 ? (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.profileStripScroll}>
         <View style={styles.profileStrip}>
           {profiles.map(profile => (
             <Pressable
               accessibilityRole="button"
-              accessibilityState={{ selected: selectedProfile?.key === profile.key }}
+              aria-selected={selectedProfile?.key === profile.key}
               key={profile.key}
               onPress={() => setSelectedProfileKey(profile.key)}
               style={[
@@ -1935,7 +1956,7 @@ export default function UnifiedApp() {
   const renderTutorIntro = (eyebrow: string, title: string, subtitle: string) => (
     <View style={screenStyles.sectionHeading}>
       <Text style={[theme.type.caption, { color: theme.colors.acento }]}>{eyebrow}</Text>
-      <Text style={[theme.type.h1, { color: theme.colors.texto }]}>{title}</Text>
+      <Text role="heading" aria-level={1} style={[theme.type.h1, { color: theme.colors.texto }]}>{title}</Text>
       <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{subtitle}</Text>
     </View>
   );
@@ -1943,7 +1964,7 @@ export default function UnifiedApp() {
   const renderSelectionPill = (label: string, selected: boolean, onPress: () => void) => (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected }}
+      aria-selected={selected}
       onPress={onPress}
       style={[screenStyles.selectionPill, { backgroundColor: selected ? theme.colors.acento : theme.colors.tarjeta }]}
     >
@@ -2043,7 +2064,7 @@ export default function UnifiedApp() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={title}
-            accessibilityState={{ expanded }}
+            aria-expanded={expanded}
             onPress={() => setChildHomeSections(current => ({ ...current, [id]: !current[id] }))}
             style={[screenStyles.collapsibleHeader, { backgroundColor: theme.colors.acentoSuave }]}
           >
@@ -2115,7 +2136,7 @@ export default function UnifiedApp() {
             {CHILD_MOODS.map(mood => (
               <Pressable
                 accessibilityRole="button"
-                accessibilityState={{ selected: log.mood === mood.id }}
+                aria-selected={log.mood === mood.id}
                 key={mood.id}
                 onPress={() => setMood(mood.id)}
                 style={[screenStyles.moodChoice, { borderColor: log.mood === mood.id ? mood.color : 'transparent' }]}
@@ -2189,14 +2210,14 @@ export default function UnifiedApp() {
         </>)}
 
         {section('movimiento', 'Movimiento', <>
-        <SectionCard theme={theme} role="child" title="Movimiento a tu manera" subtitle="Elige una actividad segura y pide apoyo si lo necesitas.">
-          {activityCatalog.filter(activity => {
+        <SectionCard theme={theme} role="child" title="Movimiento de hoy" subtitle="Tus actividades cambian cada día. Elige una segura y pide apoyo si lo necesitas.">
+          {activitiesForDay(activityCatalog.filter(activity => {
             const catalog = catalogActivityFor(activity.id);
             const age = ageFromBirth(selectedProfile.nutri?.nacimiento);
             if (age === null || !catalog) return true;
             const [minimum, maximum] = catalog.grupo_edad.match(/\d+/g)?.map(Number) ?? [];
             return minimum !== undefined && maximum !== undefined && age >= minimum && age <= maximum;
-          }).map(activity => {
+          }), todayKey()).map(activity => {
             const saved = log.activities[activity.id];
             return (
               <Pressable
@@ -2213,14 +2234,14 @@ export default function UnifiedApp() {
                   setActivityPhoto(null);
                   setActivityError('');
                 }}
-                style={[styles.between, { paddingVertical: SPACE[4] }]}
+                style={[styles.between, { paddingVertical: SPACE[4], minHeight: 48 }]}
               >
                 <View style={[styles.horizontal, styles.flex]}>
                   <Icon name="activity" size={28} color={theme.colors.acento} />
                   <View style={styles.flex}>
                     <Text style={styles.inputLabel}>{activity.title}</Text>
                     <Text style={styles.muted}>
-                      {catalogActivityFor(activity.id)?.minutos_sesion ?? `${activity.minutes}`} min
+                      {formatMinutes(catalogActivityFor(activity.id)?.minutos_sesion ?? activity.minutes)}
                       {catalogActivityFor(activity.id) ? ` · ${catalogActivityFor(activity.id)?.grupo_edad}` : ''}
                     </Text>
                   </View>
@@ -2278,7 +2299,7 @@ export default function UnifiedApp() {
     return (
       <>
         <View style={screenStyles.sectionHeading}>
-          <Text style={[theme.type.h1, { color: theme.colors.texto }]}>Mis logros</Text>
+          <Text role="heading" aria-level={1} style={[theme.type.h1, { color: theme.colors.texto }]}>Mis logros</Text>
           <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Cada hábito que practicas suma a tu camino.</Text>
         </View>
         <View style={[screenStyles.achievementHero, { backgroundColor: theme.colors.hero }]}>
@@ -2345,14 +2366,20 @@ export default function UnifiedApp() {
       label: group.label,
       color: group.color,
       value: weekDays.filter(day => day.log.foodGroups.some(value => canonicalFoodGroup(value) === group.id)).length,
-    }));
+    })).map(item => ({ ...item, valueLabel: `${plural(item.value, 'día')} de 7` }));
     const moodCounts = CHILD_MOODS.map(mood => ({
       label: mood.label,
       color: tint(mood.color, 0.55),
       value: weekDays.filter(day => day.log.mood === mood.id).length,
+    })).filter(item => item.value > 0).map(item => ({ ...item, valueLabel: plural(item.value, 'día') }));
+    const waterGoal = data.warriorKids.waterGoal;
+    const waterSlices = weekDays.map((day, index) => ({
+      label: day.label, color: dayColors[index], value: day.log.water, valueLabel: `${day.log.water} de ${waterGoal}`,
     }));
-    const waterSlices = weekDays.map((day, index) => ({ label: day.label, color: dayColors[index], value: day.log.water }));
-    const sleepSlices = weekDays.map((day, index) => ({ label: day.label, color: dayColors[index], value: day.log.sleepHours ?? 0 }));
+    const sleepSlices = weekDays.map((day, index) => ({
+      label: day.label, color: dayColors[index], value: day.log.sleepHours ?? 0,
+      valueLabel: day.log.sleepHours === null ? 'Sin dato' : `${day.log.sleepHours} h`,
+    }));
     const selectedNutri = selectedProfile?.nutri;
     const selectedAge = ageFromBirth(selectedNutri?.nacimiento);
     return (
@@ -2457,10 +2484,10 @@ export default function UnifiedApp() {
                 {selectedNutri?.altura ? <Tag title={`${selectedNutri.altura} cm`} color={COLORS.blue} icon="height" /> : null}
               </View>
             ) : null}
-            <PieChart theme={theme} title="Agua por día" unit="vasos" slices={waterSlices} emptyText="Aún no hay vasos de agua registrados." />
-            <PieChart theme={theme} title="Grupos de alimentos" unit="días" slices={foodSlices} emptyText="Aún no hay grupos de alimentos registrados." />
-            <PieChart theme={theme} title="Ánimo" unit="días" slices={moodCounts} emptyText="Aún no hay estados de ánimo registrados." />
-            <PieChart theme={theme} title="Descanso por día" unit="h" slices={sleepSlices} emptyText="Aún no hay horas de sueño registradas." />
+            <BarChart theme={theme} title="Agua por día" note={`Vasos contra la meta de ${plural(waterGoal, 'vaso')} al día.`} items={waterSlices} max={waterGoal} emptyText="Aún no hay vasos de agua registrados." />
+            <BarChart theme={theme} title="Grupos de alimentos" note="Días de la semana en que se registró cada grupo." items={foodSlices} max={7} labelWidth={112} emptyText="Aún no hay grupos de alimentos registrados." />
+            <BarChart theme={theme} title="Ánimo" note="Días en que se eligió cada ánimo." items={moodCounts} max={7} labelWidth={112} emptyText="Aún no hay estados de ánimo registrados." />
+            <BarChart theme={theme} title="Descanso por día" note="Referencia: 9 a 12 horas para niñas y niños de 6 a 12 años." items={sleepSlices} max={12} emptyText="Aún no hay horas de sueño registradas." />
           </SectionCard>
         ) : null}
 
@@ -2531,10 +2558,12 @@ export default function UnifiedApp() {
     if (!diet) return null;
     const allergyIds = profileAllergies.filter(value => FOOD_OPTIONS.some(food => food.id === value));
     const ingredientIds = DIET_INGREDIENTS[dietDay] ?? {};
+    // Si la persona tutora asignó una receta en Menú, se muestra esa; si no, la sugerencia general del día.
+    const tutorMeals = data?.weeklyMeals[dietDay];
     return (
       <>
         {renderFoodPreferences()}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }}>
           <View style={screenStyles.selectionRow}>
             {WEEKDAYS.map(day => (
               <View key={day}>{renderSelectionPill(day, day === dietDay, () => setDietDay(day))}</View>
@@ -2546,15 +2575,22 @@ export default function UnifiedApp() {
           { id: 'comida' as const, label: 'Comida', icon: 'food' as const, text: diet.comida },
           { id: 'cena' as const, label: 'Cena', icon: 'sleep' as const, text: diet.cena },
         ]).map(meal => {
-          const matchingAllergies = allergyIds.filter(id => ingredientIds[meal.id]?.includes(id));
+          const tutorRecipe = recipes.find(item => item.id === tutorMeals?.[meal.id]);
+          const matchingAllergies = tutorRecipe
+            ? recipeWarnings(tutorRecipe, profileAllergies)
+            : allergyIds.filter(id => ingredientIds[meal.id]?.includes(id));
           return (
             <SectionCard key={meal.id} theme={theme} role={role} title={meal.label}>
               <View style={styles.horizontal}>
                 <Icon name={meal.icon} size={24} color={theme.colors.acento} />
                 <View style={styles.flex}>
-                  <Text style={[theme.type.body, { color: theme.colors.texto }]}>{meal.text}</Text>
+                  <Text style={[theme.type.body, { color: theme.colors.texto }]}>{tutorRecipe?.title ?? meal.text}</Text>
+                  {tutorRecipe ? <Text style={styles.muted}>Elegida por tu familia en el menú de la semana.</Text> : null}
                 </View>
               </View>
+              {tutorRecipe ? (
+                <Button title="Ver preparación" small variant="secondary" onPress={() => setRecipeDetails(tutorRecipe)} />
+              ) : null}
               {matchingAllergies.length ? (
                 <View style={styles.notice}>
                   <Text style={styles.noticeText}>
@@ -2578,7 +2614,7 @@ export default function UnifiedApp() {
 
   const renderRecipes = () => {
     if (!data) return null;
-    const filteredRecipes = recipes.filter(recipe => recipeMatchesFilter(recipe, recipeFilter, recipeSearch));
+    const filteredRecipes = browsableRecipes.filter(recipe => recipeMatchesFilter(recipe, recipeFilter, recipeSearch));
     return (
       <>
         {renderTutorIntro('COCINA EN FAMILIA', 'Recetas con color', 'Ideas sencillas para disfrutar y aprender juntos.')}
@@ -2594,7 +2630,7 @@ export default function UnifiedApp() {
               placeholder="Ej. avena, frijoles…"
               value={recipeSearch}
             />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }}>
               <View style={screenStyles.selectionRow}>
                 {RECIPE_FILTERS.map(filter => (
                   <View key={filter.id}>
@@ -2657,7 +2693,7 @@ export default function UnifiedApp() {
     return (
       <>
         {renderTutorIntro('ORGANIZACIÓN FAMILIAR', 'Menú de la semana', 'Planeen tres momentos de comida para cada día.')}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }}>
           <View style={screenStyles.selectionRow}>
             {WEEKDAYS.map(day => (
               <View key={day}>{renderSelectionPill(day, selectedDay === day, () => setSelectedDay(day))}</View>
@@ -2709,12 +2745,6 @@ export default function UnifiedApp() {
             </SectionCard>
           );
         })}
-        <Card style={{ backgroundColor: COLORS.paleBlue, borderColor: SHARED.infoBorde }}>
-          <Text style={styles.cardTitle}>¿Ya tenías recetas guardadas?</Text>
-          <Text style={styles.body}>
-            Las recetas semanales de Warrior Kids se conservaron como comida del día. Puedes agregar desayuno y cena sin reemplazar esa información.
-          </Text>
-        </Card>
         {role === 'tutor' ? (
           <Button title={`Elegir receta para ${getMealName(selectedMeal).toLocaleLowerCase('es-MX')}`} icon="add" onPress={() => openMenuPicker(selectedDay, selectedMeal)} />
         ) : null}
@@ -2739,12 +2769,12 @@ export default function UnifiedApp() {
           <Text style={[theme.type.h2, { color: theme.colors.texto }]}>{selectedProfile.name}</Text>
         </View>
         <SectionCard theme={theme} role="child" title="Personaliza tu avatar" subtitle="Elige cada detalle para crear tu personaje.">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }}>
             <View style={screenStyles.avatarTabs}>
               {AVATAR_KEYS.filter(key => key !== 'fondo').map(key => (
                 <Pressable
                   accessibilityRole="tab"
-                  accessibilityState={{ selected: avatarCategory === key }}
+                  aria-selected={avatarCategory === key}
                   key={key}
                   onPress={() => setAvatarCategory(key)}
                   style={[screenStyles.avatarTab, { backgroundColor: avatarCategory === key ? theme.colors.acento : theme.colors.apagada }]}
@@ -2764,7 +2794,7 @@ export default function UnifiedApp() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`${AVATAR_LABELS[avatarCategory]}, opción ${index + 1}`}
-                  accessibilityState={{ selected }}
+                  aria-selected={selected}
                   key={`${avatarCategory}-${index}`}
                   onPress={() => setAvatarPart(index)}
                   style={[screenStyles.avatarOption, { borderColor: selected ? theme.colors.acento : 'transparent' }]}
@@ -2790,14 +2820,14 @@ export default function UnifiedApp() {
       <>
         {settingsSection === 'parental' ? (
           <>
-        <SectionCard theme={theme} role="tutor" title="Perfiles infantiles" subtitle="Editar conserva los datos originales de cada registro.">
+        <SectionCard theme={theme} role="tutor" title="Perfiles infantiles" subtitle="Edita el nombre, la fecha de nacimiento y los datos de cada perfil.">
           {profiles.length ? profiles.map(profile => (
             <View key={profile.key} style={styles.profileRow}>
               {renderAvatar(profile, 'small')}
               <View style={styles.flex}>
                 <Text style={styles.inputLabel}>{profile.name}</Text>
                 <Text style={styles.muted}>
-                  {profile.link ? 'Vinculado · conserva ambos orígenes' : profile.nutri ? 'Importado de NutriBot' : 'Importado de Warrior Kids'}
+                  {(() => { const age = ageFromBirth(profile.nutri?.nacimiento); return age === null ? 'Sin fecha de nacimiento' : ageLabel(age); })()}
                 </Text>
               </View>
               <Button title="Editar" small variant="outline" onPress={() => createOrEditProfile(profile)} />
@@ -2819,7 +2849,7 @@ export default function UnifiedApp() {
         ) : null}
 
         {settingsSection === 'notifications' ? (
-        <SectionCard theme={theme} role="tutor" title="Notificaciones de hábitos" subtitle="Ajustes de tu espacio familiar.">
+        <SectionCard theme={theme} role="tutor" title="Metas de hábitos" subtitle="Ajustes de tu espacio familiar.">
           <View style={[styles.between, { paddingVertical: SPACE[4] }]}>
             <View style={styles.flex}>
               <Text style={styles.inputLabel}>Meta diaria de agua</Text>
@@ -2844,19 +2874,6 @@ export default function UnifiedApp() {
                 onPress={() => changeWaterGoal(1)}
               />
             </View>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.between}>
-            <View style={styles.flex}>
-              <Text style={styles.inputLabel}>Recordatorios</Text>
-              <Text style={styles.muted}>Preferencia guardada en la nube; no programa alertas del sistema.</Text>
-            </View>
-            <Switch
-              accessibilityLabel="Activar preferencia de recordatorios"
-              value={data.warriorKids.remindersEnabled}
-              onValueChange={toggleReminder}
-              trackColor={{ true: COLORS.blue }}
-            />
           </View>
         </SectionCard>
         ) : null}
@@ -2932,7 +2949,7 @@ export default function UnifiedApp() {
         {renderTutorIntro('TU ESPACIO', 'Ajustes y privacidad', 'Configura tu espacio familiar privado.')}
         {([
           { id: 'parental', title: 'Control parental', subtitle: 'Perfiles, avances y seguridad.', icon: 'shield', color: theme.colors.acento },
-          { id: 'notifications', title: 'Notificaciones de hábitos', subtitle: 'Meta de agua y recordatorios.', icon: 'bell', color: theme.colors.agua },
+          { id: 'notifications', title: 'Metas de hábitos', subtitle: 'Meta diaria de agua para la familia.', icon: 'water', color: theme.colors.agua },
           { id: 'help', title: 'Ayuda', subtitle: 'Respuestas para usar la app en familia.', icon: 'help', color: theme.colors.logros },
         ] as const).map(item => (
           <Pressable
@@ -2963,7 +2980,7 @@ export default function UnifiedApp() {
     return (
       <>
         <View style={screenStyles.sectionHeading}>
-          <Text style={[theme.type.h1, { color: theme.colors.texto }]}>Mis ajustes</Text>
+          <Text role="heading" aria-level={1} style={[theme.type.h1, { color: theme.colors.texto }]}>Mis ajustes</Text>
           <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Elige cómo quieres usar tu espacio.</Text>
         </View>
         <View style={[screenStyles.settingsTile, { backgroundColor: theme.colors.acentoSuave }]}>
@@ -3008,7 +3025,7 @@ export default function UnifiedApp() {
   const renderHelp = () => role === 'child' ? (
     <>
       <View style={screenStyles.sectionHeading}>
-        <Text style={[theme.type.h1, { color: theme.colors.texto }]}>¿Necesitas ayuda?</Text>
+        <Text role="heading" aria-level={1} style={[theme.type.h1, { color: theme.colors.texto }]}>¿Necesitas ayuda?</Text>
         <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Estamos para acompañarte.</Text>
       </View>
       <Image source={require('@/assets/images/wk-logo.png')} style={screenStyles.helpLogo} resizeMode="contain" />
@@ -3052,7 +3069,7 @@ export default function UnifiedApp() {
       onClose={() => setShowProfileEditor(false)}
     >
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{editingProfile ? 'Editar perfil infantil' : 'Nuevo perfil infantil'}</Text>
+            <Text role="heading" aria-level={2} style={styles.modalTitle}>{editingProfile ? 'Editar perfil infantil' : 'Nuevo perfil infantil'}</Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Cerrar"
@@ -3104,7 +3121,7 @@ export default function UnifiedApp() {
                   ]).map(option => (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityState={{ selected: profileDraft.theme === option.id }}
+                      aria-selected={profileDraft.theme === option.id}
                       key={option.id}
                       onPress={() => setProfileDraft(current => ({ ...current, theme: option.id }))}
                       style={[styles.roleChoice, profileDraft.theme === option.id && styles.roleChoiceActive]}
@@ -3123,7 +3140,7 @@ export default function UnifiedApp() {
                 <View style={styles.roleRow}>
                   {([{ id: 'nina', label: 'Niña' }, { id: 'nino', label: 'Niño' }] as const).map(option => (
                     <Pressable key={option.id} accessibilityRole="button"
-                      accessibilityState={{ selected: profileDraft.theme === option.id }}
+                      aria-selected={profileDraft.theme === option.id}
                       onPress={() => setProfileDraft(current => ({ ...current, theme: option.id }))}
                       style={[styles.roleChoice, profileDraft.theme === option.id && styles.roleChoiceActive]}>
                       <Text style={[styles.roleChoiceText, profileDraft.theme === option.id && styles.roleChoiceTextActive]}>{option.label}</Text>
@@ -3331,7 +3348,7 @@ export default function UnifiedApp() {
             </View>
             <View style={styles.wrap}>
               <Tag
-                title={catalogActivity ? `${catalogActivity.minutos_sesion} min por sesión` : `${activityModal.minutes} min`}
+                title={`${formatMinutes(catalogActivity?.minutos_sesion ?? activityModal.minutes)}${catalogActivity ? ' por sesión' : ''}`}
                 color={theme.colors.acento}
               />
               <Tag title={`${activityModal.points} puntos`} color={theme.colors.puntos} icon="points" />
@@ -3359,7 +3376,12 @@ export default function UnifiedApp() {
               </SectionCard>
             ) : null}
             <PillButton theme={theme} label="Ya la hice · Registrar" variant="ghost" disabled={!canRegister}
-              onPress={() => { if (canRegister) { setActivityPlaying(false); setActivityStage('form'); } }} />
+              onPress={() => {
+                if (!canRegister) return;
+                setActivityPlaying(false);
+                if (activityElapsed > 0) setActivityDuration(String(minutesFromElapsed(activityElapsed)));
+                setActivityStage('form');
+              }} />
             {!canRegister ? (
               <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>
                 {!selectedProfile ? 'Este perfil ya no está disponible. Pide ayuda a la persona tutora.' :
@@ -3374,7 +3396,7 @@ export default function UnifiedApp() {
           <View style={styles.modalHeader}>
             <View style={styles.horizontal}>
               <Icon name="activity" size={20} color={COLORS.blue} />
-              <Text style={styles.modalTitle}>Registrar actividad</Text>
+              <Text role="heading" aria-level={2} style={styles.modalTitle}>Registrar actividad</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setActivityModal(null)} style={styles.close}>
               <Icon name="close" size={18} color={COLORS.ink} />
@@ -3385,9 +3407,14 @@ export default function UnifiedApp() {
               <Text style={styles.body}>{activityModal.title}</Text>
               <Text style={styles.muted}>
                 {catalogActivity
-                  ? `Tiempo sugerido por la guía: ${catalogActivity.minutos_sesion} minutos.`
+                  ? `Tiempo sugerido por la guía: ${formatMinutes(catalogActivity.minutos_sesion, 'minutos')}.`
                   : activityModal.instructions}
               </Text>
+              {activityElapsed > 0 ? (
+                <Text style={styles.muted}>
+                  Tu cronómetro marcó {formatElapsed(activityElapsed)}. Puedes corregir los minutos si hace falta.
+                </Text>
+              ) : null}
               <Field
                 label="¿Cuántos minutos?"
                 keyboardType="number-pad"
@@ -3515,7 +3542,7 @@ export default function UnifiedApp() {
               </View>
             ))}
           </View>
-          {recipes.filter(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)).map(recipe => {
+          {browsableRecipes.filter(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)).map(recipe => {
             const warnings = recipeWarnings(recipe, profileAllergies);
             const warningText = warnings.length
               ? `Revisa estos ingredientes por alergias registradas: ${warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.`
@@ -3534,7 +3561,7 @@ export default function UnifiedApp() {
               </Pressable>
             );
           })}
-          {!recipes.some(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)) ? (
+          {!browsableRecipes.some(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)) ? (
             <View style={styles.emptyState}>
               <Text style={styles.body}>No encontramos recetas con esos filtros.</Text>
               <Button title="Limpiar búsqueda" small variant="outline" onPress={() => { setMenuRecipeSearch(''); setMenuRecipeFilter('todas'); }} />
@@ -3552,7 +3579,7 @@ export default function UnifiedApp() {
             <View style={styles.flex}>
               <View style={styles.horizontal}>
                 <Icon name="leaf" size={18} color={COLORS.green} />
-                <Text style={styles.modalTitle}>NutriBot Familiar</Text>
+                <Text role="heading" aria-level={2} style={styles.modalTitle}>NutriBot Familiar</Text>
               </View>
               <Text style={styles.muted}>Respuestas locales predefinidas</Text>
             </View>
@@ -3596,7 +3623,7 @@ export default function UnifiedApp() {
 
   const renderArchiveModal = () => (
     <BottomSheet theme={theme} visible={role === 'tutor' && Boolean(profileToArchive)} onClose={() => setProfileToArchive(null)}>
-          <Text style={styles.modalTitle}>¿Eliminar este perfil?</Text>
+          <Text role="heading" aria-level={2} style={styles.modalTitle}>¿Eliminar este perfil?</Text>
           <Text style={[styles.body, { marginVertical: SPACE[12] }]}>
             “{profileToArchive?.name}” se eliminará con todos sus datos, avances y fotos de evidencia. Esta acción no se puede deshacer.
           </Text>
@@ -3610,7 +3637,7 @@ export default function UnifiedApp() {
   const renderTutorGateModal = () => (
     <BottomSheet theme={theme} visible={role === 'child' && showTutorGate} onClose={closeTutorGate}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Acceso al espacio tutor</Text>
+            <Text role="heading" aria-level={2} style={styles.modalTitle}>Acceso al espacio tutor</Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Cerrar"
@@ -3672,7 +3699,7 @@ export default function UnifiedApp() {
 
   const renderChildProfilePickerModal = () => (
     <BottomSheet theme={theme} visible={role === 'tutor' && showChildProfilePicker} onClose={cancelChildProfilePicker}>
-          <Text style={styles.modalTitle}>¿Quién va a usar la app?</Text>
+          <Text role="heading" aria-level={2} style={styles.modalTitle}>¿Quién va a usar la app?</Text>
           <Text style={[styles.body, { marginTop: SPACE[6], marginBottom: SPACE[12] }]}>
             Elige el perfil infantil para esta sesión.
           </Text>
@@ -3680,7 +3707,7 @@ export default function UnifiedApp() {
             {profiles.map(profile => (
               <Pressable
                 accessibilityRole="button"
-                accessibilityState={{ selected: selectedProfileKey === profile.key }}
+                aria-selected={selectedProfileKey === profile.key}
                 key={profile.key}
                 onPress={() => {
                   if (role === 'tutor' && profiles.some(item => item.key === profile.key)) {
@@ -3818,6 +3845,7 @@ export default function UnifiedApp() {
         </View>
         {renderTutorProfileStrip()}
         <ScrollView
+          ref={mainScrollRef}
           key={role}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"

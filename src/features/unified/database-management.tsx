@@ -26,6 +26,7 @@ import {
 import { PillButton, SectionCard } from '@/features/unified/design';
 import { DatabaseActivities } from '@/features/unified/database-activities';
 import { useAppTheme } from '@/features/unified/tokens';
+import { plural } from '@/features/unified/format';
 import { friendlyError } from '@/features/unified/utils';
 import { Button, Card, Field, Icon, SectionTitle, styles } from '@/features/unified/ui';
 
@@ -239,7 +240,7 @@ export function DatabaseManagement({ userId }: { userId: string }) {
           </View>
           {renderDeleteConfirmation(
             { kind: 'reto', id: challenge.id_reto },
-            'Al eliminar este reto, la base de datos también elimina sus asignaciones y actividades relacionadas.',
+            'Al eliminar este reto también se eliminan sus asignaciones y actividades relacionadas.',
           )}
           <Text style={styles.cardTitle}>Asignar a un perfil</Text>
           {snapshot.children.length ? (
@@ -291,7 +292,7 @@ export function DatabaseManagement({ userId }: { userId: string }) {
           ))}
         </SectionCard>
       ))}
-      {!snapshot?.challenges.length ? <Card><Text style={styles.muted}>Todavía no hay retos en la base de datos.</Text></Card> : null}
+      {!snapshot?.challenges.length ? <Card><Text style={styles.muted}>Todavía no hay retos creados.</Text></Card> : null}
     </View>
   );
 
@@ -336,14 +337,14 @@ export function DatabaseManagement({ userId }: { userId: string }) {
       </SectionCard>
 
       {snapshot?.rewards.map(reward => (
-        <SectionCard key={reward.id_recompensa} theme={theme} role="tutor" title={reward.nombre_premio} subtitle={`${reward.costo_en_puntos} puntos · ${reward.cantidad_disponible} disponibles · ${reward.estado}`}>
+        <SectionCard key={reward.id_recompensa} theme={theme} role="tutor" title={reward.nombre_premio} subtitle={`${reward.costo_en_puntos} puntos · ${plural(reward.cantidad_disponible, 'disponible')} · ${reward.estado}`}>
           <View style={styles.horizontal}>
             <Button title="Editar" icon="edit" variant="outline" small onPress={() => editReward(reward)} />
             <Button title="Eliminar" icon="close" variant="danger" small onPress={() => setDeleteTarget({ kind: 'recompensa', id: reward.id_recompensa })} />
           </View>
           {renderDeleteConfirmation(
             { kind: 'recompensa', id: reward.id_recompensa },
-            'Si esta recompensa ya tiene canjes, la base de datos impedirá eliminarla; puedes cambiar su estado a inactiva.',
+            'Si esta recompensa ya tiene canjes no se podrá eliminar; puedes cambiar su estado a inactiva.',
           )}
         </SectionCard>
       ))}
@@ -446,7 +447,7 @@ export function DatabaseManagement({ userId }: { userId: string }) {
     <View style={{ gap: 16 }}>
       <SectionCard theme={theme} role="tutor" title={planDraft.id ? 'Editar plan alimenticio' : 'Crear plan alimenticio'}>
         <Text style={styles.muted}>La app no calcula metas calóricas. Registra aquí solo una meta que ya tengas indicada.</Text>
-        <Text style={styles.inputLabel}>Perfil infantil normalizado</Text>
+        <Text style={styles.inputLabel}>Perfil infantil</Text>
         {renderChoices(
           (snapshot?.children ?? []).map(child => String(child.id_hijo)),
           planDraft.childId,
@@ -490,13 +491,13 @@ export function DatabaseManagement({ userId }: { userId: string }) {
                   <Button title="Quitar receta" variant="danger" small onPress={() => void run('Se quitó la receta del plan.', () => removePlanRecipe(item))} />
                 </Card>
               ))}
-              <Text style={styles.inputLabel}>Agregar receta de la base de datos</Text>
+              <Text style={styles.inputLabel}>Agregar receta</Text>
               {recipes.length ? renderChoices(
                 recipes.flatMap(recipe => recipe.databaseId ? [String(recipe.databaseId)] : []),
                 planRecipeId,
                 value => recipeNames.get(Number(value)) ?? value,
                 setPlanRecipeId,
-              ) : <Text style={styles.muted}>No hay recetas normalizadas disponibles para asignar.</Text>}
+              ) : <Text style={styles.muted}>No hay recetas disponibles para asignar.</Text>}
               <Field label="Fecha (AAAA-MM-DD)" placeholder="AAAA-MM-DD" value={planRecipeDate} onChangeText={setPlanRecipeDate} />
               <Text style={styles.inputLabel}>Momento de comida</Text>
               {renderChoices(MEAL_TYPES, planRecipeMeal, value => MEAL_LABELS[value], setPlanRecipeMeal)}
@@ -505,18 +506,18 @@ export function DatabaseManagement({ userId }: { userId: string }) {
           ) : null}
         </SectionCard>
       ))}
-      {!snapshot?.plans.length ? <Card><Text style={styles.muted}>Todavía no hay planes alimenticios normalizados.</Text></Card> : null}
-      {!snapshot?.children.length ? <Card><Text style={styles.muted}>Los planes requieren perfiles de la tabla hijos. Sincroniza un perfil con consentimiento para que aparezca aquí.</Text></Card> : null}
+      {!snapshot?.plans.length ? <Card><Text style={styles.muted}>Todavía no hay planes alimenticios.</Text></Card> : null}
+      {!snapshot?.children.length ? <Card><Text style={styles.muted}>Para crear un plan, edita el perfil infantil en Ajustes → Control parental, registra su fecha de nacimiento y autoriza guardar sus datos de salud.</Text></Card> : null}
     </View>
   );
 
   if (loading && !snapshot) {
-    return <Card><View style={styles.horizontal}><Icon name="activity" /><Text style={styles.body}>Cargando gestión de la base de datos…</Text></View></Card>;
+    return <Card><View style={styles.horizontal}><Icon name="activity" /><Text style={styles.body}>Cargando la gestión familiar…</Text></View></Card>;
   }
 
   return (
     <View style={{ gap: 16 }}>
-      <SectionTitle title="Gestión de datos" subtitle="Administra retos, actividades, recompensas y planes normalizados de la familia." />
+      <SectionTitle title="Gestión de datos" subtitle="Administra retos, actividades, recompensas y planes alimenticios de la familia." />
       {error ? <View accessibilityRole="alert" style={styles.notice}><Text style={styles.errorText}>{error}</Text><Button title="Reintentar" small variant="outline" onPress={() => void reload().catch(cause => setError(friendlyError(cause, 'No se pudieron recargar los datos.')))} /></View> : null}
       {notice ? <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{notice}</Text> : null}
       <View style={styles.wrap}>

@@ -76,7 +76,8 @@ export function AnimatedPress({
     <AnimatedPressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled, selected }}
+      aria-disabled={disabled}
+      aria-selected={selected}
       disabled={disabled}
       hitSlop={hitSlop}
       onPress={() => {

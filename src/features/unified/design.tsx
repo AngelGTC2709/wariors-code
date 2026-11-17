@@ -130,7 +130,7 @@ export function FoodChip({
       <Pressable
         accessibilityRole="checkbox"
         accessibilityLabel={label}
-        accessibilityState={{ checked: selected }}
+        aria-checked={selected}
         onPress={onPress}
         style={[
           styles.foodChip,
@@ -223,7 +223,7 @@ function BottomBarTab({
     <Pressable
       accessibilityRole="tab"
       accessibilityLabel={item.label}
-      accessibilityState={{ selected }}
+      aria-selected={selected}
       onPress={onPress}
       style={styles.bottomTab}
     >
@@ -368,7 +368,7 @@ export function SectionCard({
 }: Themed & { role: AccountRole; title: string; subtitle?: string; children: ReactNode }) {
   return (
     <View style={[styles.sectionCard, { backgroundColor: theme.colors.tarjeta, borderRadius: role === 'child' ? RADIUS.habito : RADIUS.tarjeta }, SHADOW.tarjeta]}>
-      <Text style={[theme.type.h2, { color: theme.colors.texto }]}>{title}</Text>
+      <Text role="heading" aria-level={3} style={[theme.type.h2, { color: theme.colors.texto }]}>{title}</Text>
       {subtitle ? <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{subtitle}</Text> : null}
       {children}
     </View>
@@ -390,57 +390,30 @@ export function ListRow({
   );
 }
 
-export type PieSlice = { label: string; value: number; color: string };
-const PIE_SIZE = 140;
+export type BarItem = { label: string; value: number; color: string; valueLabel: string };
 
-export function PieChart({ theme, title, slices, unit, emptyText }: Themed & { title: string; slices: readonly PieSlice[]; unit: string; emptyText: string }) {
-  const visible = slices.filter(slice => slice.value > 0);
-  const total = visible.reduce((sum, slice) => sum + slice.value, 0);
-  const radius = PIE_SIZE / 4;
-  const circumference = 2 * Math.PI * radius;
-  const starts = visible.map((_, index) => visible.slice(0, index).reduce((sum, slice) => sum + slice.value, 0) / (total || 1) * circumference);
+// Barras horizontales contra un máximo (meta diaria o días de la semana), para leer cada valor sin comparar porciones.
+export function BarChart({
+  theme, title, items, max, note, emptyText, labelWidth = 44,
+}: Themed & { title: string; items: readonly BarItem[]; max: number; note?: string; emptyText: string; labelWidth?: number }) {
+  const hasData = items.some(item => item.value > 0);
   return (
     <View
       accessible
-      accessibilityLabel={`${title}: ${total ? visible.map(slice => `${slice.label} ${slice.value} ${unit}`).join(', ') : emptyText}`}
-      style={styles.pieBlock}
+      accessibilityLabel={`${title}: ${hasData ? items.map(item => `${item.label} ${item.valueLabel}`).join(', ') : emptyText}`}
+      style={styles.chartBlock}
     >
-      <Text style={[theme.type.h3, { color: theme.colors.texto }]}>{title}</Text>
-      {total > 0 ? (
-        <View style={styles.pieRow}>
-          <Svg width={PIE_SIZE} height={PIE_SIZE}>
-            {visible.map((slice, index) => {
-              const length = (slice.value / total) * circumference;
-              return (
-                <Circle
-                  key={slice.label}
-                  cx={PIE_SIZE / 2}
-                  cy={PIE_SIZE / 2}
-                  r={radius}
-                  stroke={slice.color}
-                  strokeWidth={PIE_SIZE / 2}
-                  strokeDasharray={`${length} ${circumference - length}`}
-                  strokeDashoffset={-starts[index]}
-                  rotation="-90"
-                  origin={`${PIE_SIZE / 2}, ${PIE_SIZE / 2}`}
-                  fill="none"
-                />
-              );
-            })}
-            <Circle cx={PIE_SIZE / 2} cy={PIE_SIZE / 2} r={PIE_SIZE / 2 - 1} stroke={SHARED.tarjeta} strokeWidth={2} fill="none" />
-          </Svg>
-          <View style={styles.pieLegend}>
-            {visible.map(slice => (
-              <View key={slice.label} style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: slice.color }]} />
-                <Text style={[theme.type.tab, styles.pieLegendText, { color: theme.colors.texto }]}>
-                  {slice.label}: {slice.value} {unit} ({Math.round((slice.value / total) * 100)}%)
-                </Text>
-              </View>
-            ))}
+      <Text role="heading" aria-level={4} style={[theme.type.h3, { color: theme.colors.texto }]}>{title}</Text>
+      {note ? <Text style={[theme.type.tab, { color: theme.colors.textoSecundario }]}>{note}</Text> : null}
+      {hasData ? items.map(item => (
+        <View key={item.label} style={styles.barRow}>
+          <Text numberOfLines={2} style={[theme.type.tab, { width: labelWidth, color: theme.colors.texto }]}>{item.label}</Text>
+          <View style={[styles.barTrack, { backgroundColor: theme.colors.apagada }]}>
+            <View style={[styles.barFill, { width: `${Math.round(Math.min(1, max > 0 ? item.value / max : 0) * 100)}%`, backgroundColor: item.color }]} />
           </View>
+          <Text style={[theme.type.tab, styles.barValue, { color: theme.colors.textoSecundario }]}>{item.valueLabel}</Text>
         </View>
-      ) : (
+      )) : (
         <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{emptyText}</Text>
       )}
     </View>
@@ -469,8 +442,7 @@ export function ProgressRing({ theme, value, size = 120 }: Themed & { value: num
             strokeLinecap="round"
             strokeDasharray={`${circumference} ${circumference}`}
             strokeDashoffset={circumference * (1 - percent / 100)}
-            rotation="-90"
-            origin={`${size / 2}, ${size / 2}`}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
             fill="none"
           />
         ) : null}
@@ -702,7 +674,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   flex: { flex: 1 },
   inline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE[8] },
-  pillButton: { height: 52, borderRadius: RADIUS.pildora, overflow: 'hidden' },
+  pillButton: { minHeight: 52, minWidth: 52, paddingHorizontal: SPACE[20], borderRadius: RADIUS.pildora, overflow: 'hidden' },
   avatarButton: { height: 38, borderRadius: RADIUS.pildora, alignSelf: 'flex-start', paddingHorizontal: SPACE[14] },
   waterCounter: { minHeight: 52, borderRadius: RADIUS.pildora, padding: SPACE[4], flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE[8] },
   waterMinus: { width: 44, height: 44, borderRadius: RADIUS.pildora },
@@ -739,12 +711,11 @@ const styles = StyleSheet.create({
   sectionCard: { padding: SPACE[20], gap: SPACE[8] },
   listRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
   listIcon: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
-  pieBlock: { gap: SPACE[8], paddingVertical: SPACE[8] },
-  pieRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: SPACE[16] },
-  pieLegend: { flex: 1, minWidth: 140, gap: SPACE[8] },
-  pieLegendText: { flexShrink: 1 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: SPACE[4] },
-  legendDot: { width: 8, height: 8, borderRadius: RADIUS.pildora },
+  chartBlock: { gap: SPACE[8], paddingVertical: SPACE[8] },
+  barRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE[8] },
+  barTrack: { flex: 1, height: 12, borderRadius: RADIUS.pildora, overflow: 'hidden' },
+  barFill: { height: '100%', borderRadius: RADIUS.pildora },
+  barValue: { minWidth: 72, textAlign: 'right' },
   loadingDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE[8] },
   loadingDot: { width: 12, height: 12, borderRadius: RADIUS.pildora },
   celebrationLayer: { alignItems: 'center', justifyContent: 'center' },
