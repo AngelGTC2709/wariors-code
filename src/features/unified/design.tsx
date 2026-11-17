@@ -390,64 +390,59 @@ export function ListRow({
   );
 }
 
-const CHART_SERIES = [
-  { key: 'agua', label: 'Agua' },
-  { key: 'alimentacion', label: 'Alimentación' },
-  { key: 'descanso', label: 'Descanso' },
-] as const;
-type ChartSeries = (typeof CHART_SERIES)[number]['key'];
-const CHART_HEIGHT = 100;
-export type ChartDay = { label: string; values: Record<ChartSeries, number> };
+export type PieSlice = { label: string; value: number; color: string };
+const PIE_SIZE = 140;
 
-// Las barras tienen altura fija (CHART_HEIGHT) y suben con translateY dentro de un carril que recorta:
-// sin relayout por frame y la tapa redonda no se aplasta como con scaleY.
-function ChartBar({ height, color, index, reduceMotion }: { height: number; color: string; index: number; reduceMotion: boolean }) {
-  const animatedHeight = useSharedValue(0);
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ translateY: CHART_HEIGHT - animatedHeight.get() }] }));
-  useEffect(() => {
-    animatedHeight.set(reduceMotion
-      ? height
-      : withDelay(index * 40, withTiming(height, { duration: 600, easing: EASE_OUT })));
-    return () => cancelAnimation(animatedHeight);
-  }, [animatedHeight, height, index, reduceMotion]);
+export function PieChart({ theme, title, slices, unit, emptyText }: Themed & { title: string; slices: readonly PieSlice[]; unit: string; emptyText: string }) {
+  const visible = slices.filter(slice => slice.value > 0);
+  const total = visible.reduce((sum, slice) => sum + slice.value, 0);
+  const radius = PIE_SIZE / 4;
+  const circumference = 2 * Math.PI * radius;
+  const starts = visible.map((_, index) => visible.slice(0, index).reduce((sum, slice) => sum + slice.value, 0) / (total || 1) * circumference);
   return (
-    <View style={styles.chartLane}>
-      <Animated.View style={[styles.chartBar, { backgroundColor: color }, animatedStyle]} />
-    </View>
-  );
-}
-
-export function BarChart({ theme, days, max }: Themed & { days: readonly ChartDay[]; max: number }) {
-  const reduceMotion = useReduceMotion();
-  return (
-    <View>
-      <View style={styles.chartDays}>
-        {days.map((day, dayIndex) => (
-          <View
-            key={`${day.label}-${dayIndex}`}
-            accessible
-            accessibilityLabel={`${day.label}: ${CHART_SERIES.map(series => `${series.label} ${day.values[series.key]}`).join(', ')}`}
-            style={styles.chartDay}
-          >
-            <View style={styles.chartBars}>
-              {CHART_SERIES.map((series, seriesIndex) => {
-                const value = day.values[series.key];
-                const height = max > 0 ? Math.max(0, Math.min(1, value / max)) * CHART_HEIGHT : 0;
-                return <ChartBar key={series.key} height={height} color={theme.colors.grafica[series.key]} index={dayIndex * CHART_SERIES.length + seriesIndex} reduceMotion={reduceMotion} />;
-              })}
-            </View>
-            <Text style={[theme.type.tab, { color: theme.colors.textoSecundario }]}>{day.label}</Text>
+    <View
+      accessible
+      accessibilityLabel={`${title}: ${total ? visible.map(slice => `${slice.label} ${slice.value} ${unit}`).join(', ') : emptyText}`}
+      style={styles.pieBlock}
+    >
+      <Text style={[theme.type.h3, { color: theme.colors.texto }]}>{title}</Text>
+      {total > 0 ? (
+        <View style={styles.pieRow}>
+          <Svg width={PIE_SIZE} height={PIE_SIZE}>
+            {visible.map((slice, index) => {
+              const length = (slice.value / total) * circumference;
+              return (
+                <Circle
+                  key={slice.label}
+                  cx={PIE_SIZE / 2}
+                  cy={PIE_SIZE / 2}
+                  r={radius}
+                  stroke={slice.color}
+                  strokeWidth={PIE_SIZE / 2}
+                  strokeDasharray={`${length} ${circumference - length}`}
+                  strokeDashoffset={-starts[index]}
+                  rotation="-90"
+                  origin={`${PIE_SIZE / 2}, ${PIE_SIZE / 2}`}
+                  fill="none"
+                />
+              );
+            })}
+            <Circle cx={PIE_SIZE / 2} cy={PIE_SIZE / 2} r={PIE_SIZE / 2 - 1} stroke={SHARED.tarjeta} strokeWidth={2} fill="none" />
+          </Svg>
+          <View style={styles.pieLegend}>
+            {visible.map(slice => (
+              <View key={slice.label} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: slice.color }]} />
+                <Text style={[theme.type.tab, styles.pieLegendText, { color: theme.colors.texto }]}>
+                  {slice.label}: {slice.value} {unit} ({Math.round((slice.value / total) * 100)}%)
+                </Text>
+              </View>
+            ))}
           </View>
-        ))}
-      </View>
-      <View style={styles.chartLegend}>
-        {CHART_SERIES.map(series => (
-          <View key={series.key} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: theme.colors.grafica[series.key] }]} />
-            <Text style={[theme.type.tab, { color: theme.colors.textoSecundario }]}>{series.label}</Text>
-          </View>
-        ))}
-      </View>
+        </View>
+      ) : (
+        <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{emptyText}</Text>
+      )}
     </View>
   );
 }
@@ -744,12 +739,10 @@ const styles = StyleSheet.create({
   sectionCard: { padding: SPACE[20], gap: SPACE[8] },
   listRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
   listIcon: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
-  chartDays: { flexDirection: 'row', justifyContent: 'space-around', gap: SPACE[4] },
-  chartDay: { flex: 1, alignItems: 'center', gap: SPACE[4] },
-  chartBars: { height: CHART_HEIGHT, flexDirection: 'row', alignItems: 'flex-end', gap: SPACE[4] },
-  chartLane: { width: 6, height: CHART_HEIGHT, overflow: 'hidden' },
-  chartBar: { width: 6, height: CHART_HEIGHT, borderTopLeftRadius: RADIUS.barra, borderTopRightRadius: RADIUS.barra },
-  chartLegend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: SPACE[12], marginTop: SPACE[12] },
+  pieBlock: { gap: SPACE[8], paddingVertical: SPACE[8] },
+  pieRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: SPACE[16] },
+  pieLegend: { flex: 1, minWidth: 140, gap: SPACE[8] },
+  pieLegendText: { flexShrink: 1 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: SPACE[4] },
   legendDot: { width: 8, height: 8, borderRadius: RADIUS.pildora },
   loadingDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE[8] },

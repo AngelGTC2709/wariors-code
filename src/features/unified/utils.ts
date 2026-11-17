@@ -57,3 +57,34 @@ export function friendlyError(error: unknown, fallback: string): string {
   const reason = errorReason(error);
   return reason ? `${base} ${reason}` : base;
 }
+
+/** Convierte "DD/MM/AAAA" a "AAAA-MM-DD"; devuelve null si no es una fecha real y pasada. */
+export function parseBirthDate(text: string): string | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text.trim());
+  if (!match) return null;
+  const [day, month, year] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  if (date.getTime() > Date.now() || year < 1900) return null;
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+export function formatBirthDate(iso: string | undefined): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? '');
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+}
+
+/** Inserta las diagonales mientras se escribe la fecha. */
+export function maskBirthDate(text: string): string {
+  const digits = text.replace(/\D/g, '').slice(0, 8);
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join('/');
+}
+
+export function ageFromBirth(iso: string | undefined, today = new Date()): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? '');
+  if (!match) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  let age = today.getFullYear() - year;
+  if (today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day)) age -= 1;
+  return age >= 0 ? age : null;
+}
