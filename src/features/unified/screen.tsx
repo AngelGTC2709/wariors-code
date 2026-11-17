@@ -75,7 +75,7 @@ import { ActivityAnimation } from '@/features/unified/animations';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
 import { PlatoDelBuenComer, SelectedFoodPills } from '@/features/unified/plato';
-import { SoundEffectsProvider } from '@/features/unified/sound-effects';
+import { SoundCue, SoundEffectsProvider, type SoundCueName } from '@/features/unified/sound-effects';
 import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SHARED, SPACE, tint, useAppTheme } from '@/features/unified/tokens';
 import { getSupabaseClient } from '@/lib/supabase';
 import {
@@ -536,6 +536,9 @@ export default function UnifiedApp() {
   const [authError, setAuthError] = useState('');
   const [authNotice, setAuthNotice] = useState('');
   const [showTutorGate, setShowTutorGate] = useState(false);
+  const [soundCue, setSoundCue] = useState<{ name: SoundCueName; id: number } | null>(null);
+  const requestSoundCue = (name: SoundCueName) => setSoundCue(current => ({ name, id: (current?.id ?? 0) + 1 }));
+  const clearSoundCue = useCallback(() => setSoundCue(null), []);
   const [tutorGatePassword, setTutorGatePassword] = useState('');
   const [tutorGateBusy, setTutorGateBusy] = useState(false);
   const [tutorGateError, setTutorGateError] = useState('');
@@ -846,6 +849,7 @@ export default function UnifiedApp() {
 
       const { error } = await supabase.auth.signInWithPassword({ email, password: authPassword });
       if (error) throw error;
+      requestSoundCue('sesion');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error desconocido.';
       const normalized = message.toLocaleLowerCase('es-MX');
@@ -1016,6 +1020,7 @@ export default function UnifiedApp() {
     setSelectedProfileKey(updatedKey || null);
     setTab('Familia');
     setNotice(editingProfile ? 'Los cambios del perfil están en proceso de guardado.' : 'El perfil infantil está en proceso de guardado.');
+    if (!editingProfile) requestSoundCue('celebracion');
   };
 
   const toggleProfileFood = (field: 'allergies' | 'noLikes' | 'likes', value: string) => {
@@ -1459,6 +1464,7 @@ export default function UnifiedApp() {
       setAuthPassword('');
       setAuthNotice('');
       setSelectedProfileKey(null);
+      setSoundCue(null);
       setRole('tutor');
       setTab('Familia');
     } catch (error) {
@@ -1513,6 +1519,7 @@ export default function UnifiedApp() {
     setShowProfileEditor(false);
     setProfileToArchive(null);
     setMenuPicker(null);
+    requestSoundCue('rol');
   };
 
   const cancelChildProfilePicker = () => {
@@ -1552,6 +1559,7 @@ export default function UnifiedApp() {
       setTab('Familia');
       setShowTutorGate(false);
       setTutorGateError('');
+      requestSoundCue('rol');
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (/network|fetch|timeout|offline|aborted/i.test(message)) {
@@ -3482,6 +3490,7 @@ export default function UnifiedApp() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.fondoInicio }]}>
     <SoundEffectsProvider enabled={data.soundEnabled ?? false}>
+      <SoundCue cue={soundCue} onPlayed={clearSoundCue} />
       <View style={[styles.shell, { backgroundColor: theme.colors.fondoInicio }]}>
         <View style={screenStyles.topBar}>
           <TopBar

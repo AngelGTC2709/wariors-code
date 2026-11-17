@@ -163,6 +163,7 @@ export function RoleSwitch({
             label={item.label}
             onPress={() => { if (!selected) item.onPress(); }}
             selected={selected}
+            silent
             style={[styles.roleOption, selected && { backgroundColor: theme.colors.acento }]}
           >
             <View style={styles.inline}>

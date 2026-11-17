@@ -48,6 +48,7 @@ export function AnimatedPress({
   disabled = false,
   pressedScale = 0.96,
   hitSlop,
+  silent = false,
   style,
 }: {
   children: ReactNode;
@@ -57,6 +58,7 @@ export function AnimatedPress({
   disabled?: boolean;
   pressedScale?: number;
   hitSlop?: number;
+  silent?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const reduceMotion = useReduceMotion();
@@ -78,7 +80,7 @@ export function AnimatedPress({
       disabled={disabled}
       hitSlop={hitSlop}
       onPress={() => {
-        playTap();
+        if (!silent) playTap();
         onPress();
       }}
       onPressIn={() => { if (!reduceMotion) scale.set(withSpring(pressedScale)); }}
