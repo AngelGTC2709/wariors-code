@@ -9,7 +9,7 @@ import { BORDER, RADIUS, SHARED, SPACE, tint, useAppTheme } from './tokens';
 
 type Theme = ReturnType<typeof useAppTheme>;
 type Variant = 'entrada' | 'sesion' | 'perfil' | 'actividad';
-type Transition = { kind: 'perfil' | 'actividad'; owner: string; userId: string; visible: boolean };
+type Transition = { kind: 'perfil' | 'tutor' | 'actividad'; owner: string; userId: string; visible: boolean };
 
 const PHRASES: Record<Variant, readonly string[]> = {
   entrada: ['Preparando tu espacio familiar…', 'Despertando al jaguar…', 'Llenando los vasos de agua…', 'Acomodando los colores del plato…'],
@@ -24,7 +24,11 @@ const TIPS = [
   'Celebrar los pequeños logros motiva más que exigir.',
 ];
 
-export function useLoadingVisibility(pending: boolean) {
+// Igualan la duración de los efectos de sonido de inicio de sesión y cambio de rol.
+export const SESSION_START_MS = 2040;
+export const ROLE_SWITCH_MS = 2060;
+
+export function useLoadingVisibility(pending: boolean, showDelay = 300, holdAfterLoad = 600) {
   const [visible, setVisible] = useState(false);
   const shownAt = useRef<number | null>(null);
 
@@ -33,17 +37,17 @@ export function useLoadingVisibility(pending: boolean) {
       const timer = setTimeout(() => {
         shownAt.current = Date.now();
         setVisible(true);
-      }, 300);
+      }, showDelay);
       return () => clearTimeout(timer);
     }
     if (!pending && shownAt.current !== null) {
       const timer = setTimeout(() => {
         shownAt.current = null;
         setVisible(false);
-      }, Math.max(0, 600 - (Date.now() - shownAt.current)));
+      }, holdAfterLoad);
       return () => clearTimeout(timer);
     }
-  }, [pending]);
+  }, [holdAfterLoad, pending, showDelay]);
 
   return visible;
 }
@@ -60,6 +64,11 @@ export function useLoadingTransition(reduceMotion: boolean) {
   const start = useCallback((kind: Transition['kind'], owner: string, userId: string) => {
     cancel();
     if (reduceMotion) return;
+    if (kind !== 'actividad') {
+      setTransition({ kind, owner, userId, visible: true });
+      timers.current = [setTimeout(cancel, ROLE_SWITCH_MS)];
+      return;
+    }
     setTransition({ kind, owner, userId, visible: false });
     timers.current = [setTimeout(() => {
       setTransition(current => current ? { ...current, visible: true } : null);

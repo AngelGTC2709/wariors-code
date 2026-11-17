@@ -73,7 +73,7 @@ import {
 import { AchievementCelebration, BarChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion, type ChartDay } from '@/features/unified/design';
 import { ActivityAnimation } from '@/features/unified/animations';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
-import { LoadingScreen, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
+import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
 import { PlatoDelBuenComer, SelectedFoodPills } from '@/features/unified/plato';
 import { SoundCue, SoundEffectsProvider, type SoundCueName } from '@/features/unified/sound-effects';
 import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SHARED, SPACE, tint, useAppTheme } from '@/features/unified/tokens';
@@ -787,12 +787,15 @@ export default function UnifiedApp() {
   const reduceMotion = useReduceMotion();
   const { transition, start: startTransition, cancel: cancelTransition } = useLoadingTransition(reduceMotion);
   const waitingForLoad = !fontError && !loadError && (loading || !fontsLoaded);
-  const loadingVisible = useLoadingVisibility(waitingForLoad);
+  const loadingVisible = useLoadingVisibility(waitingForLoad, authUser ? 0 : 300, authUser ? SESSION_START_MS : 600);
 
   useEffect(() => {
     if (!transition) return;
+    const ownerMismatch = transition.kind === 'tutor'
+      ? role !== 'tutor'
+      : role !== 'child' || selectedProfile?.key !== transition.owner;
     if (waitingForLoad || fontError || loadError || storageError || !authUser || !data ||
-        transition.userId !== authUser.id || role !== 'child' || selectedProfile?.key !== transition.owner ||
+        transition.userId !== authUser.id || ownerMismatch ||
         (transition.kind === 'actividad' && !activityModal)) {
       cancelTransition();
     }
@@ -1559,6 +1562,7 @@ export default function UnifiedApp() {
       setTab('Familia');
       setShowTutorGate(false);
       setTutorGateError('');
+      startTransition('tutor', userId, userId);
       requestSoundCue('rol');
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
@@ -3465,13 +3469,20 @@ export default function UnifiedApp() {
     const name = typeof metadataName === 'string' && metadataName.trim()
       ? metadataName.trim()
       : authUser?.email?.split('@')[0];
-    return (
+    const loadingContent = (
       <SafeAreaView style={[styles.safe, { backgroundColor: authUser ? loginTheme.colors.fondoInicio : loginTheme.colors.hero }]}>
         {loadingVisible ? (
           <LoadingScreen variant={authUser ? 'sesion' : 'entrada'} theme={loginTheme} name={name} fontsLoaded={fontsLoaded} />
         ) : null}
       </SafeAreaView>
     );
+    // El sonido de inicio de sesión debe sonar mientras se muestra la pantalla de carga.
+    return data && !waitingForLoad ? (
+      <SoundEffectsProvider enabled={data.soundEnabled ?? false}>
+        <SoundCue cue={soundCue} onPlayed={clearSoundCue} />
+        {loadingContent}
+      </SoundEffectsProvider>
+    ) : loadingContent;
   }
 
   if (!session) return renderLogin();
@@ -3551,6 +3562,14 @@ export default function UnifiedApp() {
             setTab(item.id);
           }}
         />
+        {transition?.kind === 'tutor' && transition.userId === authUser?.id &&
+          role === 'tutor' && !reduceMotion && !storageError ? (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.fondoInicio }]}>
+            {transition.visible ? (
+              <LoadingScreen variant="sesion" theme={theme} name={typeof authUser?.user_metadata?.name === 'string' ? authUser.user_metadata.name : authUser?.email?.split('@')[0]} />
+            ) : null}
+          </View>
+        ) : null}
         {transition?.kind === 'perfil' && transition.userId === authUser?.id &&
           role === 'child' && selectedProfile?.key === transition.owner && !reduceMotion && !storageError ? (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.fondoInicio }]}>
