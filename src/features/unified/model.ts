@@ -13,6 +13,7 @@ export type NutriUser = {
 
 export type NutriChild = {
   id: string;
+  databaseChildId?: number;
   nombre: string;
   genero: ChildTheme;
   peso: string;
@@ -181,6 +182,8 @@ function isNutriChild(value: unknown): value is NutriChild {
   if (!isRecord(value)) return false;
   return (
     typeof value.id === 'string' &&
+    (value.databaseChildId === undefined ||
+      (typeof value.databaseChildId === 'number' && Number.isSafeInteger(value.databaseChildId) && value.databaseChildId > 0)) &&
     typeof value.nombre === 'string' &&
     (value.genero === 'nina' || value.genero === 'nino') &&
     typeof value.peso === 'string' &&

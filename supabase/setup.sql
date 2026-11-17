@@ -99,6 +99,71 @@ create policy padres_actualizar_solo_propio
   using (id_padre = (select auth.uid()))
   with check (id_padre = (select auth.uid()));
 
+create table if not exists public.catalogo_actividades_fisicas (
+  codigo text primary key,
+  nombre text not null,
+  grupo_edad text not null,
+  tipo text not null,
+  capacidad_fisica text not null,
+  intensidad text not null,
+  minutos_sesion text not null,
+  dias_por_semana text not null,
+  supervision text not null,
+  material text not null,
+  espacio text not null,
+  precauciones text not null,
+  como_se_hace text not null
+);
+
+alter table public.catalogo_actividades_fisicas enable row level security;
+revoke all on public.catalogo_actividades_fisicas from anon, authenticated;
+grant select on public.catalogo_actividades_fisicas to authenticated;
+
+drop policy if exists catalogo_actividades_fisicas_lectura
+  on public.catalogo_actividades_fisicas;
+create policy catalogo_actividades_fisicas_lectura
+  on public.catalogo_actividades_fisicas for select to authenticated
+  using (true);
+
+insert into public.catalogo_actividades_fisicas (
+  codigo, nombre, grupo_edad, tipo, capacidad_fisica, intensidad,
+  minutos_sesion, dias_por_semana, supervision, material, espacio,
+  precauciones, como_se_hace
+) values
+  ('A01', 'Escondidillas', '9 a 12 años', 'juego_recreativo', 'velocidad, orientación', 'moderada', '20 a 30', 'diario', 'adulto cerca', 'ninguno', 'patio o casa, zona delimitada', 'Zona segura sin escaleras ni objetos', 'Uno cuenta con los ojos cerrados mientras los demás se esconden; al encontrar, se corre a la base.'),
+  ('A02', 'Atrapadillas (congelados)', '9 a 12 años', 'juego_recreativo', 'velocidad, reacción', 'moderada', '15 a 20', 'diario', 'adulto cerca', 'ninguno', 'patio, zona delimitada', 'Pausas de hidratación; evitar empujones', 'Quien la liga atrapa; el atrapado se congela hasta que otro lo libere.'),
+  ('A03', 'Persecución libre (stop, lobo y ovejas)', '9 a 12 años', 'juego_recreativo', 'agilidad, velocidad', 'moderada', '15 a 20', 'diario', 'adulto cerca', 'ninguno', 'patio', 'Pausas de 5 a 10 min si se cansa', 'Juego de persecución con cambios de dirección, sin competir a máximo esfuerzo.'),
+  ('A04', 'Patio recreativo tradicional (avión, rayuela, gallinita ciega)', '6 a 12 años', 'juego_recreativo', 'coordinación, equilibrio', 'moderada', '45 a 60 en bloques de 15 a 20 min', 'diario', 'adulto cerca', 'gis (para rayuela)', 'patio', 'Pausas de 5 a 10 min entre bloques (audio 3)', 'Juegos tradicionales alternando saltos, desplazamientos y pausas.'),
+  ('A05', 'Fútbol recreativo (mini partidos)', '9 a 12 años', 'predeportivo', 'coordinación, pase, desplazamiento intermitente', 'moderada', '20 a 30', '2 a 3', 'adulto cerca', 'balón', 'cancha o patio plano', 'Hidratación; sin partidos de competencia a máximo esfuerzo', 'Equipos pequeños, con cambios frecuentes y sin tiempos largos de juego continuo.'),
+  ('A06', 'Básquetbol predeportivo (pases y tiros)', '9 a 12 años', 'predeportivo', 'coordinación, puntería', 'moderada', '20', '2 a 3', 'adulto cerca', 'balón y canasta', 'cancha o patio plano', 'Balón de tamaño adecuado', 'Pases en parejas y tiros cortos a canasta, con descanso entre rondas.'),
+  ('A07', 'Imitación de animales (rana, oso, cangrejo)', '6 a 8 años', 'juego_recreativo', 'movilidad, fuerza con peso corporal', 'baja', '10 a 15', 'diario', 'adulto cerca', 'ninguno', 'sala o patio plano', 'Superficie plana; sin saltos desde altura', 'Cada animal es un movimiento: sentadilla corta, plancha corta, avance en cuatro apoyos.'),
+  ('A08', 'Rayuela (saltar en un pie)', '6 a 8 años', 'juego_recreativo', 'equilibrio, coordinación', 'moderada', '10 a 15', 'diario', 'adulto cerca', 'gis', 'patio plano', 'Superficie no resbalosa; sin saltos altos', 'Saltar en un pie por la rayuela, cambiando de pie.'),
+  ('A09', 'Relevos cortos sin competencia', '9 a 12 años', 'juego_recreativo', 'velocidad, coordinación', 'moderada', '10 a 15', '2 a 3', 'adulto cerca', 'conos o botellas', 'patio plano', 'Descanso entre tandas; no comparar tiempos', 'Carreras cortas por equipos, con intervalos de descanso.'),
+  ('A10', 'Baile libre o coreografía', '6 a 12 años', 'juego_recreativo', 'resistencia, coordinación', 'moderada', '15 a 20', 'diario', 'adulto cerca', 'música', 'sala o patio', 'Espacio sin obstáculos', 'El niño elige canciones y crea sus propios pasos.'),
+  ('A11', 'Paseo en bicicleta', '9 a 12 años', 'juego_recreativo', 'resistencia', 'moderada', '20 a 30', '2 a 3', 'adulto cerca', 'bicicleta y casco', 'calle sin tráfico o ciclovía', 'Casco obligatorio; supervisión en vía pública', 'Recorrido corto con paradas de descanso.'),
+  ('A12', 'Nado recreativo', '6 a 12 años', 'juego_recreativo', 'resistencia, coordinación', 'moderada', '20 a 30', '2 a 3', 'adulto cerca', 'ninguno (chaleco si no sabe nadar)', 'alberca o playa con vigilancia', 'Nunca sin adulto cerca', 'Juegos en el agua de bajo impacto, con pausas.'),
+  ('A13', 'Sentadillas con peso corporal', '6 a 12 años', 'ejercicio_peso_corporal', 'fuerza de piernas', 'baja', '10', '3 (no consecutivos)', 'adulto cerca', 'ninguno', 'superficie plana', 'Sin cargas; en 6-8 solo peso corporal; desde 9 años adaptaciones leves', '3 series de 8 a 10 repeticiones.'),
+  ('A14', 'Flexiones en pared o de rodillas', '6 a 12 años', 'ejercicio_peso_corporal', 'fuerza de brazos y pecho', 'baja', '10', '3 (no consecutivos)', 'adulto cerca', 'pared o colchoneta', 'superficie plana', 'Sin cargas; progresar de pared a rodillas', '3 series de 6 a 10 repeticiones.'),
+  ('A15', 'Plancha sobre rodillas', '6 a 12 años', 'ejercicio_peso_corporal', 'fuerza de abdomen y espalda', 'baja', '5 a 10', '3 (no consecutivos)', 'adulto cerca', 'colchoneta', 'superficie plana', 'Espalda recta; no aguantar si duele', '3 series de 10 a 20 segundos.'),
+  ('A16', 'Puente de glúteo', '6 a 12 años', 'ejercicio_peso_corporal', 'fuerza de glúteos y espalda baja', 'baja', '5 a 10', '3 (no consecutivos)', 'adulto cerca', 'colchoneta', 'superficie plana', 'Sin cargas; detenerse si hay molestia', '3 series de 8 a 12 repeticiones.'),
+  ('A17', 'Zancadas con peso corporal', '9 a 12 años', 'ejercicio_peso_corporal', 'fuerza y equilibrio de piernas', 'baja', '10', '3 (no consecutivos)', 'adulto cerca', 'ninguno', 'superficie plana', 'Sin cargas; apoyo en pared si es necesario', '3 series de 6 a 8 por pierna.'),
+  ('A18', 'Trepar en barras o escalera de parque', '6 a 12 años', 'ejercicio_peso_corporal', 'fuerza de brazos y coordinación', 'moderada', '10 a 15', '2 a 3', 'adulto cerca', 'equipo de parque', 'parque infantil', 'Revisar que el equipo esté en buen estado', 'Subir y bajar con control, sin competir.'),
+  ('A19', 'Equilibrio (un pie, caminar en línea)', '6 a 12 años', 'movilidad', 'equilibrio', 'baja', '5 a 10', 'diario', 'adulto cerca', 'línea en el suelo', 'superficie plana', 'Cerca de una pared', 'Sostenerse en un pie y caminar sobre una línea.'),
+  ('A20', 'Yoga infantil con cuento y estiramientos guiados', '6 a 12 años', 'movilidad', 'flexibilidad, relajación', 'baja', '10 a 15 (cierre de sesión)', 'diario', 'adulto cerca', 'colchoneta', 'sala', 'Sin posturas forzadas ni rebotes', 'Posturas de animales al ritmo de un cuento; se usa al final de la sesión o cuando el niño está cansado.')
+on conflict (codigo) do update set
+  nombre = excluded.nombre,
+  grupo_edad = excluded.grupo_edad,
+  tipo = excluded.tipo,
+  capacidad_fisica = excluded.capacidad_fisica,
+  intensidad = excluded.intensidad,
+  minutos_sesion = excluded.minutos_sesion,
+  dias_por_semana = excluded.dias_por_semana,
+  supervision = excluded.supervision,
+  material = excluded.material,
+  espacio = excluded.espacio,
+  precauciones = excluded.precauciones,
+  como_se_hace = excluded.como_se_hace;
+
 do $$
 declare
   table_name text;

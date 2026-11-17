@@ -9,10 +9,12 @@ export type Activity = {
 
 export type Recipe = {
   id: string;
+  databaseId?: number;
   title: string;
   emoji: string;
   groups: string;
   ingredients: string[];
+  ingredientDetails?: { name: string; quantity: string | null }[];
   preparation: string;
   note: string;
 };

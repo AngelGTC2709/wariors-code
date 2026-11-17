@@ -10,7 +10,6 @@ import {
   StyleSheet,
   Switch,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -63,15 +62,19 @@ import {
 } from '@/features/unified/model';
 import {
   accountFromUser,
+  deleteDatabaseChild,
   deleteEvidence,
+  loadDatabaseRecipes,
+  loadPhysicalActivityCatalog,
   loadCloudData,
+  saveDatabaseChildProfile,
   saveCloudData,
   subscribeToCloudData,
   uploadEvidence,
   verifyTutorPassword,
+  type PhysicalActivityCatalog,
 } from '@/features/unified/cloud-data';
 import { AchievementCelebration, PieChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
-import { ActivityAnimation } from '@/features/unified/animations';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
 import { PlatoDelBuenComer, SelectedFoodPills } from '@/features/unified/plato';
@@ -145,7 +148,24 @@ type ProfileDraft = {
   otherNoLikes: string;
   otherLikes: string;
   diagnosis: NutriChild['dictamen'] | '';
+  healthConsent: boolean;
 };
+
+function activityMinutesFromText(value: string): number {
+  const minutes = Number(value.match(/\d+/)?.[0]);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : 1;
+}
+
+function toActivity(catalog: PhysicalActivityCatalog): Activity {
+  return {
+    id: catalog.codigo,
+    title: catalog.nombre,
+    emoji: '',
+    minutes: activityMinutesFromText(catalog.minutos_sesion),
+    points: 15,
+    instructions: catalog.como_se_hace,
+  };
+}
 
 const EMPTY_LOG: UnifiedDailyLog = {
   water: 0,
@@ -213,8 +233,6 @@ const MEALS: { id: keyof WeeklyMeals; title: string; icon: AppIconName }[] = [
   { id: 'comida', title: 'Comida', icon: 'food' },
   { id: 'cena', title: 'Cena', icon: 'sleep' },
 ];
-
-const ACTIVITY_CATALOG: Activity[] = ACTIVITIES;
 
 const ACTIVITY_GUIDES: Record<string, { steps: readonly string[]; safety: string }> = {
   dance: {
@@ -440,7 +458,8 @@ function getProgress(data: UnifiedData, profile: UnifiedProfile): ChildProgress 
   return data.childProgress[profile.progressKey] ?? imported;
 }
 
-function recipeCategory(recipe: Recipe): 'desayuno' | 'comida' | 'colacion' {
+function recipeCategory(recipe: Recipe): 'desayuno' | 'comida' | 'colacion' | null {
+  if (recipe.id.startsWith('database-recipe-')) return null;
   if (recipe.id === 'avena') return 'desayuno';
   if (recipe.id === 'frijoles') return 'colacion';
   return 'comida';
@@ -448,7 +467,8 @@ function recipeCategory(recipe: Recipe): 'desayuno' | 'comida' | 'colacion' {
 
 function recipeMatchesFilter(recipe: Recipe, filter: (typeof RECIPE_FILTERS)[number]['id'], search: string): boolean {
   const query = cleanText(search);
-  return (filter === 'todas' || recipeCategory(recipe) === filter) &&
+  const category = recipeCategory(recipe);
+  return (filter === 'todas' || category === filter) &&
     (!query || cleanText(`${recipe.title} ${recipe.ingredients.join(' ')}`).includes(query));
 }
 
@@ -495,6 +515,7 @@ function emptyProfileDraft(): ProfileDraft {
     otherNoLikes: '',
     otherLikes: '',
     diagnosis: '',
+    healthConsent: false,
   };
 }
 
@@ -503,7 +524,6 @@ function defaultMeals(): WeeklyMeals {
 }
 
 export default function UnifiedApp() {
-  const { width: windowWidth } = useWindowDimensions();
   const [fontsLoaded, fontError] = useFonts({
     Fredoka_400Regular,
     Fredoka_500Medium,
@@ -516,6 +536,8 @@ export default function UnifiedApp() {
   const [data, setData] = useState<UnifiedData | null>(null);
   const dataRef = useRef<UnifiedData | null>(null);
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
+  const [physicalActivities, setPhysicalActivities] = useState<PhysicalActivityCatalog[]>([]);
+  const [databaseRecipes, setDatabaseRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [storageError, setStorageError] = useState('');
@@ -560,6 +582,7 @@ export default function UnifiedApp() {
   const [editingProfile, setEditingProfile] = useState<UnifiedProfile | null>(null);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(emptyProfileDraft());
   const [profileError, setProfileError] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
   const [profileToArchive, setProfileToArchive] = useState<UnifiedProfile | null>(null);
 
   const [selectedDay, setSelectedDay] = useState(WEEKDAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]);
@@ -578,7 +601,6 @@ export default function UnifiedApp() {
   const [activityPlaying, setActivityPlaying] = useState(false);
   const [activityStarted, setActivityStarted] = useState(false);
   const [activityElapsed, setActivityElapsed] = useState(0);
-  const [activityReplay, setActivityReplay] = useState(0);
   const [activityDuration, setActivityDuration] = useState('');
   const [activityPhoto, setActivityPhoto] = useState<PhotoDraft | null>(null);
   const [activityError, setActivityError] = useState('');
@@ -606,7 +628,11 @@ export default function UnifiedApp() {
     const generation = ++loadGeneration.current;
     try {
       const account = accountFromUser(authUser);
-      const loaded = await loadCloudData(authUser, account);
+      const [loaded, catalog, recipes] = await Promise.all([
+        loadCloudData(authUser, account),
+        loadPhysicalActivityCatalog(),
+        loadDatabaseRecipes(),
+      ]);
       await clearLegacyLocalData();
       if (generation !== loadGeneration.current) return null;
       setLoadError('');
@@ -615,6 +641,8 @@ export default function UnifiedApp() {
       writesBlocked.current = false;
       dataRef.current = loaded.data;
       setData(loaded.data);
+      setPhysicalActivities(catalog);
+      setDatabaseRecipes(recipes);
       setSession(account);
       setStorageError('');
       return loaded;
@@ -637,6 +665,8 @@ export default function UnifiedApp() {
         authUserId.current = userId;
         loadGeneration.current += 1;
         dataRef.current = null;
+        setPhysicalActivities([]);
+        setDatabaseRecipes([]);
         dataVersion.current = 0;
         nextWriteVersion.current = 0;
         writesBlocked.current = false;
@@ -792,6 +822,32 @@ export default function UnifiedApp() {
   };
 
   const profiles = useMemo(() => (data ? buildProfiles(data) : []), [data]);
+  const activityCatalog = useMemo(() => physicalActivities.map(toActivity), [physicalActivities]);
+  const recipes = useMemo(() => {
+    const databaseTitles = new Set(databaseRecipes.map(recipe => cleanText(recipe.title)));
+    const mergedDatabaseRecipes = databaseRecipes.map(recipe => {
+      const existing = RECIPES.find(item => cleanText(item.title) === cleanText(recipe.title));
+      return existing
+        ? {
+            ...existing,
+            databaseId: recipe.databaseId,
+            title: recipe.title,
+            ingredients: recipe.ingredients.length ? recipe.ingredients : existing.ingredients,
+            ingredientDetails: recipe.ingredientDetails,
+            preparation: recipe.preparation || existing.preparation,
+            note: recipe.note || existing.note,
+          }
+        : recipe;
+    });
+    return [
+      ...mergedDatabaseRecipes,
+      ...RECIPES.filter(recipe => !databaseTitles.has(cleanText(recipe.title))),
+    ];
+  }, [databaseRecipes]);
+  const catalogActivityFor = (id: string) => physicalActivities.find(activity => activity.codigo === id);
+  const activityFor = (id: string) =>
+    activityCatalog.find(activity => activity.id === id) ??
+    ACTIVITIES.find(activity => activity.id === id);
   const currentProfile = profiles.find(profile => profile.key === selectedProfileKey) ?? null;
   const selectedProfile = currentProfile ?? (role === 'tutor' ? profiles[0] ?? null : null);
   const theme = useAppTheme(role, selectedProfile?.theme ?? 'nina');
@@ -925,123 +981,191 @@ export default function UnifiedApp() {
           otherNoLikes: profile.nutri?.otrosNoGusta ?? '',
           otherLikes: profile.nutri?.otrosGusta ?? '',
           diagnosis: profile.nutri?.dictamen ?? '',
+          healthConsent: Boolean(profile.nutri?.databaseChildId),
         }
       : emptyProfileDraft());
     setShowProfileEditor(true);
   };
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     if (role !== 'tutor') return;
     const name = profileDraft.name.trim();
     if (name.length < 2) {
       setProfileError('Escribe un nombre de al menos dos letras.');
       return;
     }
-    if (profileDraft.birthDate && !parseBirthDate(profileDraft.birthDate)) {
+    const birthDate = parseBirthDate(profileDraft.birthDate);
+    if (profileDraft.birthDate && !birthDate) {
       setProfileError('Escribe una fecha de nacimiento válida (DD/MM/AAAA).');
       return;
     }
-    let updatedKey = editingProfile?.key ?? '';
-    const queued = updateData(current => {
-      const existing = editingProfile;
-      const nutriId = existing?.nutri?.id ?? createId('nutri-child');
-      const warriorId = existing?.warrior?.id ?? createId('warrior-child');
-      const shouldLink = Boolean(existing?.link || (existing && (!existing.nutri || !existing.warrior)) || !existing);
-      const linkId = existing?.link?.id ?? createId('profile-link');
-      updatedKey = shouldLink ? `linked:${linkId}` : existing?.key ?? '';
-
-      const nextNutri: NutriChild = existing?.nutri
-        ? {
-            ...existing.nutri,
-            nombre: existing.link ? existing.nutri.nombre : name,
-            genero: existing.link ? existing.nutri.genero : profileDraft.theme,
-            nacimiento: parseBirthDate(profileDraft.birthDate) ?? undefined,
-            edad: undefined,
-            peso: profileDraft.weight.trim(),
-            altura: profileDraft.height.trim(),
-            alergias: profileDraft.allergies,
-            noGusta: profileDraft.noLikes,
-            otrasAlergias: profileDraft.otherAllergies.trim(),
-            otrosNoGusta: profileDraft.otherNoLikes.trim(),
-            gusta: profileDraft.likes,
-            otrosGusta: profileDraft.otherLikes.trim(),
-            dictamen: profileDraft.diagnosis || undefined,
-          }
-        : {
-            id: nutriId,
-            nombre: name,
-            genero: profileDraft.theme,
-            nacimiento: parseBirthDate(profileDraft.birthDate) ?? undefined,
-            edad: undefined,
-            peso: profileDraft.weight.trim(),
-            altura: profileDraft.height.trim(),
-            alergias: profileDraft.allergies,
-            noGusta: profileDraft.noLikes,
-            otrasAlergias: profileDraft.otherAllergies.trim(),
-            otrosNoGusta: profileDraft.otherNoLikes.trim(),
-            gusta: profileDraft.likes,
-            otrosGusta: profileDraft.otherLikes.trim(),
-            dictamen: profileDraft.diagnosis || undefined,
-          };
-
-      const nextWarrior: WarriorChild = existing?.warrior
-        ? {
-            ...existing.warrior,
-            name: existing.link ? existing.warrior.name : name,
-            theme: existing.link ? existing.warrior.theme : profileDraft.theme,
-            avatar: profileDraft.avatar,
-          }
-        : {
-            id: warriorId,
-            name,
-            avatar: profileDraft.avatar,
-            theme: profileDraft.theme,
-            points: 0,
-            badges: [],
-            days: {},
-          };
-
-      const profileLinks = current.profileLinks.filter(link =>
-        existing?.link ? link.id !== existing.link.id : link.nutriId !== nutriId && link.warriorId !== warriorId,
-      );
-      if (shouldLink) {
-        profileLinks.push({
-          id: linkId,
-          nutriId,
-          warriorId,
-          displayName: name,
-          theme: profileDraft.theme,
-        });
-      }
-      if (!updatedKey) updatedKey = profileReference(existing?.nutri ? 'nutribot' : 'warrior-kids', existing?.nutri?.id ?? existing?.warrior?.id ?? '');
-      return {
-        ...current,
-        nutribot: {
-          ...current.nutribot,
-          ninos: existing?.nutri
-            ? current.nutribot.ninos.map(child => child.id === nutriId ? nextNutri : child)
-            : [...current.nutribot.ninos, nextNutri],
-        },
-        warriorKids: {
-          ...current.warriorKids,
-          children: existing?.warrior
-            ? current.warriorKids.children.map(child => child.id === warriorId ? nextWarrior : child)
-            : [...current.warriorKids.children, nextWarrior],
-        },
-        profileLinks,
-      };
-    });
-    if (!queued) {
-      setProfileError('No se pudo guardar el perfil. Cierra el formulario y revisa el aviso de conexión.');
+    if (profileDraft.healthConsent && !birthDate) {
+      setProfileError('Para sincronizar el perfil con la base de datos, registra su fecha de nacimiento.');
       return;
     }
-    setShowProfileEditor(false);
-    setProfileStep(0);
-    setEditingProfile(null);
-    setSelectedProfileKey(updatedKey || null);
-    setTab('Familia');
-    setNotice(editingProfile ? 'Los cambios del perfil están en proceso de guardado.' : 'El perfil infantil está en proceso de guardado.');
-    if (!editingProfile) requestSoundCue('celebracion');
+    if (
+      profileDraft.healthConsent &&
+      Boolean(profileDraft.weight.trim()) !== Boolean(profileDraft.height.trim())
+    ) {
+      setProfileError('Para registrar una medición, captura peso y estatura o deja ambos campos vacíos.');
+      return;
+    }
+    const weight = profileDraft.weight.trim() ? Number(profileDraft.weight) : null;
+    const height = profileDraft.height.trim() ? Number(profileDraft.height) : null;
+    if (
+      profileDraft.healthConsent &&
+      ((weight !== null && (!Number.isFinite(weight) || weight < 10 || weight > 150)) ||
+        (height !== null && (!Number.isFinite(height) || height < 80 || height > 200)))
+    ) {
+      setProfileError('Revisa el peso (10 a 150 kg) y la estatura (80 a 200 cm).');
+      return;
+    }
+
+    if (!dataRef.current || !authUser || writesBlocked.current) {
+      setProfileError('Los datos todavía no están listos para guardar el perfil.');
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileError('');
+    try {
+      let databaseChildId = editingProfile?.nutri?.databaseChildId;
+      if (profileDraft.healthConsent && birthDate && authUser) {
+        const databaseName = editingProfile?.link && editingProfile.nutri
+          ? editingProfile.nutri.nombre
+          : name;
+        const databaseTheme = editingProfile?.link && editingProfile.nutri
+          ? editingProfile.nutri.genero
+          : profileDraft.theme;
+        databaseChildId = await saveDatabaseChildProfile({
+          userId: authUser.id,
+          databaseChildId,
+          name: databaseName,
+          birthDate,
+          theme: databaseTheme,
+          weight: profileDraft.weight,
+          height: profileDraft.height,
+          diagnosis: profileDraft.diagnosis,
+          allergies: profileDraft.allergies,
+          noLikes: profileDraft.noLikes,
+          likes: profileDraft.likes,
+          otherAllergies: profileDraft.otherAllergies,
+          otherNoLikes: profileDraft.otherNoLikes,
+          otherLikes: profileDraft.otherLikes,
+          healthConsent: profileDraft.healthConsent,
+        });
+      }
+
+      let updatedKey = editingProfile?.key ?? '';
+      const queued = updateData(current => {
+        const existing = editingProfile;
+        const nutriId = existing?.nutri?.id ?? createId('nutri-child');
+        const warriorId = existing?.warrior?.id ?? createId('warrior-child');
+        const shouldLink = Boolean(existing?.link || (existing && (!existing.nutri || !existing.warrior)) || !existing);
+        const linkId = existing?.link?.id ?? createId('profile-link');
+        updatedKey = shouldLink ? `linked:${linkId}` : existing?.key ?? '';
+
+        const nextNutri: NutriChild = existing?.nutri
+          ? {
+              ...existing.nutri,
+              databaseChildId,
+              nombre: existing.link ? existing.nutri.nombre : name,
+              genero: existing.link ? existing.nutri.genero : profileDraft.theme,
+              nacimiento: birthDate ?? undefined,
+              edad: undefined,
+              peso: profileDraft.weight.trim(),
+              altura: profileDraft.height.trim(),
+              alergias: profileDraft.allergies,
+              noGusta: profileDraft.noLikes,
+              otrasAlergias: profileDraft.otherAllergies.trim(),
+              otrosNoGusta: profileDraft.otherNoLikes.trim(),
+              gusta: profileDraft.likes,
+              otrosGusta: profileDraft.otherLikes.trim(),
+              dictamen: profileDraft.diagnosis || undefined,
+            }
+          : {
+              id: nutriId,
+              databaseChildId,
+              nombre: name,
+              genero: profileDraft.theme,
+              nacimiento: birthDate ?? undefined,
+              edad: undefined,
+              peso: profileDraft.weight.trim(),
+              altura: profileDraft.height.trim(),
+              alergias: profileDraft.allergies,
+              noGusta: profileDraft.noLikes,
+              otrasAlergias: profileDraft.otherAllergies.trim(),
+              otrosNoGusta: profileDraft.otherNoLikes.trim(),
+              gusta: profileDraft.likes,
+              otrosGusta: profileDraft.otherLikes.trim(),
+              dictamen: profileDraft.diagnosis || undefined,
+            };
+
+        const nextWarrior: WarriorChild = existing?.warrior
+          ? {
+              ...existing.warrior,
+              name: existing.link ? existing.warrior.name : name,
+              theme: existing.link ? existing.warrior.theme : profileDraft.theme,
+              avatar: profileDraft.avatar,
+            }
+          : {
+              id: warriorId,
+              name,
+              avatar: profileDraft.avatar,
+              theme: profileDraft.theme,
+              points: 0,
+              badges: [],
+              days: {},
+            };
+
+        const profileLinks = current.profileLinks.filter(link =>
+          existing?.link ? link.id !== existing.link.id : link.nutriId !== nutriId && link.warriorId !== warriorId,
+        );
+        if (shouldLink) {
+          profileLinks.push({
+            id: linkId,
+            nutriId,
+            warriorId,
+            displayName: name,
+            theme: profileDraft.theme,
+          });
+        }
+        if (!updatedKey) updatedKey = profileReference(existing?.nutri ? 'nutribot' : 'warrior-kids', existing?.nutri?.id ?? existing?.warrior?.id ?? '');
+        return {
+          ...current,
+          nutribot: {
+            ...current.nutribot,
+            ninos: existing?.nutri
+              ? current.nutribot.ninos.map(child => child.id === nutriId ? nextNutri : child)
+              : [...current.nutribot.ninos, nextNutri],
+          },
+          warriorKids: {
+            ...current.warriorKids,
+            children: existing?.warrior
+              ? current.warriorKids.children.map(child => child.id === warriorId ? nextWarrior : child)
+              : [...current.warriorKids.children, nextWarrior],
+          },
+          profileLinks,
+        };
+      });
+      if (!queued) {
+        setProfileError('No se pudo guardar el perfil. Revisa el aviso de conexión.');
+        return;
+      }
+      setShowProfileEditor(false);
+      setProfileStep(0);
+      setEditingProfile(null);
+      setSelectedProfileKey(updatedKey || null);
+      setTab('Familia');
+      setNotice(profileDraft.healthConsent
+        ? 'El perfil y sus datos autorizados se están guardando en la base de datos.'
+        : 'El perfil se guardó en tu espacio familiar; los datos de salud no se sincronizaron con la base de datos.');
+      if (!editingProfile) requestSoundCue('celebracion');
+    } catch (error) {
+      setProfileError(friendlyError(error, 'No se pudo guardar el perfil en la base de datos.'));
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   const toggleProfileFood = (field: 'allergies' | 'noLikes' | 'likes', value: string) => {
@@ -1078,6 +1202,14 @@ export default function UnifiedApp() {
         ? `No se eliminaron las fotos, así que el perfil se conservó. ${reason}`
         : 'No se eliminaron las fotos, así que el perfil se conservó.');
       return;
+    }
+    if (profile.nutri?.databaseChildId && authUser) {
+      try {
+        await deleteDatabaseChild(authUser.id, profile.nutri.databaseChildId);
+      } catch (error) {
+        setNotice(friendlyError(error, 'No se eliminó el perfil de la base de datos; se conservaron los datos familiares.'));
+        return;
+      }
     }
     const omit = <T,>(record: Record<string, T>) =>
       Object.fromEntries(Object.entries(record).filter(([key]) => !keys.includes(key)));
@@ -1304,7 +1436,7 @@ export default function UnifiedApp() {
     const activity = log?.activities[activityId];
     if (!activity || activity.status !== 'pending') return;
     if (approve) {
-      const catalog = ACTIVITY_CATALOG.find(item => item.id === activityId);
+      const catalog = activityFor(activityId);
       updateDailyLog(profile, date, current => ({
         ...current,
         activities: { ...current.activities, [activityId]: { ...activity, status: 'approved' } },
@@ -2032,7 +2164,13 @@ export default function UnifiedApp() {
 
         {section('movimiento', 'Movimiento', <>
         <SectionCard theme={theme} role="child" title="Movimiento a tu manera" subtitle="Elige una actividad segura y pide apoyo si lo necesitas.">
-          {ACTIVITY_CATALOG.map(activity => {
+          {activityCatalog.filter(activity => {
+            const catalog = catalogActivityFor(activity.id);
+            const age = ageFromBirth(selectedProfile.nutri?.nacimiento);
+            if (age === null || !catalog) return true;
+            const [minimum, maximum] = catalog.grupo_edad.match(/\d+/g)?.map(Number) ?? [];
+            return minimum !== undefined && maximum !== undefined && age >= minimum && age <= maximum;
+          }).map(activity => {
             const saved = log.activities[activity.id];
             return (
               <Pressable
@@ -2040,13 +2178,11 @@ export default function UnifiedApp() {
                 accessibilityLabel={`Ver actividad ${activity.title}`}
                 key={activity.id}
                 onPress={() => {
-                  if (authUser) startTransition('actividad', selectedProfile.key, authUser.id);
                   setActivityModal(activity);
                   setActivityStage('details');
                   setActivityPlaying(false);
                   setActivityStarted(false);
                   setActivityElapsed(0);
-                  setActivityReplay(0);
                   setActivityDuration(String(activity.minutes));
                   setActivityPhoto(null);
                   setActivityError('');
@@ -2054,12 +2190,13 @@ export default function UnifiedApp() {
                 style={[styles.between, { paddingVertical: SPACE[4] }]}
               >
                 <View style={[styles.horizontal, styles.flex]}>
-                  <View style={screenStyles.activityScene}>
-                    <ActivityAnimation activity={activity.id} size={52} playing={false} staticFrame />
-                  </View>
+                  <Icon name="activity" size={28} color={theme.colors.acento} />
                   <View style={styles.flex}>
                     <Text style={styles.inputLabel}>{activity.title}</Text>
-                    <Text style={styles.muted}>{activity.minutes} min · {activity.points} puntos</Text>
+                    <Text style={styles.muted}>
+                      {catalogActivityFor(activity.id)?.minutos_sesion ?? `${activity.minutes}`} min
+                      {catalogActivityFor(activity.id) ? ` · ${catalogActivityFor(activity.id)?.grupo_edad}` : ''}
+                    </Text>
                   </View>
                 </View>
                 {saved?.status === 'approved' ? (
@@ -2072,6 +2209,9 @@ export default function UnifiedApp() {
               </Pressable>
             );
           })}
+          {activityCatalog.length === 0 ? (
+            <Text style={styles.muted}>El catálogo de actividades todavía no tiene registros.</Text>
+          ) : null}
         </SectionCard>
 
         <SectionCard theme={theme} role="child" title="Muévete con cuidado" subtitle="Ideas sencillas para disfrutar en familia.">
@@ -2308,7 +2448,7 @@ export default function UnifiedApp() {
         ) : (
           <SectionCard theme={theme} role="tutor" title="Actividades por revisar" subtitle="Aprueba los registros o pide que se vuelvan a enviar.">
             {pendingActivities.length ? pendingActivities.map(item => {
-              const activity = ACTIVITY_CATALOG.find(candidate => candidate.id === item.activityId);
+              const activity = activityFor(item.activityId);
               return (
                 <View key={`${item.profile.key}-${item.date}-${item.activityId}`} style={{ borderTopWidth: 1, borderTopColor: COLORS.line, paddingTop: SPACE[8], gap: SPACE[8] }}>
                   <View style={styles.between}>
@@ -2412,7 +2552,7 @@ export default function UnifiedApp() {
 
   const renderRecipes = () => {
     if (!data) return null;
-    const filteredRecipes = RECIPES.filter(recipe => recipeMatchesFilter(recipe, recipeFilter, recipeSearch));
+    const filteredRecipes = recipes.filter(recipe => recipeMatchesFilter(recipe, recipeFilter, recipeSearch));
     return (
       <>
         {renderTutorIntro('COCINA EN FAMILIA', 'Recetas con color', 'Ideas sencillas para disfrutar y aprender juntos.')}
@@ -2495,7 +2635,7 @@ export default function UnifiedApp() {
         <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Menú del {selectedDay}</Text>
         {renderFoodPreferences()}
         {MEALS.map(meal => {
-          const recipe = RECIPES.find(item => item.id === meals[meal.id]);
+          const recipe = recipes.find(item => item.id === meals[meal.id]);
           const savedValue = meals[meal.id];
           const warnings = recipe ? recipeWarnings(recipe, profileAllergies) : [];
           const dislikes = recipe ? recipeWarnings(recipe, profileNoLikes) : [];
@@ -2989,6 +3129,23 @@ export default function UnifiedApp() {
                     style={styles.flex}
                   />
                 </View>
+                <SectionCard theme={theme} role="tutor" title="Consentimiento de datos de salud">
+                  <View style={styles.between}>
+                    <Text style={[styles.body, styles.flex]}>
+                      Autorizo guardar este perfil y sus datos de salud en las tablas familiares de la base de datos.
+                    </Text>
+                    <Switch
+                      accessibilityLabel="Autorizar la sincronización de datos de salud"
+                      disabled={Boolean(editingProfile?.nutri?.databaseChildId)}
+                      value={profileDraft.healthConsent}
+                      onValueChange={value => setProfileDraft(current => ({ ...current, healthConsent: value }))}
+                      trackColor={{ true: COLORS.blue }}
+                    />
+                  </View>
+                  <Text style={styles.footer}>
+                    Los perfiles anteriores no se migran sin esta autorización. Si no la activas, se conservarán en el espacio familiar actual.
+                  </Text>
+                </SectionCard>
                 <SectionTitle title="Dictamen del especialista" subtitle="Selecciona solo un dictamen proporcionado por una persona especialista." />
                 <View style={screenStyles.selectionRow}>
                   <View>{renderSelectionPill('Sin registrar', !profileDraft.diagnosis, () => setProfileDraft(current => ({ ...current, diagnosis: '' })))}</View>
@@ -3043,6 +3200,7 @@ export default function UnifiedApp() {
                   <Text style={styles.body}>Estatura: {profileDraft.height.trim() ? `${profileDraft.height.trim()} cm` : 'No registrada'}</Text>
                   <Text style={styles.body}>Sexo: {profileDraft.theme === 'nina' ? 'Niña' : 'Niño'}</Text>
                   <Text style={styles.body}>Dictamen: {DIAGNOSES.find(item => item.id === profileDraft.diagnosis)?.label ?? 'No registrado'}</Text>
+                  <Text style={styles.body}>Sincronización de salud: {profileDraft.healthConsent ? 'Autorizada' : 'No autorizada'}</Text>
                 </Card>
                 <Card style={styles.cardTight}>
                   <Text style={styles.inputLabel}>Alergias</Text>
@@ -3084,8 +3242,9 @@ export default function UnifiedApp() {
                 />
               ) : (
                 <Button
-                  title={editingProfile ? 'Guardar cambios' : 'Crear perfil'}
+                    title={profileSaving ? 'Guardando…' : editingProfile ? 'Guardar cambios' : 'Crear perfil'}
                   icon="save"
+                    disabled={profileSaving}
                   onPress={saveProfile}
                 />
               )}
@@ -3095,7 +3254,10 @@ export default function UnifiedApp() {
   );
 
   const renderActivityModal = () => {
-    const guide = activityModal ? ACTIVITY_GUIDES[activityModal.id] : undefined;
+    const catalogActivity = activityModal ? catalogActivityFor(activityModal.id) : undefined;
+    const guide = catalogActivity
+      ? { steps: [catalogActivity.como_se_hace], safety: catalogActivity.precauciones }
+      : activityModal ? ACTIVITY_GUIDES[activityModal.id] : undefined;
     const activityStatus = activityModal && selectedProfile && data
       ? getDailyLog(data, selectedProfile, todayKey()).activities[activityModal.id]?.status
       : undefined;
@@ -3122,13 +3284,7 @@ export default function UnifiedApp() {
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={screenStyles.activityContent}>
-            <ActivityAnimation
-              key={`${activityModal.id}-${activityReplay}`}
-              activity={activityModal.id}
-              size={Math.max(1, Math.min(320, windowWidth - 40))}
-              playing={activityPlaying}
-              style={screenStyles.activitySceneLarge}
-            />
+            <Icon name="activity" size={72} color={theme.colors.acento} />
             <Text accessibilityLabel={`Tiempo transcurrido ${formatElapsed(activityElapsed)}`} accessibilityRole="timer"
               style={[theme.type.metric, { color: theme.colors.texto, textAlign: 'center' }]}>
               {formatElapsed(activityElapsed)}
@@ -3139,12 +3295,27 @@ export default function UnifiedApp() {
                 variant={activityPlaying ? 'outline' : 'primary'} style={styles.flex}
                 onPress={() => { setActivityStarted(true); setActivityPlaying(current => !current); }} />
               <Button title="Repetir" icon="repeat" variant="outline" style={styles.flex}
-                onPress={() => { setActivityReplay(current => current + 1); setActivityElapsed(0); setActivityStarted(true); setActivityPlaying(true); }} />
+                onPress={() => { setActivityElapsed(0); setActivityStarted(true); setActivityPlaying(true); }} />
             </View>
             <View style={styles.wrap}>
-              <Tag title={`${activityModal.minutes} min`} color={theme.colors.acento} />
+              <Tag
+                title={catalogActivity ? `${catalogActivity.minutos_sesion} min por sesión` : `${activityModal.minutes} min`}
+                color={theme.colors.acento}
+              />
               <Tag title={`${activityModal.points} puntos`} color={theme.colors.puntos} icon="points" />
             </View>
+            {catalogActivity ? (
+              <SectionCard theme={theme} role="child" title="Recomendación de la actividad">
+                <Text style={styles.body}>Edad: {catalogActivity.grupo_edad}</Text>
+                <Text style={styles.body}>Tipo: {catalogActivity.tipo.replace(/_/g, ' ')}</Text>
+                <Text style={styles.body}>Capacidades: {catalogActivity.capacidad_fisica}</Text>
+                <Text style={styles.body}>Intensidad: {catalogActivity.intensidad}</Text>
+                <Text style={styles.body}>Frecuencia: {catalogActivity.dias_por_semana}</Text>
+                <Text style={styles.body}>Supervisión: {catalogActivity.supervision}</Text>
+                <Text style={styles.body}>Material: {catalogActivity.material}</Text>
+                <Text style={styles.body}>Espacio: {catalogActivity.espacio}</Text>
+              </SectionCard>
+            ) : null}
             <SectionCard theme={theme} role="child" title="Así se hace">
               {guide ? guide.steps.map((step, index) => (
                 <Text key={step} style={[theme.type.body, { color: theme.colors.texto }]}>{index + 1}. {step}</Text>
@@ -3180,7 +3351,11 @@ export default function UnifiedApp() {
           {activityModal ? (
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: SPACE[12], paddingBottom: SPACE[8] }}>
               <Text style={styles.body}>{activityModal.title}</Text>
-              <Text style={styles.muted}>{activityModal.instructions}</Text>
+              <Text style={styles.muted}>
+                {catalogActivity
+                  ? `Tiempo sugerido por la guía: ${catalogActivity.minutos_sesion} minutos.`
+                  : activityModal.instructions}
+              </Text>
               <Field
                 label="¿Cuántos minutos?"
                 keyboardType="number-pad"
@@ -3248,6 +3423,15 @@ export default function UnifiedApp() {
           {renderRecipeAllergyWarning(recipeDetails)}
           <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Ingredientes</Text>
           {renderIngredientPills(recipeDetails.ingredients, profileAllergies)}
+          {recipeDetails.ingredientDetails?.some(ingredient => ingredient.quantity) ? (
+            <View>
+              {recipeDetails.ingredientDetails.filter(ingredient => ingredient.quantity).map(ingredient => (
+                <Text key={ingredient.name} style={[theme.type.body, { color: theme.colors.textoSecundario }]}>
+                  {ingredient.name}: {ingredient.quantity}
+                </Text>
+              ))}
+            </View>
+          ) : null}
           <Text style={[theme.type.h3, { color: theme.colors.texto }]}>Preparación</Text>
           <Text style={[theme.type.body, { color: theme.colors.texto }]}>{recipeDetails.preparation}</Text>
           <View style={styles.notice}><Text style={styles.noticeText}>{recipeDetails.note}</Text></View>
@@ -3283,7 +3467,7 @@ export default function UnifiedApp() {
               </View>
             ))}
           </View>
-          {RECIPES.filter(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)).map(recipe => {
+          {recipes.filter(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)).map(recipe => {
             const warnings = recipeWarnings(recipe, profileAllergies);
             const warningText = warnings.length
               ? `Revisa estos ingredientes por alergias registradas: ${warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.`
@@ -3302,7 +3486,7 @@ export default function UnifiedApp() {
               </Pressable>
             );
           })}
-          {!RECIPES.some(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)) ? (
+          {!recipes.some(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)) ? (
             <View style={styles.emptyState}>
               <Text style={styles.body}>No encontramos recetas con esos filtros.</Text>
               <Button title="Limpiar búsqueda" small variant="outline" onPress={() => { setMenuRecipeSearch(''); setMenuRecipeFilter('todas'); }} />
