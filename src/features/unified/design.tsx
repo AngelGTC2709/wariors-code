@@ -3,7 +3,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -678,7 +677,7 @@ export function BottomSheet({
       <GestureHandlerRootView style={styles.flex}>
         <KeyboardAvoidingView
           style={[styles.sheetContainer, { pointerEvents: visible ? 'auto' : 'none' }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
         >
           <Animated.View style={[StyleSheet.absoluteFill, styles.sheetBackdrop, backdropStyle]} />
           <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={onClose} style={StyleSheet.absoluteFill} />

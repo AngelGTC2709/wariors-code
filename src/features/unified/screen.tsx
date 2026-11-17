@@ -2836,7 +2836,7 @@ export default function UnifiedApp() {
             'Resumen y confirmación',
           ][profileStep]}</Text>
           <ProgressMeter value={profileStep + 1} max={6} color={COLORS.pink} />
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: SPACE[12], paddingTop: SPACE[12], paddingBottom: SPACE[8] }}>
+          <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: SPACE[12], paddingTop: SPACE[12], paddingBottom: SPACE[8] }}>
             {editingProfile?.link ? (
               <View style={styles.notice}>
                 <Text style={styles.inputLabel}>Vínculo conservado</Text>
