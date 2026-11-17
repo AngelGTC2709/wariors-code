@@ -375,6 +375,29 @@ export function SectionCard({
   );
 }
 
+export function HomeGrid({ children }: { children: ReactNode }) {
+  return <View style={styles.homeGrid}>{children}</View>;
+}
+
+// Mosaico grande del inicio de Niñez: un ícono, un título y una línea de estado.
+export function HomeTile({
+  theme, title, subtitle, icon, color, onPress,
+}: Themed & { title: string; subtitle: string; icon: AppIconName; color: string; onPress: () => void }) {
+  return (
+    <AnimatedPress
+      label={`${title}. ${subtitle}`}
+      onPress={onPress}
+      style={[styles.homeTile, { backgroundColor: tint(color, 0.16), borderColor: tint(color, 0.4) }]}
+    >
+      <View style={[styles.homeTileIcon, { backgroundColor: SHARED.tarjeta }]}>
+        <Icon name={icon} size={32} color={color} />
+      </View>
+      <Text style={[theme.type.h3, styles.homeTileText, { color: theme.colors.texto }]}>{title}</Text>
+      <Text style={[theme.type.tab, styles.homeTileText, { color: theme.colors.textoSecundario }]}>{subtitle}</Text>
+    </AnimatedPress>
+  );
+}
+
 export function ListRow({
   theme, icon, iconColor, title, subtitle, trailing,
 }: Themed & { icon: AppIconName; iconColor: string; title: string; subtitle?: string; trailing?: ReactNode }) {
@@ -709,6 +732,10 @@ const styles = StyleSheet.create({
   progressTrack: { height: 10, borderRadius: RADIUS.pildora, overflow: 'hidden' },
   progressFill: { width: '100%', height: '100%', borderRadius: RADIUS.pildora },
   sectionCard: { padding: SPACE[20], gap: SPACE[8] },
+  homeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[12] },
+  homeTile: { flexGrow: 1, flexBasis: '45%', minHeight: 156, borderRadius: RADIUS.habito, borderWidth: BORDER.tarjeta, padding: SPACE[16], gap: SPACE[8] },
+  homeTileIcon: { width: 60, height: 60, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
+  homeTileText: { textAlign: 'center' },
   listRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
   listIcon: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
   chartBlock: { gap: SPACE[8], paddingVertical: SPACE[8] },

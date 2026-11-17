@@ -75,7 +75,7 @@ import {
   verifyTutorPassword,
   type PhysicalActivityCatalog,
 } from '@/features/unified/cloud-data';
-import { AchievementCelebration, BarChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, ListRow, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
+import { AchievementCelebration, BarChart, BottomBar, BottomSheet, FoodChip, HabitCard, HeroCard, HomeGrid, HomeTile, ListRow, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
 import { DatabaseManagement } from '@/features/unified/database-management';
@@ -99,7 +99,7 @@ import { formatMinutes, plural } from '@/features/unified/format';
 import { ageFromBirth, cleanText, errorReason, formatBirthDate, maskBirthDate, parseBirthDate, friendlyError, unique, userError } from '@/features/unified/utils';
 
 type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Gestión' | 'Logros' | 'Ajustes' | 'Ayuda';
-type ChildHomeSection = 'habitos' | 'semana' | 'movimiento' | 'nutribot';
+type ChildHomeSection = 'habitos' | 'movimiento';
 type PhotoDraft = {
   uri: string;
   mimeType?: string | null;
@@ -591,15 +591,14 @@ export default function UnifiedApp() {
   const [selectedProfileKey, setSelectedProfileKey] = useState<string | null>(null);
   const [showChildProfilePicker, setShowChildProfilePicker] = useState(false);
   const [tab, setTab] = useState<AppTab>('Familia');
-  const [childHomeSections, setChildHomeSections] = useState<Record<ChildHomeSection, boolean>>({
-    habitos: true, semana: false, movimiento: false, nutribot: false,
-  });
+  // null = mosaicos del inicio de Niñez; si no, la sección abierta.
+  const [childHomeView, setChildHomeView] = useState<ChildHomeSection | null>(null);
   const [settingsSection, setSettingsSection] = useState<'main' | 'parental' | 'notifications' | 'help'>('main');
   const mainScrollRef = useRef<ScrollViewInstance>(null);
   // Cada pestaña o sección de ajustes abre desde arriba, no donde se quedó la anterior.
   useEffect(() => {
     mainScrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, [tab, settingsSection]);
+  }, [tab, settingsSection, childHomeView]);
   const [profileStep, setProfileStep] = useState(0);
 
   const [registerMode, setRegisterMode] = useState(false);
@@ -2057,40 +2056,76 @@ export default function UnifiedApp() {
       { id: 'mood-check', title: 'Cuéntanos cómo estás', detail: 'Elige un ánimo para hoy.', icon: 'mood' as const, points: MISSION_POINTS['mood-check'], ready: Boolean(log.mood) },
     ];
     const approvedActivities = Object.values(log.activities).filter(activity => activity.status === 'approved').length;
-    const section = (id: ChildHomeSection, title: string, children: ReactNode) => {
-      const expanded = childHomeSections[id];
-      return (
+    const age = ageFromBirth(selectedProfile.nutri?.nacimiento);
+    const todaysActivities = activitiesForDay(activityCatalog.filter(activity => {
+      const catalog = catalogActivityFor(activity.id);
+      if (age === null || !catalog) return true;
+      const [minimum, maximum] = catalog.grupo_edad.match(/\d+/g)?.map(Number) ?? [];
+      return minimum !== undefined && maximum !== undefined && age >= minimum && age <= maximum;
+    }), todayKey());
+    const claimedMissions = missions.filter(mission => claimList.includes(mission.id)).length;
+    const badgeCount = unique(progress.badges).length;
+    // Vista de una sección: botón para volver a los mosaicos y su contenido.
+    const section = (id: ChildHomeSection, title: string, children: ReactNode) => (
+      childHomeView === id ? (
         <View style={screenStyles.collapsibleContent}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={title}
-            aria-expanded={expanded}
-            onPress={() => setChildHomeSections(current => ({ ...current, [id]: !current[id] }))}
-            style={[screenStyles.collapsibleHeader, { backgroundColor: theme.colors.acentoSuave }]}
-          >
-            <Text style={[theme.type.h3, { color: theme.colors.texto }]}>{title}</Text>
-            <Text style={[theme.type.h2, { color: theme.colors.acento }]}>{expanded ? '−' : '+'}</Text>
-          </Pressable>
-          {expanded ? <View style={screenStyles.collapsibleContent}>{children}</View> : null}
+          <Button title="Volver al inicio" icon="home" variant="outline" onPress={() => setChildHomeView(null)} />
+          <Text role="heading" aria-level={1} style={[theme.type.h1, { color: theme.colors.texto }]}>{title}</Text>
+          {children}
         </View>
-      );
-    };
+      ) : null
+    );
     return (
       <>
-        <HeroCard
-          theme={theme}
-          title={`¡Hola, ${selectedProfile.name}!`}
-          subtitle={`${todayLabel()} · ${approvedActivities} ${approvedActivities === 1 ? 'actividad aprobada' : 'actividades aprobadas'} hoy. Cada pequeño paso cuenta.`}
-          points={progress.points}
-          actionLabel="Personalizar avatar"
-          onAction={openAvatarEditor}
-        />
+        {childHomeView === null ? (
+          <>
+            <HeroCard
+              theme={theme}
+              title={`¡Hola, ${selectedProfile.name}!`}
+              subtitle={`${todayLabel()} · ${approvedActivities} ${approvedActivities === 1 ? 'actividad aprobada' : 'actividades aprobadas'} hoy. Cada pequeño paso cuenta.`}
+              points={progress.points}
+              actionLabel="Personalizar avatar"
+              onAction={openAvatarEditor}
+            />
+            <HomeGrid>
+              <HomeTile
+                theme={theme}
+                title="Mis hábitos y retos"
+                subtitle={`${claimedMissions} de ${missions.length} retos hoy`}
+                icon="water"
+                color={theme.colors.acento}
+                onPress={() => setChildHomeView('habitos')}
+              />
+              <HomeTile
+                theme={theme}
+                title="Mis logros"
+                subtitle={badgeCount ? plural(badgeCount, 'insignia') : 'Tu primera insignia te espera'}
+                icon="achievements"
+                color={theme.colors.logros}
+                onPress={() => setTab('Logros')}
+              />
+              <HomeTile
+                theme={theme}
+                title="Movimiento"
+                subtitle={`${plural(todaysActivities.length, 'actividad', 'actividades')} para hoy`}
+                icon="activity"
+                color={theme.colors.completado}
+                onPress={() => setChildHomeView('movimiento')}
+              />
+              <HomeTile
+                theme={theme}
+                title="NutriBot"
+                subtitle="Platica sobre hábitos"
+                icon="leaf"
+                color={theme.colors.puntos}
+                onPress={() => setChatOpen(true)}
+              />
+            </HomeGrid>
+          </>
+        ) : null}
 
         {section('habitos', 'Mis hábitos y retos', <>
-        <View style={screenStyles.sectionHeading}>
-          <Text style={[theme.type.h2, { color: theme.colors.texto }]}>Mis hábitos de hoy</Text>
-          <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Avanza con calma, a tu manera.</Text>
-        </View>
+        <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>Tus hábitos de hoy. Avanza con calma, a tu manera.</Text>
 
         <HabitCard
           theme={theme}
@@ -2192,32 +2227,9 @@ export default function UnifiedApp() {
 
         </>)}
 
-        {section('semana', 'Mis insignias', <>
-        <SectionCard theme={theme} role="child" title="Lo que he logrado" subtitle="Tus insignias de hábitos y retos.">
-          <View style={styles.wrap}>
-            {unique(progress.badges).length ? unique(progress.badges).map(badge => (
-              <Tag
-                key={badge}
-                title={ACHIEVEMENT_INFO[badge]?.title ?? badge.replace(/[-_]/g, ' ')}
-                color={COLORS.orange}
-                icon="achievements"
-              />
-            )) : <Text style={styles.muted}>Tus insignias aparecerán conforme completes retos.</Text>}
-          </View>
-          <Button title="Ver mis logros" small icon="achievements" variant="secondary" onPress={() => setTab('Logros')} />
-        </SectionCard>
-
-        </>)}
-
         {section('movimiento', 'Movimiento', <>
         <SectionCard theme={theme} role="child" title="Movimiento de hoy" subtitle="Tus actividades cambian cada día. Elige una segura y pide apoyo si lo necesitas.">
-          {activitiesForDay(activityCatalog.filter(activity => {
-            const catalog = catalogActivityFor(activity.id);
-            const age = ageFromBirth(selectedProfile.nutri?.nacimiento);
-            if (age === null || !catalog) return true;
-            const [minimum, maximum] = catalog.grupo_edad.match(/\d+/g)?.map(Number) ?? [];
-            return minimum !== undefined && maximum !== undefined && age >= minimum && age <= maximum;
-          }), todayKey()).map(activity => {
+          {todaysActivities.map(activity => {
             const saved = log.activities[activity.id];
             return (
               <Pressable
@@ -2278,16 +2290,6 @@ export default function UnifiedApp() {
 
         </>)}
 
-        {section('nutribot', 'NutriBot', <>
-        <SectionCard theme={theme} role="child" title="¿Platicamos con NutriBot?">
-          <View style={styles.between}>
-            <View style={styles.flex}>
-              <Text style={styles.muted}>Respuestas educativas guardadas en la app; no es un servicio médico.</Text>
-            </View>
-            <Button title="Abrir" small icon="leaf" onPress={() => setChatOpen(true)} />
-          </View>
-        </SectionCard>
-        </>)}
       </>
     );
   };
@@ -3881,6 +3883,7 @@ export default function UnifiedApp() {
             }
             setSettingsSection('main');
             if (role === 'child') {
+              setChildHomeView(null);
               setChildSettingsSection('main');
               setAvatarDraft(null);
             }
