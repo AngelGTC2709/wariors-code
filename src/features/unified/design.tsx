@@ -29,7 +29,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import type { AccountRole } from './model';
 import { useSoundEffects } from './sound-effects';
-import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SHARED, SPACE, tint, useAppTheme } from './tokens';
+import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SPACE, tint, useAppTheme, sharedFor, type ThemeMode, useFoodGroupColors, useShared, useThemeMode, DARK_SECTION_TONES, type SectionTone } from './tokens';
 import { AnimatedPress, useReduceMotion } from './motion';
 import { Icon, type AppIconName } from './ui';
 
@@ -51,6 +51,7 @@ export function PillButton({
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   const ghost = variant === 'ghost';
   return (
     <AnimatedPress
@@ -71,6 +72,7 @@ export function PillButton({
 }
 
 export function AvatarButton({ theme, onPress }: Themed & { onPress: () => void }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return (
     <AnimatedPress
       label="Personalizar avatar"
@@ -90,6 +92,7 @@ export function AvatarButton({ theme, onPress }: Themed & { onPress: () => void 
 export function WaterCounter({
   theme, value, goal, onDecrease, onIncrease,
 }: Themed & { value: number; goal: number; onDecrease: () => void; onIncrease: () => void }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return (
     <View style={[styles.waterCounter, { backgroundColor: tint(theme.colors.apagada, 0.6) }]}>
       <AnimatedPress
@@ -115,6 +118,8 @@ export function WaterCounter({
 export function FoodChip({
   theme, group, label, icon, selected, onPress,
 }: Themed & { group: FoodGroup; label: string; icon?: AppIconName; selected: boolean; onPress: () => void }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
+  const FOOD_GROUP_COLORS = useFoodGroupColors();
   const reduceMotion = useReduceMotion();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
@@ -149,6 +154,7 @@ export function FoodChip({
 export function RoleSwitch({
   theme, role, onSelectChild, onRequestTutor,
 }: Themed & { role: AccountRole; onSelectChild: () => void; onRequestTutor: () => void }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return (
     <View style={[styles.roleSwitch, { backgroundColor: theme.colors.apagada }]}>
       {([
@@ -186,6 +192,7 @@ export function TopBar({
   avatar?: ReactNode;
   childName?: string;
 }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return (
     <View style={styles.topBar}>
       <View style={styles.topBarRow}>
@@ -212,6 +219,7 @@ export type BottomBarItem = { id: string; label: string; icon: AppIconName };
 function BottomBarTab({
   theme, item, selected, onPress,
 }: Themed & { item: BottomBarItem; selected: boolean; onPress: () => void }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   const reduceMotion = useReduceMotion();
   const offset = useSharedValue(0);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ translateY: offset.get() }] }));
@@ -243,6 +251,7 @@ function BottomBarTab({
 export function BottomBar({
   theme, items, activeId, onSelect,
 }: Themed & { items: readonly BottomBarItem[]; activeId: string; onSelect: (id: string) => void }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return (
     <View accessibilityRole="tablist" style={[styles.bottomBar, { borderTopColor: theme.colors.bordeSutil }]}>
       {items.map(item => (
@@ -255,6 +264,8 @@ export function BottomBar({
 export function HeroCard({
   theme, title, subtitle, points, actionLabel, onAction,
 }: Themed & { title: string; subtitle: string; points: number; actionLabel: string; onAction: () => void }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
+  const SHARED = useShared();
   const reduceMotion = useReduceMotion();
   const offset = useSharedValue(0);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ translateY: offset.get() }] }));
@@ -285,11 +296,11 @@ export function HeroCard({
   return (
     <View style={[styles.heroCard, { backgroundColor: theme.colors.hero }]}>
       <View style={styles.heroContent}>
-        <Text style={[theme.type.hero, { color: theme.colors.sobreAcento }]}>{title}</Text>
-        <Text style={[theme.type.heroSubtitle ?? theme.type.body, styles.heroSubtitle, { color: theme.colors.sobreAcento }]}>{subtitle}</Text>
+        <Text style={[theme.type.hero, { color: theme.colors.sobreHero }]}>{title}</Text>
+        <Text style={[theme.type.heroSubtitle ?? theme.type.body, styles.heroSubtitle, { color: theme.colors.sobreHero }]}>{subtitle}</Text>
         <Animated.View style={[styles.pointsPill, { backgroundColor: tint(SHARED.puntos, 0.2) }, pointsStyle]}>
           <Icon name="points" size={16} color={SHARED.puntos} />
-          <Text style={[theme.type.caption, { color: theme.colors.sobreAcento }]}>{points} puntos</Text>
+          <Text style={[theme.type.caption, { color: theme.colors.sobreHero }]}>{points} puntos</Text>
         </Animated.View>
         <PillButton theme={theme} label={actionLabel} onPress={onAction} style={styles.heroButton} />
       </View>
@@ -309,6 +320,8 @@ export function HeroCard({
 }
 
 export function HabitProgress({ value, max, color }: { value: number; max: number; color: string }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
+  const SHARED = useShared();
   const reduceMotion = useReduceMotion();
   const progress = useSharedValue(0);
   const ratio = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
@@ -346,6 +359,7 @@ export function HabitCard({
   onDecrease: () => void;
   onIncrease: () => void;
 }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return (
     <View style={[styles.habitCard, { backgroundColor: theme.colors.tarjeta, borderColor: theme.colors.bordeSutil }, SHADOW.habito]}>
       <View style={styles.habitHeader}>
@@ -376,6 +390,8 @@ export function ChallengeRow({
   claimed: boolean;
   onClaim: () => void;
 }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
+  const SHARED = useShared();
   return (
     <View
       style={[
@@ -410,6 +426,7 @@ export function ChallengeRow({
 export function SectionCard({
   theme, role, title, subtitle, children, style,
 }: Themed & { role: AccountRole; title: string; subtitle?: string; children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return (
     <View style={[styles.sectionCard, { backgroundColor: theme.colors.tarjeta, borderRadius: role === 'child' ? RADIUS.habito : RADIUS.tarjeta }, SHADOW.tarjeta, style]}>
       <Text role="heading" aria-level={3} style={[theme.type.h2, { color: theme.colors.texto }]}>{title}</Text>
@@ -420,21 +437,30 @@ export function SectionCard({
 }
 
 export function HomeGrid({ children }: { children: ReactNode }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return <View style={styles.homeGrid}>{children}</View>;
 }
 
 // Mosaico grande del inicio de Niñez: un ícono, un título y una línea de estado.
 export function HomeTile({
-  theme, title, subtitle, icon, color, onPress,
-}: Themed & { title: string; subtitle: string; icon: AppIconName; color: string; onPress: () => void }) {
+  theme, title, subtitle, icon, color, tone, onPress,
+}: Themed & { title: string; subtitle: string; icon: AppIconName; color: string; tone?: SectionTone; onPress: () => void }) {
+  const mode = useThemeMode();
+  const styles = DESIGN_STYLES[mode];
+  const SHARED = useShared();
+  // En oscuro cada sección usa su fondo y borde de la paleta; en claro, un tinte de su color.
+  const dark = mode === 'dark' && tone ? DARK_SECTION_TONES[tone] : null;
+  const iconColor = dark?.icono ?? color;
   return (
     <AnimatedPress
       label={`${title}. ${subtitle}`}
       onPress={onPress}
-      style={[styles.homeTile, { backgroundColor: tint(color, 0.16), borderColor: tint(color, 0.4) }]}
+      style={[styles.homeTile, dark
+        ? { backgroundColor: dark.fondo, borderColor: dark.borde }
+        : { backgroundColor: tint(color, 0.16), borderColor: tint(color, 0.4) }]}
     >
       <View style={[styles.homeTileIcon, { backgroundColor: SHARED.tarjeta }]}>
-        <Icon name={icon} size={32} color={color} />
+        <Icon name={icon} size={32} color={iconColor} />
       </View>
       <Text style={[theme.type.h3, styles.homeTileText, { color: theme.colors.texto }]}>{title}</Text>
       <Text style={[theme.type.tab, styles.homeTileText, { color: theme.colors.textoSecundario }]}>{subtitle}</Text>
@@ -445,6 +471,7 @@ export function HomeTile({
 export function ListRow({
   theme, icon, iconColor, title, subtitle, trailing,
 }: Themed & { icon: AppIconName; iconColor: string; title: string; subtitle?: string; trailing?: ReactNode }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return (
     <View style={styles.listRow}>
       <View style={[styles.listIcon, { backgroundColor: tint(iconColor, 0.15) }]}><Icon name={icon} color={iconColor} size={22} /></View>
@@ -473,6 +500,7 @@ export function ChartTitle({ theme, title, note }: Themed & { title: string; not
 export function WaterWeekChart({
   theme, days, goal,
 }: Themed & { days: readonly { label: string; value: number }[]; goal: number }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   const max = Math.max(goal, ...days.map(day => day.value), 1);
   const goalOffset = (goal / max) * CHART_HEIGHT;
   return (
@@ -516,6 +544,8 @@ const DONUT_STROKE = 22;
 export function DonutChart({
   theme, items, center, emptyText,
 }: Themed & { items: readonly DonutItem[]; center: string; emptyText: string }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
+  const SHARED = useShared();
   const total = items.reduce((sum, item) => sum + item.value, 0);
   const radius = (DONUT_SIZE - DONUT_STROKE) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -568,6 +598,7 @@ export function DonutChart({
 export function PillBar({
   theme, icon, color, text, ratio,
 }: Themed & { icon: AppIconName; color: string; text: string; ratio: number }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   return (
     <View accessible accessibilityLabel={text} style={[styles.pillBar, { backgroundColor: tint(color, 0.16) }]}>
       <View style={[styles.pillFill, { width: `${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%`, backgroundColor: tint(color, 0.45) }]} />
@@ -610,6 +641,7 @@ export function ProgressRing({ theme, value, size = 120 }: Themed & { value: num
 }
 
 function LoadingDot({ color, index, reduceMotion }: { color: string; index: number; reduceMotion: boolean }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   const offset = useSharedValue(0);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ translateY: offset.get() }] }));
   useEffect(() => {
@@ -628,6 +660,7 @@ function LoadingDot({ color, index, reduceMotion }: { color: string; index: numb
 }
 
 export function LoadingDots({ theme }: Themed) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   const reduceMotion = useReduceMotion();
   return (
     <View accessible accessibilityLabel="Cargando" style={styles.loadingDots}>
@@ -649,6 +682,8 @@ export function AchievementCelebration({
   badges: readonly string[];
   describe: (badge: string) => { title: string; icon: AppIconName };
 }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
+  const SHARED = useShared();
   const reduceMotion = useReduceMotion();
   const { playCelebration } = useSoundEffects();
   const [seen, setSeen] = useState({ profileKey, signature: badges.join('|'), badges });
@@ -724,6 +759,7 @@ function rubberBand(distance: number) {
 export function BottomSheet({
   theme, visible, onClose, children,
 }: Themed & { visible: boolean; onClose: () => void; children: ReactNode }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
   const reduceMotion = useReduceMotion();
   const { height: windowHeight } = useWindowDimensions();
   // El Modal sigue montado hasta que termina la salida.
@@ -827,7 +863,10 @@ export function BottomSheet({
   );
 }
 
-const styles = StyleSheet.create({
+// Estilos en versión clara y oscura; los componentes toman la del modo actual.
+function createDesignStyles(mode: ThemeMode) {
+  const SHARED = sharedFor(mode);
+  return StyleSheet.create({
   disabled: { opacity: 0.5 },
   flex: { flex: 1 },
   inline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE[8] },
@@ -901,4 +940,6 @@ const styles = StyleSheet.create({
   sheetSkirt: { position: 'absolute', top: '100%', left: 0, right: 0, height: 120 },
   sheetHandleZone: { position: 'absolute', top: 0, left: 0, right: 0, height: SPACE[20], alignItems: 'center', justifyContent: 'center', zIndex: 1 },
   sheetHandle: { width: 36, height: 4, borderRadius: RADIUS.pildora, opacity: 0.6 },
-});
+  });
+}
+const DESIGN_STYLES = { light: createDesignStyles('light'), dark: createDesignStyles('dark') };

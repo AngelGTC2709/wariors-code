@@ -5,7 +5,7 @@ import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming
 
 import { ActivityAnimation } from './animations';
 import { LoadingDots, useReduceMotion } from './design';
-import { BORDER, RADIUS, SHARED, SPACE, tint, useAppTheme } from './tokens';
+import { BORDER, RADIUS, SPACE, tint, useAppTheme, sharedFor, type ThemeMode, useShared, useThemeMode } from './tokens';
 import { Icon } from './ui';
 
 type Theme = ReturnType<typeof useAppTheme>;
@@ -98,6 +98,8 @@ export function LoadingScreen({
   activity?: string;
   fontsLoaded?: boolean;
 }) {
+  const styles = LOADING_STYLES[useThemeMode()];
+  const SHARED = useShared();
   const reduceMotion = useReduceMotion();
   const { width } = useWindowDimensions();
   const [index, setIndex] = useState(0);
@@ -194,7 +196,10 @@ export function LoadingScreen({
   );
 }
 
-const styles = StyleSheet.create({
+// Estilos en versión clara y oscura; los componentes toman la del modo actual.
+function createLoadingStyles(mode: ThemeMode) {
+  const SHARED = sharedFor(mode);
+  return StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACE[24], gap: SPACE[20] },
   center: { alignItems: 'center', gap: SPACE[4] },
   centerText: { textAlign: 'center' },
@@ -211,4 +216,6 @@ const styles = StyleSheet.create({
   count: { fontSize: 42, lineHeight: 50 },
   fallbackHeading: { fontSize: 24, lineHeight: 30, fontWeight: '700' },
   fallbackBody: { fontSize: 14, lineHeight: 20 },
-});
+  });
+}
+const LOADING_STYLES = { light: createLoadingStyles('light'), dark: createLoadingStyles('dark') };

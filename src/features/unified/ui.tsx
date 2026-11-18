@@ -10,6 +10,11 @@ import { BarbellIcon } from 'phosphor-react-native/src/icons/Barbell';
 import { BellIcon } from 'phosphor-react-native/src/icons/Bell';
 import { BowlFoodIcon } from 'phosphor-react-native/src/icons/BowlFood';
 import { BreadIcon } from 'phosphor-react-native/src/icons/Bread';
+import { CalendarBlankIcon } from 'phosphor-react-native/src/icons/CalendarBlank';
+import { CaretDoubleLeftIcon } from 'phosphor-react-native/src/icons/CaretDoubleLeft';
+import { CaretDoubleRightIcon } from 'phosphor-react-native/src/icons/CaretDoubleRight';
+import { CaretLeftIcon } from 'phosphor-react-native/src/icons/CaretLeft';
+import { CaretRightIcon } from 'phosphor-react-native/src/icons/CaretRight';
 import { LightningIcon } from 'phosphor-react-native/src/icons/Lightning';
 import { FireIcon } from 'phosphor-react-native/src/icons/Fire';
 import { CloudRainIcon } from 'phosphor-react-native/src/icons/CloudRain';
@@ -62,8 +67,8 @@ import { XIcon } from 'phosphor-react-native/src/icons/X';
 
 import { AVATAR_BACKGROUNDS, AvatarFigure } from './avatar';
 import { AnimatedPress } from './motion';
-import { COLORS } from './constants';
-import { BORDER, RADIUS, SHADOW, SHARED, SPACE, THEMES, tint } from './tokens';
+import { COLORS, colorsFor, useColors } from './constants';
+import { BORDER, RADIUS, SHADOW, SPACE, tint, sharedFor, themesFor, type ThemeMode, useShared, useThemeMode } from './tokens';
 
 export type AppIconName =
   | 'home'
@@ -122,7 +127,12 @@ export type AppIconName =
   | 'moonStars'
   | 'cloudRain'
   | 'fire'
-  | 'lightning';
+  | 'lightning'
+  | 'calendar'
+  | 'chevronLeft'
+  | 'chevronRight'
+  | 'chevronsLeft'
+  | 'chevronsRight';
 
 // Íconos Phosphor: duotone en el modo Niñez y regular en el modo Tutor (ver IconWeightContext).
 const ICONS: Record<AppIconName, PhosphorIcon> = {
@@ -183,6 +193,11 @@ const ICONS: Record<AppIconName, PhosphorIcon> = {
   cloudRain: CloudRainIcon,
   fire: FireIcon,
   lightning: LightningIcon,
+  calendar: CalendarBlankIcon,
+  chevronLeft: CaretLeftIcon,
+  chevronRight: CaretRightIcon,
+  chevronsLeft: CaretDoubleLeftIcon,
+  chevronsRight: CaretDoubleRightIcon,
 };
 
 /** Estilo de los íconos de la pantalla: 'duotone' en Niñez, 'regular' en Tutor. */
@@ -298,7 +313,12 @@ export const TYPE = {
   bold: 'PlusJakartaSans_700Bold',
 } as const;
 
-export const styles = StyleSheet.create({
+// Estilos en versión clara y oscura; los componentes toman la del modo actual.
+function createUiStyles(mode: ThemeMode) {
+  const COLORS = colorsFor(mode);
+  const SHARED = sharedFor(mode);
+  const THEMES = themesFor(mode);
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   shell: { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', backgroundColor: COLORS.background },
   authRoot: { flex: 1, backgroundColor: COLORS.navy, justifyContent: 'center' },
@@ -375,7 +395,12 @@ export const styles = StyleSheet.create({
   noticeText: { color: THEMES.tutor.texto, fontFamily: TYPE.medium, fontSize: 10, lineHeight: 16 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACE[12], padding: SPACE[24] },
   footer: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 9, textAlign: 'center', lineHeight: 14, marginTop: SPACE[4] },
-});
+  });
+}
+export const UI_STYLES = { light: createUiStyles('light'), dark: createUiStyles('dark') };
+export function useUiStyles() {
+  return UI_STYLES[useThemeMode()];
+}
 
 export function Card({
   children,
@@ -384,6 +409,7 @@ export function Card({
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
@@ -401,6 +427,8 @@ export function Field({
   error?: string;
   hint?: string;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
+  const SHARED = useShared();
   return (
     <View style={[styles.inputGroup, style]}>
       <Text style={styles.inputLabel}>{label}</Text>
@@ -435,6 +463,8 @@ export function Button({
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
+  const COLORS = useColors();
   const variantStyle = {
     primary: styles.buttonPrimary,
     secondary: styles.buttonSecondary,
@@ -489,6 +519,8 @@ export function Tag({
   onPress?: () => void;
   icon?: AppIconName;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
+  const COLORS = useColors();
   const emojiPrefix = EMOJI_ICON_PREFIXES.find(([prefix]) => title.startsWith(prefix));
   const cleanTitle = emojiPrefix ? title.slice(emojiPrefix[0].length).trimStart() : title;
   const content = (
@@ -521,6 +553,7 @@ export function SectionTitle({
   subtitle?: string;
   action?: ReactNode;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
   return (
     <View style={styles.sectionRow}>
       <View style={styles.flex}>
@@ -541,6 +574,7 @@ export function ProgressMeter({
   max: number;
   color?: string;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
   const percent = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
     <View style={styles.meterTrack}>

@@ -3,12 +3,14 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, Vi
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button, Field, Icon, styles } from '@/features/unified/ui';
-import { COLORS } from '@/features/unified/constants';
+import { Button, Field, Icon, useUiStyles } from '@/features/unified/ui';
+import { useColors } from '@/features/unified/constants';
 import { friendlyError } from '@/features/unified/utils';
 import { getSupabaseClient } from '@/lib/supabase';
 
 export default function PasswordRecoveryScreen() {
+  const styles = useUiStyles();
+  const COLORS = useColors();
   const { token_hash: tokenHashParam, type: typeParam } = useLocalSearchParams<{
     token_hash?: string | string[];
     type?: string | string[];

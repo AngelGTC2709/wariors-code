@@ -1,4 +1,9 @@
+import { createContext, useContext } from 'react';
+
 import type { AccountRole, ChildTheme } from '@/features/unified/model';
+
+/** Modo de color resuelto ('light' o 'dark'). La preferencia guardada puede ser 'system'. */
+export type ThemeMode = 'light' | 'dark';
 
 export const THEMES = {
   oli: {
@@ -40,6 +45,8 @@ export const SHARED = {
   textoFuerte: '#1F2A44',
   textoInactivo: '#94A3B8',
   sobreAcento: '#FFFFFF',
+  /** Texto sobre las tarjetas oscuras de saludo y puntos (igual en ambos temas). */
+  sobreHero: '#FFFFFF',
   bordeSutil: 'rgba(0,0,0,0.05)',
   presionado: 'rgba(0,0,0,0.12)',
   fondoInferior: 'rgba(255,255,255,0.85)',
@@ -57,6 +64,7 @@ export const SHARED = {
   estrella: '#FFC107',
   estrellaBorde: '#FFA000',
   agua: '#38B6FF',
+  alerta: '#FB923C',
   grafica: {
     agua: '#38B6FF',
     alimentacion: '#10B981',
@@ -65,12 +73,134 @@ export const SHARED = {
   },
 } as const;
 
+// Tema oscuro según "Warrior Kids · Paleta de colores · Modo oscuro":
+// azul noche de fondo para todos, cian para Niñez y naranja dorado para Tutor.
+const NIGHT = {
+  fondo: '#0B1728', // Azul noche: fondo principal
+  tarjeta: '#172235', // Azul profundo: tarjetas y paneles
+  secundario: '#202D42', // Azul grisáceo: contenedores secundarios
+  inactivo: '#303D54', // Gris azulado: botones y elementos inactivos
+  cian: '#30C8F2', // Acciones principales y modo Niñez
+  dorado: '#F5A313', // Modo Tutor y recompensas
+  morado: '#8B5CF6', // Logros e insignias
+  verde: '#10B981', // Hábitos y movimiento
+  rosa: '#F472B6', // Avatares y detalles
+  amarillo: '#FACC15', // Estrellas y premios
+  coral: '#FB923C', // Alertas y actividades
+  grisClaro: '#94A3B8', // Texto secundario e íconos
+  texto: '#F1F5F9',
+} as const;
+
+const THEMES_DARK = {
+  oli: {
+    fondoInicio: NIGHT.fondo,
+    fondoFin: NIGHT.fondo,
+    hero: NIGHT.tarjeta,
+    heroSecundario: NIGHT.secundario,
+    acento: NIGHT.cian,
+    acentoSuave: '#123347',
+    texto: NIGHT.texto,
+    bordeAvatar: NIGHT.cian,
+  },
+  lia: {
+    fondoInicio: NIGHT.fondo,
+    fondoFin: NIGHT.fondo,
+    hero: NIGHT.tarjeta,
+    heroSecundario: NIGHT.secundario,
+    acento: NIGHT.cian,
+    acentoSuave: '#123347',
+    texto: NIGHT.texto,
+    bordeAvatar: NIGHT.rosa,
+  },
+  tutor: {
+    fondoInicio: NIGHT.fondo,
+    fondoFin: NIGHT.fondo,
+    hero: NIGHT.tarjeta,
+    heroSecundario: NIGHT.secundario,
+    acento: NIGHT.dorado,
+    acentoSuave: '#3A2D08',
+    texto: NIGHT.texto,
+    bordeAvatar: NIGHT.dorado,
+  },
+} as const satisfies Record<keyof typeof THEMES, Record<keyof typeof THEMES.tutor, string>>;
+
+const SHARED_DARK = {
+  ...SHARED,
+  tarjeta: NIGHT.tarjeta,
+  apagada: NIGHT.inactivo,
+  textoSecundario: NIGHT.grisClaro,
+  textoFuerte: NIGHT.texto,
+  textoInactivo: NIGHT.grisClaro,
+  // En botones cian o dorados el texto va en azul noche para que contraste.
+  sobreAcento: NIGHT.fondo,
+  bordeSutil: 'rgba(148,163,184,0.18)',
+  presionado: 'rgba(255,255,255,0.14)',
+  fondoInferior: 'rgba(23,34,53,0.96)',
+  fondoModal: 'rgba(5,10,20,0.7)',
+  error: '#F87171',
+  errorFondo: '#3A1515',
+  errorBorde: '#7F1D1D',
+  advertenciaBorde: '#A77A16',
+  exitoFondo: '#103538',
+  exitoBorde: '#137C6B',
+  infoBorde: '#247C9C',
+  puntos: NIGHT.dorado,
+  completado: NIGHT.verde,
+  logros: NIGHT.morado,
+  estrella: NIGHT.amarillo,
+  estrellaBorde: NIGHT.dorado,
+  agua: NIGHT.cian,
+  alerta: NIGHT.coral,
+  grafica: { agua: NIGHT.cian, alimentacion: NIGHT.verde, estudio: '#14B8A6', descanso: NIGHT.dorado },
+} as const;
+
+/** Fondos y bordes teñidos de las tarjetas por sección en el modo oscuro. */
+export const DARK_SECTION_TONES = {
+  habitos: { fondo: '#123347', borde: '#247C9C', icono: NIGHT.cian },
+  logros: { fondo: '#252347', borde: '#6346A5', icono: NIGHT.morado },
+  movimiento: { fondo: '#103538', borde: '#137C6B', icono: NIGHT.verde },
+  nutribot: { fondo: '#342F26', borde: '#946B26', icono: NIGHT.dorado },
+  revisar: { fondo: '#3A2D08', borde: '#A77A16', icono: NIGHT.dorado },
+} as const;
+export type SectionTone = keyof typeof DARK_SECTION_TONES;
+
 export const FOOD_GROUP_COLORS = {
   frutas: { fondo: '#D1F4D9', texto: '#1B5E20' },
   cereales: { fondo: '#FFE8B8', texto: '#B26A00' },
   leguminosas: { fondo: '#E8D9FF', texto: '#5E35B1' },
   animal: { fondo: '#DCEBFF', texto: '#0277BD' },
 } as const;
+
+const FOOD_GROUP_COLORS_DARK = {
+  frutas: { fondo: '#163A24', texto: '#86EFAC' },
+  cereales: { fondo: '#3D2C0A', texto: '#FCD34D' },
+  leguminosas: { fondo: '#2E2147', texto: '#C4B5FD' },
+  animal: { fondo: '#0F2A44', texto: '#7DD3FC' },
+} as const;
+
+export type ThemePalette = typeof THEMES | typeof THEMES_DARK;
+export const themesFor = (mode: ThemeMode) => (mode === 'dark' ? THEMES_DARK : THEMES);
+export const sharedFor = (mode: ThemeMode) => (mode === 'dark' ? SHARED_DARK : SHARED);
+export const foodGroupColorsFor = (mode: ThemeMode) => (mode === 'dark' ? FOOD_GROUP_COLORS_DARK : FOOD_GROUP_COLORS);
+
+/** Modo de color de la pantalla. UnifiedApp lo provee según la preferencia guardada. */
+export const ThemeModeContext = createContext<ThemeMode>('light');
+export function useThemeMode(): ThemeMode {
+  return useContext(ThemeModeContext);
+}
+export function useShared() {
+  return sharedFor(useThemeMode());
+}
+export function useFoodGroupColors() {
+  return foodGroupColorsFor(useThemeMode());
+}
+
+/** Resuelve la preferencia guardada ('system', 'light', 'dark') con el esquema del sistema. */
+export function resolveThemeMode(preference: 'system' | 'light' | 'dark' | undefined, system: string | null | undefined): ThemeMode {
+  if (preference === 'dark') return 'dark';
+  if (preference === 'system') return system === 'dark' ? 'dark' : 'light';
+  return 'light';
+}
 
 export const SPACE = {
   4: 4,
@@ -195,11 +325,16 @@ export function tint(hex: string, alpha: number): string {
   return `rgba(${red},${green},${blue},${opacity})`;
 }
 
-export function useAppTheme(role: AccountRole, childTheme: ChildTheme) {
+export function appThemeFor(role: AccountRole, childTheme: ChildTheme, mode: ThemeMode) {
   const theme = role === 'tutor' ? 'tutor' : childTheme === 'nina' ? 'lia' : 'oli';
 
   return {
-    colors: { ...THEMES[theme], ...SHARED },
+    mode,
+    colors: { ...themesFor(mode)[theme], ...sharedFor(mode) },
     type: role === 'tutor' ? TUTOR_TYPE : CHILD_TYPE,
   };
+}
+
+export function useAppTheme(role: AccountRole, childTheme: ChildTheme) {
+  return appThemeFor(role, childTheme, useThemeMode());
 }

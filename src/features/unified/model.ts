@@ -111,6 +111,39 @@ export type WeeklyMeals = {
   cena: string | null;
 };
 
+// Gestión por perfil (todos los perfiles del tutor, sin depender de la tabla `hijos`).
+// Los retos y recompensas se definen en Supabase; aquí se guarda a quién aplican y su avance.
+export type FamilyAssignmentStatus = 'asignado' | 'completado' | 'verificado' | 'rechazado';
+export type FamilyAssignment = {
+  id: string;
+  challengeId: number;
+  progressKey: string;
+  status: FamilyAssignmentStatus;
+  assignedAt: string;
+  updatedAt: string;
+  pointsAwarded?: number;
+};
+export type RewardRequestStatus = 'solicitado' | 'entregado' | 'cancelado';
+export type RewardRequest = {
+  id: string;
+  rewardId: number;
+  progressKey: string;
+  cost: number;
+  status: RewardRequestStatus;
+  requestedAt: string;
+  updatedAt: string;
+};
+export type MealPlanMeal = 'desayuno' | 'colacion' | 'comida' | 'cena';
+export type MealPlanRecipe = { date: string; meal: MealPlanMeal; recipeId: number };
+export type FamilyMealPlan = {
+  id: string;
+  progressKey: string;
+  calories: number;
+  starts: string;
+  ends: string;
+  recipes: MealPlanRecipe[];
+};
+
 export type UnifiedData = {
   version: 1;
   nutribot: NutriData;
@@ -126,6 +159,11 @@ export type UnifiedData = {
   tutorPin: string | null;
   progressSharingEnabled: boolean;
   soundEnabled?: boolean;
+  /** Apariencia: 'light' (por defecto), 'dark' o 'system' (según el teléfono). */
+  themeMode?: 'system' | 'light' | 'dark';
+  familyAssignments?: FamilyAssignment[];
+  rewardRequests?: RewardRequest[];
+  mealPlans?: FamilyMealPlan[];
 };
 
 export const NUTRI_STORAGE_KEY = 'nutribot-familiar-local-v1';
@@ -333,6 +371,48 @@ function isChildProgress(value: unknown): value is ChildProgress {
   );
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const isSafeCount = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+function isFamilyAssignment(value: unknown): value is FamilyAssignment {
+  return isRecord(value) &&
+    typeof value.id === 'string' &&
+    isSafeCount(value.challengeId) &&
+    typeof value.progressKey === 'string' &&
+    ['asignado', 'completado', 'verificado', 'rechazado'].includes(value.status as string) &&
+    typeof value.assignedAt === 'string' &&
+    typeof value.updatedAt === 'string' &&
+    (value.pointsAwarded === undefined || isSafeCount(value.pointsAwarded));
+}
+
+function isRewardRequest(value: unknown): value is RewardRequest {
+  return isRecord(value) &&
+    typeof value.id === 'string' &&
+    isSafeCount(value.rewardId) &&
+    typeof value.progressKey === 'string' &&
+    isSafeCount(value.cost) &&
+    ['solicitado', 'entregado', 'cancelado'].includes(value.status as string) &&
+    typeof value.requestedAt === 'string' &&
+    typeof value.updatedAt === 'string';
+}
+
+function isFamilyMealPlan(value: unknown): value is FamilyMealPlan {
+  return isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.progressKey === 'string' &&
+    isSafeCount(value.calories) &&
+    typeof value.starts === 'string' && ISO_DATE.test(value.starts) &&
+    typeof value.ends === 'string' && ISO_DATE.test(value.ends) &&
+    Array.isArray(value.recipes) &&
+    value.recipes.every(recipe => isRecord(recipe) &&
+      typeof recipe.date === 'string' && ISO_DATE.test(recipe.date) &&
+      ['desayuno', 'colacion', 'comida', 'cena'].includes(recipe.meal as string) &&
+      isSafeCount(recipe.recipeId));
+}
+
+const isOptionalList = <T,>(value: unknown, check: (item: unknown) => item is T) =>
+  value === undefined || (Array.isArray(value) && value.every(check));
+
 export function isUnifiedData(value: unknown): value is UnifiedData {
   if (!isRecord(value)) return false;
   if (!(
@@ -361,7 +441,11 @@ export function isUnifiedData(value: unknown): value is UnifiedData {
     ) &&
     (value.tutorPin === null || (typeof value.tutorPin === 'string' && /^\d{4,6}$/.test(value.tutorPin))) &&
     typeof value.progressSharingEnabled === 'boolean' &&
-    (value.soundEnabled === undefined || typeof value.soundEnabled === 'boolean')
+    (value.soundEnabled === undefined || typeof value.soundEnabled === 'boolean') &&
+    (value.themeMode === undefined || value.themeMode === 'system' || value.themeMode === 'light' || value.themeMode === 'dark') &&
+    isOptionalList(value.familyAssignments, isFamilyAssignment) &&
+    isOptionalList(value.rewardRequests, isRewardRequest) &&
+    isOptionalList(value.mealPlans, isFamilyMealPlan)
   )) return false;
 
   const nutriIds = new Set(value.nutribot.ninos.map(child => child.id));
@@ -494,6 +578,9 @@ export function createEmptyUnifiedData(account: LocalAccount): UnifiedData {
     tutorPin: null,
     progressSharingEnabled: true,
     soundEnabled: false,
+    familyAssignments: [],
+    rewardRequests: [],
+    mealPlans: [],
   };
 }
 

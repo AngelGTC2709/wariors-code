@@ -14,7 +14,7 @@ import {
 import { PillButton, SectionCard } from '@/features/unified/design';
 import { useAppTheme } from '@/features/unified/tokens';
 import { friendlyError } from '@/features/unified/utils';
-import { Button, Card, Field, SectionTitle, styles } from '@/features/unified/ui';
+import { Button, Card, Field, SectionTitle, useUiStyles } from '@/features/unified/ui';
 
 type ActivitySection = 'fisicas' | 'didacticas';
 type DeleteTarget = { kind: ActivitySection; id: number } | null;
@@ -49,6 +49,7 @@ const EMPTY_DIDACTIC: DidacticDraft = {
 };
 
 export function DatabaseActivities({ userId }: { userId: string }) {
+  const styles = useUiStyles();
   const theme = useAppTheme('tutor', 'nina');
   const [section, setSection] = useState<ActivitySection>('fisicas');
   const [snapshot, setSnapshot] = useState<ActivityManagementSnapshot | null>(null);

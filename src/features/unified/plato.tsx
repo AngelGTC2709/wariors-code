@@ -4,8 +4,8 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { FOOD_OPTIONS } from '@/features/unified/constants';
 import { FoodChip } from '@/features/unified/design';
-import { FOOD_GROUP_COLORS, RADIUS, SHARED, SPACE, type useAppTheme } from '@/features/unified/tokens';
-import { Button, Field, Icon, styles, type AppIconName } from '@/features/unified/ui';
+import { FOOD_GROUP_COLORS, RADIUS, SPACE, type useAppTheme, sharedFor, type ThemeMode, useFoodGroupColors, useShared, useThemeMode } from '@/features/unified/tokens';
+import { Button, Field, Icon, type AppIconName, useUiStyles } from '@/features/unified/ui';
 
 type FoodGroup = keyof typeof FOOD_GROUP_COLORS;
 type Theme = ReturnType<typeof useAppTheme>;
@@ -32,6 +32,10 @@ export function SelectedFoodPills({
   other?: string;
   onRemove?: (id: string) => void;
 }) {
+  const plateStyles = PLATE_STYLES[useThemeMode()];
+  const styles = useUiStyles();
+  const SHARED = useShared();
+  const FOOD_GROUP_COLORS = useFoodGroupColors();
   if (!values.length && !other?.trim()) return <Text style={styles.muted}>Ninguno registrado.</Text>;
   return (
     <View style={plateStyles.wrap}>
@@ -69,6 +73,10 @@ export function PlatoDelBuenComer({
   other: string;
   onChangeOther: (value: string) => void;
 }) {
+  const plateStyles = PLATE_STYLES[useThemeMode()];
+  const styles = useUiStyles();
+  const SHARED = useShared();
+  const FOOD_GROUP_COLORS = useFoodGroupColors();
   const [group, setGroup] = useState<FoodGroup | null>(null);
   const currentGroup = GROUPS.find(item => item.id === group);
 
@@ -119,7 +127,10 @@ export function PlatoDelBuenComer({
   );
 }
 
-const plateStyles = StyleSheet.create({
+// Estilos en versión clara y oscura; los componentes toman la del modo actual.
+function createPlateStyles(mode: ThemeMode) {
+  const SHARED = sharedFor(mode);
+  return StyleSheet.create({
   content: { gap: SPACE[12] },
   plate: { width: '100%', maxWidth: 300, aspectRatio: 1, alignSelf: 'center' },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[8] },
@@ -129,4 +140,6 @@ const plateStyles = StyleSheet.create({
   badge: { color: SHARED.tarjeta, overflow: 'hidden', minWidth: 20, textAlign: 'center', borderRadius: RADIUS.pildora, fontSize: 11 },
   center: { position: 'absolute', left: '32%', top: '40%', width: '36%', alignItems: 'center' },
   centerText: { color: SHARED.textoSecundario, fontSize: 11, fontWeight: '700', textAlign: 'center' },
-});
+  });
+}
+const PLATE_STYLES = { light: createPlateStyles('light'), dark: createPlateStyles('dark') };

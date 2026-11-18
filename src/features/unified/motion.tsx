@@ -11,7 +11,7 @@ import {
 import Animated, { cancelAnimation, useAnimatedStyle, useReducedMotion as useReanimatedReduceMotion, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { useSoundEffects } from './sound-effects';
-import { SHARED, RADIUS } from './tokens';
+import { RADIUS, sharedFor, type ThemeMode, useThemeMode } from './tokens';
 
 export function useReduceMotion() {
   const initialPreference = useReanimatedReduceMotion();
@@ -61,6 +61,7 @@ export function AnimatedPress({
   silent?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = MOTION_STYLES[useThemeMode()];
   const reduceMotion = useReduceMotion();
   const { playTap } = useSoundEffects();
   const scale = useSharedValue(1);
@@ -98,7 +99,12 @@ export function AnimatedPress({
   );
 }
 
-const styles = StyleSheet.create({
+// Estilos en versión clara y oscura; los componentes toman la del modo actual.
+function createMotionStyles(mode: ThemeMode) {
+  const SHARED = sharedFor(mode);
+  return StyleSheet.create({
   pressable: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: RADIUS.pildora },
   pressedOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: SHARED.presionado },
-});
+  });
+}
+const MOTION_STYLES = { light: createMotionStyles('light'), dark: createMotionStyles('dark') };

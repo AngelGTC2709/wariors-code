@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  useColorScheme,
   View,
 } from 'react-native';
 import type { ScrollViewInstance } from 'react-native';
@@ -40,15 +41,7 @@ import {
 } from '@/constants/warrior-kids';
 import type { AvatarKey } from '@/constants/family-wellness';
 import { AVATAR_BACKGROUNDS, AVATAR_CATALOG, AvatarFigure, isUnlocked, SKIN_TONES, type AvatarPart } from '@/features/unified/avatar';
-import {
-  CHILD_MOODS,
-  COLORS,
-  DIET_INGREDIENTS,
-  EXERCISE_CATEGORIES,
-  FAQ_ITEMS,
-  FAMILY_DIET,
-  FOOD_OPTIONS,
-} from '@/features/unified/constants';
+import { CHILD_MOODS, DIET_INGREDIENTS, EXERCISE_CATEGORIES, FAQ_ITEMS, FAMILY_DIET, FOOD_OPTIONS, colorsFor } from '@/features/unified/constants';
 import {
   clearLegacyLocalData,
   type AccountRole,
@@ -59,6 +52,8 @@ import {
   type ProfileLink,
   type UnifiedDailyLog,
   type UnifiedData,
+  type FamilyAssignment,
+  type FamilyAssignmentStatus,
   type WarriorChild,
   type WeeklyMeals,
 } from '@/features/unified/model';
@@ -69,20 +64,22 @@ import {
   loadDatabaseRecipes,
   loadPhysicalActivityCatalog,
   loadCloudData,
+  loadNormalizedManagement,
   saveDatabaseChildProfile,
   saveCloudData,
   subscribeToCloudData,
   uploadEvidence,
   verifyTutorPassword,
+  type NormalizedManagementSnapshot,
   type PhysicalActivityCatalog,
 } from '@/features/unified/cloud-data';
 import { AchievementCelebration, BottomBar, BottomSheet, ChallengeRow, FoodChip, HabitCard, HabitProgress, HeroCard, HomeGrid, HomeTile, ListRow, ChartTitle, DonutChart, PillBar, WaterWeekChart, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
-import { DatabaseManagement } from '@/features/unified/database-management';
+import { DatabaseManagement, type FamilyActions } from '@/features/unified/database-management';
 import { PlatoDelBuenComer, SelectedFoodPills } from '@/features/unified/plato';
 import { SoundCue, SoundEffectsProvider, type SoundCueName } from '@/features/unified/sound-effects';
-import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SHARED, SPACE, tint, useAppTheme } from '@/features/unified/tokens';
+import { appThemeFor, BORDER, DARK_SECTION_TONES, FOOD_GROUP_COLORS, foodGroupColorsFor, RADIUS, resolveThemeMode, SHADOW, SPACE, ThemeModeContext, tint, sharedFor, type ThemeMode } from '@/features/unified/tokens';
 import { getSupabaseClient } from '@/lib/supabase';
 import {
   AvatarIllustration,
@@ -93,12 +90,13 @@ import {
   ProgressMeter,
   IconWeightContext,
   SectionTitle,
-  styles,
   Tag,
+  UI_STYLES,
   type AppIconName,
 } from '@/features/unified/ui';
+import { DateField } from '@/features/unified/date-field';
 import { formatMinutes, plural } from '@/features/unified/format';
-import { ageFromBirth, cleanText, errorReason, formatBirthDate, maskBirthDate, parseBirthDate, friendlyError, unique, userError } from '@/features/unified/utils';
+import { ageFromBirth, cleanText, errorReason, formatBirthDate, parseBirthDate, friendlyError, unique, userError } from '@/features/unified/utils';
 
 type AppTab = 'Familia' | 'Recetas' | 'Menú' | 'Gestión' | 'Logros' | 'Ajustes' | 'Ayuda';
 type ChildHomeSection = 'habitos' | 'movimiento';
@@ -181,13 +179,19 @@ const NAV_ITEMS = {
   ],
 } as const satisfies Record<AccountRole, readonly { id: AppTab; icon: AppIconName; label: string }[]>;
 
-const screenStyles = StyleSheet.create({
+// Estilos en versión clara y oscura; los componentes toman la del modo actual.
+function createScreenStyles(mode: ThemeMode) {
+  const COLORS = colorsFor(mode);
+  const SHARED = sharedFor(mode);
+  return StyleSheet.create({
   loginLogo: { width: 64, height: 64 },
   topBar: { paddingHorizontal: SPACE[16], paddingTop: SPACE[12], paddingBottom: SPACE[12] },
   sectionHeading: { gap: SPACE[4], marginTop: SPACE[4] },
   sleepSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
   sleepBadge: { width: 72, height: 72, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
-  allDone: { alignItems: 'center', gap: SPACE[6], padding: SPACE[16], borderRadius: RADIUS.md, backgroundColor: '#FFF3C4' },
+  themeChoice: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: SPACE[8], paddingHorizontal: SPACE[14], borderRadius: RADIUS.pildora, borderWidth: BORDER.tarjeta },
+  reviewRow: { borderTopWidth: 1, borderTopColor: COLORS.line, paddingTop: SPACE[8], gap: SPACE[8] },
+  allDone: { alignItems: 'center', gap: SPACE[6], padding: SPACE[16], borderRadius: RADIUS.md, backgroundColor: mode === 'dark' ? DARK_SECTION_TONES.revisar.fondo : '#FFF3C4', borderWidth: mode === 'dark' ? 1.5 : 0, borderColor: DARK_SECTION_TONES.revisar.borde },
   moodGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -SPACE[4] },
   moodCell: { width: '50%', padding: SPACE[4] },
   moodTile: { minHeight: 104, alignItems: 'center', justifyContent: 'center', gap: SPACE[6], padding: SPACE[12], borderRadius: RADIUS.md, borderWidth: 3 },
@@ -223,7 +227,9 @@ const screenStyles = StyleSheet.create({
   sheetContent: { gap: SPACE[12], paddingBottom: SPACE[12] },
   collapsibleHeader: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE[16], borderRadius: RADIUS.habito },
   collapsibleContent: { gap: SPACE[12] },
-});
+  });
+}
+const SCREEN_STYLES = { light: createScreenStyles('light'), dark: createScreenStyles('dark') };
 
 const MEALS: { id: keyof WeeklyMeals; title: string; icon: AppIconName }[] = [
   { id: 'desayuno', title: 'Desayuno', icon: 'menu' },
@@ -570,6 +576,15 @@ export default function UnifiedApp() {
     PlusJakartaSans_700Bold,
   });
   const [data, setData] = useState<UnifiedData | null>(null);
+  // Tema claro u oscuro según la preferencia guardada (Ajustes) o el sistema.
+  const systemScheme = useColorScheme();
+  const themeMode = resolveThemeMode(data?.themeMode, systemScheme);
+  // Versiones del modo actual de los colores y estilos del módulo.
+  const styles = UI_STYLES[themeMode];
+  const screenStyles = SCREEN_STYLES[themeMode];
+  const COLORS = colorsFor(themeMode);
+  const SHARED = sharedFor(themeMode);
+  const FOOD_GROUP_COLORS = foodGroupColorsFor(themeMode);
   const dataRef = useRef<UnifiedData | null>(null);
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
   const [physicalActivities, setPhysicalActivities] = useState<PhysicalActivityCatalog[]>([]);
@@ -900,13 +915,45 @@ export default function UnifiedApp() {
     [databaseRecipes.length, recipes],
   );
   const catalogActivityFor = (id: string) => physicalActivities.find(activity => activity.codigo === id);
+
+  // Retos y recompensas se definen en Supabase (Gestión); a quién aplican, los pedidos y los
+  // planes se guardan por perfil en datos_app, así que sirven para todos los perfiles.
+  const [family, setFamily] = useState<NormalizedManagementSnapshot | null>(null);
+  const familyUserId = authUser?.id ?? null;
+  const refreshFamily = useCallback(async () => {
+    if (!familyUserId) return;
+    try {
+      setFamily(await loadNormalizedManagement(familyUserId));
+    } catch {
+      // Si falla, se conservan los últimos datos; el resto de la app sigue funcionando.
+    }
+  }, [familyUserId]);
+  const hasData = data !== null;
+  useEffect(() => {
+    if (hasData) void refreshFamily();
+  }, [hasData, role, refreshFamily]);
+  const familyAssignments = data?.familyAssignments ?? [];
+  const rewardRequests = data?.rewardRequests ?? [];
+  const mealPlans = data?.mealPlans ?? [];
+  // Puntos acumulados (desbloquean avatar y logros; los retos verificados ya están sumados).
+  const pointsFor = (profile: UnifiedProfile) => (data ? getProgress(data, profile).points : 0);
+  // Puntos disponibles para premios: acumulados menos los pedidos que no se cancelaron.
+  const rewardBalanceFor = (profile: UnifiedProfile) => {
+    const spent = rewardRequests
+      .filter(item => item.progressKey === profile.progressKey && item.status !== 'cancelado')
+      .reduce((sum, item) => sum + item.cost, 0);
+    return Math.max(0, pointsFor(profile) - spent);
+  };
+  const nowIso = () => new Date().toISOString();
+  const shortDate = (date: string) =>
+    new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' }).format(new Date(`${date.slice(0, 10)}T12:00:00`));
   const activityFor = (id: string) =>
     activityCatalog.find(activity => activity.id === id) ??
     ACTIVITIES.find(activity => activity.id === id);
   const currentProfile = profiles.find(profile => profile.key === selectedProfileKey) ?? null;
   const selectedProfile = currentProfile ?? (role === 'tutor' ? profiles[0] ?? null : null);
-  const theme = useAppTheme(role, selectedProfile?.theme ?? 'nina');
-  const loginTheme = useAppTheme('tutor', 'nina');
+  const theme = appThemeFor(role, selectedProfile?.theme ?? 'nina', themeMode);
+  const loginTheme = appThemeFor('tutor', 'nina', themeMode);
   const reduceMotion = useReduceMotion();
   const { transition, start: startTransition, cancel: cancelTransition } = useLoadingTransition(reduceMotion);
   const waitingForLoad = !fontError && !loadError && (loading || !fontsLoaded);
@@ -1530,6 +1577,97 @@ export default function UnifiedApp() {
       : 'Se pidió volver a registrar la actividad.');
   };
 
+  // Cambia el estado del reto de un perfil y ajusta sus puntos al verificarlo o quitar la verificación.
+  const setAssignmentStatus = (id: string, status: FamilyAssignmentStatus, points: number) => {
+    const assignment = (dataRef.current?.familyAssignments ?? []).find(item => item.id === id);
+    if (!assignment) return false;
+    const profile = profiles.find(item => item.progressKey === assignment.progressKey);
+    const wasVerified = assignment.status === 'verificado';
+    const isVerified = status === 'verificado';
+    const awarded = isVerified ? (wasVerified ? assignment.pointsAwarded ?? points : points) : undefined;
+    const saved = updateData(current => ({
+      ...current,
+      familyAssignments: (current.familyAssignments ?? []).map(item => (
+        item.id === id ? { ...item, status, updatedAt: nowIso(), pointsAwarded: awarded } : item
+      )),
+    }));
+    if (saved && profile && wasVerified !== isVerified) {
+      const delta = isVerified ? points : -(assignment.pointsAwarded ?? 0);
+      updateProfileProgress(profile, progress => ({
+        ...progress,
+        points: Math.max(0, progress.points + delta),
+        badges: isVerified ? unique([...progress.badges, 'mision']) : progress.badges,
+      }));
+    }
+    return saved;
+  };
+
+  const familyActions: FamilyActions = {
+    assignChallenge: (challengeId, progressKeys) => updateData(current => ({
+      ...current,
+      familyAssignments: [
+        ...(current.familyAssignments ?? []),
+        ...progressKeys.map((progressKey): FamilyAssignment => ({
+          id: createId('reto'),
+          challengeId,
+          progressKey,
+          status: 'asignado',
+          assignedAt: nowIso(),
+          updatedAt: nowIso(),
+        })),
+      ],
+    })),
+    setAssignmentStatus,
+    removeAssignment: id => updateData(current => ({
+      ...current,
+      familyAssignments: (current.familyAssignments ?? []).filter(item => item.id !== id),
+    })),
+    requestReward: (rewardId, progressKey, cost) => updateData(current => ({
+      ...current,
+      rewardRequests: [
+        ...(current.rewardRequests ?? []),
+        { id: createId('premio'), rewardId, progressKey, cost, status: 'solicitado', requestedAt: nowIso(), updatedAt: nowIso() },
+      ],
+    })),
+    setRewardRequestStatus: (id, status) => updateData(current => ({
+      ...current,
+      rewardRequests: (current.rewardRequests ?? []).map(item => (item.id === id ? { ...item, status, updatedAt: nowIso() } : item)),
+    })),
+    removeRewardRequest: id => updateData(current => ({
+      ...current,
+      rewardRequests: (current.rewardRequests ?? []).filter(item => item.id !== id),
+    })),
+    saveMealPlan: plan => updateData(current => {
+      const plans = current.mealPlans ?? [];
+      const { id, ...values } = plan;
+      return {
+        ...current,
+        mealPlans: id
+          ? plans.map(item => (item.id === id ? { ...item, ...values } : item))
+          : [...plans, { id: createId('plan'), recipes: [], ...values }],
+      };
+    }),
+    removeMealPlan: id => updateData(current => ({
+      ...current,
+      mealPlans: (current.mealPlans ?? []).filter(item => item.id !== id),
+    })),
+    addPlanRecipe: (planId, recipe) => updateData(current => ({
+      ...current,
+      mealPlans: (current.mealPlans ?? []).map(item => (item.id === planId ? {
+        ...item,
+        // Una receta por fecha y momento de comida: la nueva reemplaza a la anterior.
+        recipes: [...item.recipes.filter(entry => entry.date !== recipe.date || entry.meal !== recipe.meal), recipe],
+      } : item)),
+    })),
+    removePlanRecipe: (planId, recipe) => updateData(current => ({
+      ...current,
+      mealPlans: (current.mealPlans ?? []).map(item => (item.id === planId ? {
+        ...item,
+        recipes: item.recipes.filter(entry => entry.date !== recipe.date || entry.meal !== recipe.meal || entry.recipeId !== recipe.recipeId),
+      } : item)),
+    })),
+  };
+
   const claimMission = (missionId: string, points: number) => {
     if (!selectedProfile || !data) return;
     const date = todayKey();
@@ -1626,7 +1764,7 @@ export default function UnifiedApp() {
 
   const surpriseAvatar = () => {
     if (!data || !selectedProfile) return;
-    const points = getProgress(data, selectedProfile).points;
+    const points = pointsFor(selectedProfile);
     const categories = AVATAR_KEYS.filter(key => key !== 'fondo');
     // Solo elige entre lo que el perfil ya desbloqueó.
     const pick = (part: AvatarPart) => {
@@ -2049,6 +2187,120 @@ export default function UnifiedApp() {
     </Card>
   );
 
+  // Retos que la persona tutora asignó desde Gestión.
+  const renderFamilyChallenges = (profile: UnifiedProfile) => {
+    if (!family) return null;
+    const today = todayKey();
+    const lastWeek = dateOffsetKey(7);
+    const items = familyAssignments
+      .filter(item => item.progressKey === profile.progressKey)
+      .map(item => ({ item, challenge: family.challenges.find(challenge => challenge.id_reto === item.challengeId) }))
+      .filter(({ item, challenge }) => challenge && (
+        item.status === 'completado' ||
+        (item.status === 'verificado' && item.updatedAt.slice(0, 10) >= lastWeek) ||
+        (item.status !== 'verificado' && challenge.fecha_inicio.slice(0, 10) <= today && challenge.fecha_limite.slice(0, 10) >= today)
+      ));
+    if (!items.length) return null;
+    return (
+      <SectionCard theme={theme} role="child" title="Retos de tu familia" subtitle="Tu tutor los preparó para ti. Cuando lo logres, avísale.">
+        {items.map(({ item, challenge }) => {
+          if (!challenge) return null;
+          const points = item.pointsAwarded ?? challenge.puntos_de_recompensa;
+          return (
+            <ListRow
+              key={item.id}
+              theme={theme}
+              icon="achievements"
+              iconColor={theme.colors.puntos}
+              title={challenge.descripcion_reto}
+              subtitle={item.status === 'rechazado'
+                ? `Tu tutor te pidió intentarlo otra vez · ${plural(points, 'punto')}`
+                : `Hasta el ${shortDate(challenge.fecha_limite)} · ${plural(points, 'punto')}`}
+              trailing={item.status === 'completado' ? (
+                <Tag title="En revisión" color={COLORS.orange} icon="bell" />
+              ) : item.status === 'verificado' ? (
+                <Tag title={`+${points}`} color={COLORS.green} icon="check" />
+              ) : (
+                <Button
+                  title="¡Lo logré!"
+                  small
+                  disabled={role !== 'child'}
+                  onPress={() => {
+                    if (setAssignmentStatus(item.id, 'completado', challenge.puntos_de_recompensa)) {
+                      setNotice('¡Bien hecho! Tu tutor revisará tu reto.');
+                    }
+                  }}
+                />
+              )}
+            />
+          );
+        })}
+      </SectionCard>
+    );
+  };
+
+  // Premios de Gestión: se piden con los puntos para premios y la persona tutora los entrega.
+  const renderFamilyRewards = (profile: UnifiedProfile) => {
+    if (!family) return null;
+    const balance = rewardBalanceFor(profile);
+    const mine = rewardRequests.filter(item => item.progressKey === profile.progressKey);
+    const isRequested = (rewardId: number) => mine.some(item => item.rewardId === rewardId && item.status === 'solicitado');
+    const rewards = family.rewards.filter(reward =>
+      (reward.estado === 'activa' && reward.cantidad_disponible > 0) || isRequested(reward.id_recompensa));
+    const delivered = mine.filter(item => item.status === 'entregado').slice(-3);
+    if (!rewards.length && !delivered.length) return null;
+    return (
+      <SectionCard theme={theme} role="child" title="Premios de tu familia" subtitle={`Puedes usar ${plural(balance, 'punto')} en premios.`}>
+        {rewards.map(reward => {
+          const missing = reward.costo_en_puntos - balance;
+          return (
+            <View key={reward.id_recompensa} style={{ gap: SPACE[8] }}>
+              <PillBar
+                theme={theme}
+                icon="chest"
+                color={theme.colors.puntos}
+                text={`${reward.nombre_premio} · ${plural(reward.costo_en_puntos, 'punto')}`}
+                ratio={reward.costo_en_puntos > 0 ? balance / reward.costo_en_puntos : 1}
+              />
+              {isRequested(reward.id_recompensa) ? (
+                <Tag title="Pedido · espera a tu tutor" color={COLORS.orange} icon="bell" />
+              ) : missing <= 0 ? (
+                <Button
+                  title="Pedir este premio"
+                  small
+                  icon="chest"
+                  disabled={role !== 'child'}
+                  onPress={() => {
+                    if (familyActions.requestReward(reward.id_recompensa, profile.progressKey, reward.costo_en_puntos)) {
+                      setNotice('¡Listo! Tu tutor verá que pediste este premio.');
+                    }
+                  }}
+                />
+              ) : (
+                <Text style={styles.muted}>Te {missing === 1 ? 'falta 1 punto' : `faltan ${missing} puntos`}.</Text>
+              )}
+            </View>
+          );
+        })}
+        {delivered.length ? (
+          <View style={styles.wrap}>
+            {delivered.map(item => (
+              <Tag
+                key={item.id}
+                title={`Recibiste: ${family.rewards.find(reward => reward.id_recompensa === item.rewardId)?.nombre_premio ?? 'premio'}`}
+                color={COLORS.green}
+                icon="check"
+              />
+            ))}
+          </View>
+        ) : null}
+        <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>
+          Pedir un premio usa tus puntos para premios. Tus logros y tu avatar no cambian.
+        </Text>
+      </SectionCard>
+    );
+  };
+
   const renderChildHome = () => {
     if (!selectedProfile || !data) return renderNoProfile();
     const log = getDailyLog(data, selectedProfile, todayKey());
@@ -2088,7 +2340,7 @@ export default function UnifiedApp() {
               theme={theme}
               title={`¡Hola, ${selectedProfile.name}!`}
               subtitle={`${todayLabel()} · ${approvedActivities} ${approvedActivities === 1 ? 'actividad aprobada' : 'actividades aprobadas'} hoy. Cada pequeño paso cuenta.`}
-              points={progress.points}
+              points={pointsFor(selectedProfile)}
               actionLabel="Personalizar avatar"
               onAction={openAvatarEditor}
             />
@@ -2099,6 +2351,7 @@ export default function UnifiedApp() {
                 subtitle={`${claimedMissions} de ${missions.length} retos hoy`}
                 icon="water"
                 color={theme.colors.acento}
+                tone="habitos"
                 onPress={() => setChildHomeView('habitos')}
               />
               <HomeTile
@@ -2107,6 +2360,7 @@ export default function UnifiedApp() {
                 subtitle={badgeCount ? plural(badgeCount, 'insignia') : 'Tu primera insignia te espera'}
                 icon="achievements"
                 color={theme.colors.logros}
+                tone="logros"
                 onPress={() => setTab('Logros')}
               />
               <HomeTile
@@ -2115,6 +2369,7 @@ export default function UnifiedApp() {
                 subtitle={`${plural(todaysActivities.length, 'actividad', 'actividades')} para hoy`}
                 icon="activity"
                 color={theme.colors.completado}
+                tone="movimiento"
                 onPress={() => setChildHomeView('movimiento')}
               />
               <HomeTile
@@ -2123,6 +2378,7 @@ export default function UnifiedApp() {
                 subtitle="Platica sobre hábitos"
                 icon="leaf"
                 color={theme.colors.puntos}
+                tone="nutribot"
                 onPress={() => setChatOpen(true)}
               />
             </HomeGrid>
@@ -2260,6 +2516,8 @@ export default function UnifiedApp() {
           ))}
         </SectionCard>
 
+        {renderFamilyChallenges(selectedProfile)}
+
         </>)}
 
         {section('movimiento', 'Movimiento', <>
@@ -2341,8 +2599,8 @@ export default function UnifiedApp() {
         </View>
         <View style={[screenStyles.achievementHero, { backgroundColor: theme.colors.hero }]}>
           <Icon name="points" size={30} color={theme.colors.puntos} />
-          <Text style={[theme.type.h1, { color: theme.colors.sobreAcento, fontSize: 34, lineHeight: 40 }]}>{progress.points}</Text>
-          <Text style={[theme.type.body, { color: theme.colors.sobreAcento }]}>puntos acumulados</Text>
+          <Text style={[theme.type.h1, { color: theme.colors.sobreHero, fontSize: 34, lineHeight: 40 }]}>{pointsFor(selectedProfile)}</Text>
+          <Text style={[theme.type.body, { color: theme.colors.sobreHero }]}>puntos acumulados</Text>
         </View>
         <SectionCard
           theme={theme}
@@ -2373,6 +2631,7 @@ export default function UnifiedApp() {
             </View>
           )}
         </SectionCard>
+        {renderFamilyRewards(selectedProfile)}
       </>
     );
   };
@@ -2388,6 +2647,16 @@ export default function UnifiedApp() {
       ),
     );
     const pendingActivities = allPendingActivities.slice(0, 8);
+    const profileForKey = (progressKey: string) => profiles.find(profile => profile.progressKey === progressKey);
+    const challengeReviews = familyAssignments
+      .filter(item => item.status === 'completado')
+      .map(item => ({ item, challenge: family?.challenges.find(challenge => challenge.id_reto === item.challengeId), profile: profileForKey(item.progressKey) }))
+      .filter(review => review.challenge && review.profile);
+    const rewardReviews = rewardRequests
+      .filter(item => item.status === 'solicitado')
+      .map(item => ({ item, reward: family?.rewards.find(reward => reward.id_recompensa === item.rewardId), profile: profileForKey(item.progressKey) }))
+      .filter(review => review.profile);
+    const reviewCount = allPendingActivities.length + challengeReviews.length + rewardReviews.length;
     const weekDays = selectedProfile ? Array.from({ length: 7 }, (_, index) => {
       const date = dateOffsetKey(6 - index);
       const label = new Intl.DateTimeFormat('es-MX', { weekday: 'short' }).format(new Date(`${date}T12:00:00`)).replace('.', '');
@@ -2425,7 +2694,7 @@ export default function UnifiedApp() {
           theme={theme}
           title={`¡Hola, ${session?.name ?? 'familia'}!`}
           subtitle={`Acompaña los hábitos de tu familia. Puntos del perfil: ${selectedProfile?.name ?? 'sin seleccionar'}.`}
-          points={selectedProfile ? getProgress(data, selectedProfile).points : 0}
+          points={selectedProfile ? pointsFor(selectedProfile) : 0}
           actionLabel="Control parental"
           onAction={() => { setSettingsSection('parental'); setTab('Ajustes'); }}
         />
@@ -2436,7 +2705,7 @@ export default function UnifiedApp() {
           </View>
           <View style={screenStyles.summaryCard}>
             <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>Por revisar</Text>
-            <Text style={[theme.type.metric, { color: theme.colors.texto }]}>{data.progressSharingEnabled ? allPendingActivities.length : '—'}</Text>
+            <Text style={[theme.type.metric, { color: theme.colors.texto }]}>{data.progressSharingEnabled ? reviewCount : '—'}</Text>
           </View>
         </View>
 
@@ -2461,7 +2730,7 @@ export default function UnifiedApp() {
                   <View>
                     <View style={[styles.horizontal, { gap: SPACE[4] }]}>
                       <Icon name="points" size={12} color={COLORS.orange} />
-                      <Text style={styles.muted}>{progress.points} puntos</Text>
+                      <Text style={styles.muted}>{pointsFor(profile)} puntos</Text>
                     </View>
                   </View>
                 </View>
@@ -2562,8 +2831,65 @@ export default function UnifiedApp() {
             </Text>
           </Card>
         ) : (
-          <SectionCard theme={theme} role="tutor" title="Actividades por revisar" subtitle="Aprueba los registros o pide que se vuelvan a enviar.">
-            {pendingActivities.length ? pendingActivities.map(item => {
+          <SectionCard theme={theme} role="tutor" title="Por revisar" subtitle="Actividades, retos y premios que esperan tu respuesta.">
+            {challengeReviews.map(({ item, challenge, profile }) => {
+              const points = challenge?.puntos_de_recompensa ?? 0;
+              return (
+                <View key={`reto-${item.id}`} style={screenStyles.reviewRow}>
+                  <View style={styles.horizontal}>
+                    <Icon name="achievements" size={22} color={COLORS.orange} />
+                    <View style={styles.flex}>
+                      <Text style={styles.inputLabel}>{profile?.name ?? 'Perfil'} · Reto: {challenge?.descripcion_reto ?? 'Reto'}</Text>
+                      <Text style={styles.muted}>Dice que ya lo logró · {plural(points, 'punto')}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.horizontal}>
+                    <Button
+                      title="Pedir de nuevo"
+                      small
+                      variant="outline"
+                      style={styles.flex}
+                      onPress={() => { if (setAssignmentStatus(item.id, 'rechazado', points)) setNotice('Le pediste intentar el reto de nuevo.'); }}
+                    />
+                    <Button
+                      title="Verificar"
+                      small
+                      variant="success"
+                      style={styles.flex}
+                      onPress={() => { if (setAssignmentStatus(item.id, 'verificado', points)) setNotice(`Reto verificado: +${points} puntos.`); }}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+            {rewardReviews.map(({ item, reward, profile }) => (
+              <View key={`premio-${item.id}`} style={screenStyles.reviewRow}>
+                <View style={styles.horizontal}>
+                  <Icon name="chest" size={22} color={COLORS.orange} />
+                  <View style={styles.flex}>
+                    <Text style={styles.inputLabel}>{profile?.name ?? 'Perfil'} · Premio: {reward?.nombre_premio ?? 'Premio'}</Text>
+                    <Text style={styles.muted}>Pidió canjearlo · {plural(item.cost, 'punto')}</Text>
+                  </View>
+                </View>
+                <View style={styles.horizontal}>
+                  <Button
+                    title="Cancelar"
+                    small
+                    variant="outline"
+                    style={styles.flex}
+                    onPress={() => { if (familyActions.setRewardRequestStatus(item.id, 'cancelado')) setNotice('Se canceló el pedido; los puntos regresan.'); }}
+                  />
+                  <Button
+                    title="Entregado"
+                    small
+                    variant="success"
+                    style={styles.flex}
+                    onPress={() => { if (familyActions.setRewardRequestStatus(item.id, 'entregado')) setNotice('Premio marcado como entregado.'); }}
+                  />
+                </View>
+              </View>
+            ))}
+            {pendingActivities.map(item => {
               const activity = activityFor(item.activityId);
               return (
                 <View key={`${item.profile.key}-${item.date}-${item.activityId}`} style={{ borderTopWidth: 1, borderTopColor: COLORS.line, paddingTop: SPACE[8], gap: SPACE[8] }}>
@@ -2599,13 +2925,14 @@ export default function UnifiedApp() {
                   </View>
                 </View>
               );
-            }) : (
+            })}
+            {reviewCount === 0 ? (
               <View style={screenStyles.allDone}>
                 <Icon name="achievements" size={40} color={COLORS.orange} />
                 <Text style={[theme.type.h3, { color: theme.colors.texto }]}>¡Todo al día!</Text>
                 <Text style={[styles.body, { textAlign: 'center' }]}>No hay actividades pendientes. ¡Gracias por acompañar!</Text>
               </View>
-            )}
+            ) : null}
           </SectionCard>
         )}
         <SectionCard theme={theme} role="tutor" title="Accesos rápidos">
@@ -2624,6 +2951,16 @@ export default function UnifiedApp() {
     const ingredientIds = DIET_INGREDIENTS[dietDay] ?? {};
     // Si la persona tutora asignó una receta en Menú, se muestra esa; si no, la sugerencia general del día.
     const tutorMeals = data?.weeklyMeals[dietDay];
+    // Plan alimenticio de Gestión: tiene prioridad porque es personal del perfil.
+    const dayDate = dateOffsetKey(((new Date().getDay() + 6) % 7) - WEEKDAYS.indexOf(dietDay));
+    const activePlan = selectedProfile
+      ? mealPlans.find(plan => plan.progressKey === selectedProfile.progressKey && plan.starts <= dayDate && plan.ends >= dayDate)
+      : undefined;
+    const planRecipeFor = (meal: 'desayuno' | 'colacion' | 'comida' | 'cena') => {
+      const entry = activePlan?.recipes.find(item => item.date === dayDate && item.meal === meal);
+      return entry ? recipes.find(recipe => recipe.databaseId === entry.recipeId) : undefined;
+    };
+    const snackRecipe = planRecipeFor('colacion');
     return (
       <>
         {renderFoodPreferences()}
@@ -2639,7 +2976,8 @@ export default function UnifiedApp() {
           { id: 'comida' as const, label: 'Comida', icon: 'food' as const, text: diet.comida },
           { id: 'cena' as const, label: 'Cena', icon: 'sleep' as const, text: diet.cena },
         ]).map(meal => {
-          const tutorRecipe = recipes.find(item => item.id === tutorMeals?.[meal.id]);
+          const planRecipe = planRecipeFor(meal.id);
+          const tutorRecipe = planRecipe ?? recipes.find(item => item.id === tutorMeals?.[meal.id]);
           const matchingAllergies = tutorRecipe
             ? recipeWarnings(tutorRecipe, profileAllergies)
             : allergyIds.filter(id => ingredientIds[meal.id]?.includes(id));
@@ -2649,7 +2987,7 @@ export default function UnifiedApp() {
                 <Icon name={meal.icon} size={24} color={theme.colors.acento} />
                 <View style={styles.flex}>
                   <Text style={[theme.type.body, { color: theme.colors.texto }]}>{tutorRecipe?.title ?? meal.text}</Text>
-                  {tutorRecipe ? <Text style={styles.muted}>Elegida por tu familia en el menú de la semana.</Text> : null}
+                  {tutorRecipe ? <Text style={styles.muted}>{planRecipe ? 'Parte de tu plan alimenticio.' : 'Elegida por tu familia en el menú de la semana.'}</Text> : null}
                 </View>
               </View>
               {tutorRecipe ? (
@@ -2667,7 +3005,7 @@ export default function UnifiedApp() {
         })}
         <Card style={{ backgroundColor: COLORS.paleGreen, borderColor: SHARED.exitoBorde }}>
           <Text style={styles.cardTitle}>Una idea para niñas y niños</Text>
-          <Text style={styles.body}>{diet.kids}</Text>
+          <Text style={styles.body}>{snackRecipe?.title ?? diet.kids}</Text>
         </Card>
         <Text style={styles.footer}>
           Menú educativo general, no personalizado ni prescripción nutricional. Revisa ingredientes y etiquetas; ante alergias, consulta a una persona profesional de salud.
@@ -2818,7 +3156,7 @@ export default function UnifiedApp() {
 
   const renderAvatarEditor = () => {
     if (!data || !selectedProfile || !avatarDraft || avatarDraft.profileKey !== selectedProfile.key) return renderNoProfile();
-    const points = getProgress(data, selectedProfile).points;
+    const points = pointsFor(selectedProfile);
     const items = AVATAR_CATALOG[avatarCategory];
     const selection = avatarDraft.selection;
     return (
@@ -3071,6 +3409,7 @@ export default function UnifiedApp() {
               trailing={<Icon name="next" size={18} color={theme.colors.texto} />} />
           </Pressable>
         ))}
+        {renderAppearance('tutor')}
         <SectionCard theme={theme} role="tutor" title="Tu cuenta">
           <Text style={styles.body}>
             Tus perfiles y avances se guardan en el espacio privado de tu cuenta.
@@ -3079,6 +3418,42 @@ export default function UnifiedApp() {
           <Button title="Cerrar sesión" icon="logout" variant="outline" onPress={logout} />
         </SectionCard>
       </>
+    );
+  };
+
+  // Apariencia: claro, oscuro o según el sistema. Se guarda en el espacio familiar.
+  const renderAppearance = (cardRole: 'tutor' | 'child') => {
+    if (!data) return null;
+    const current = data.themeMode ?? 'light';
+    const options = [
+      { id: 'light', label: 'Claro', icon: 'sun' },
+      { id: 'dark', label: 'Oscuro', icon: 'moonStars' },
+      { id: 'system', label: 'Automático', icon: 'settings' },
+    ] as const;
+    return (
+      <SectionCard theme={theme} role={cardRole} title="Apariencia" subtitle="Elige el tema de la app. Automático sigue el modo del teléfono.">
+        <View accessibilityRole="radiogroup" style={styles.wrap}>
+          {options.map(option => {
+            const selected = current === option.id;
+            return (
+              <Pressable
+                key={option.id}
+                accessibilityRole="radio"
+                accessibilityLabel={`Tema ${option.label.toLocaleLowerCase('es-MX')}`}
+                aria-checked={selected}
+                onPress={() => updateData(state => ({ ...state, themeMode: option.id }))}
+                style={[
+                  screenStyles.themeChoice,
+                  { borderColor: selected ? theme.colors.acento : theme.colors.bordeSutil, backgroundColor: selected ? theme.colors.acentoSuave : theme.colors.tarjeta },
+                ]}
+              >
+                <Icon name={option.icon} size={20} color={selected ? theme.colors.acento : theme.colors.textoSecundario} />
+                <Text style={[theme.type.tabActive, { color: theme.colors.texto }]}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </SectionCard>
     );
   };
 
@@ -3110,6 +3485,7 @@ export default function UnifiedApp() {
             )}
           />
         </View>
+        {renderAppearance('child')}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Cambiar de personaje"
@@ -3255,13 +3631,12 @@ export default function UnifiedApp() {
                     </Pressable>
                   ))}
                 </View>
-                <Field
+                <DateField
                   label="Fecha de nacimiento"
-                  keyboardType="number-pad"
-                  maxLength={10}
-                  onChangeText={value => setProfileDraft(current => ({ ...current, birthDate: maskBirthDate(value) }))}
-                  placeholder="DD/MM/AAAA"
-                  value={profileDraft.birthDate}
+                  value={parseBirthDate(profileDraft.birthDate) ?? ''}
+                  maxDate={todayKey()}
+                  openTo={dateOffsetKey(365 * 8)}
+                  onChange={iso => setProfileDraft(current => ({ ...current, birthDate: formatBirthDate(iso) }))}
                 />
                 {profileDraft.birthDate ? (
                   <Text style={styles.muted}>
@@ -3857,7 +4232,14 @@ export default function UnifiedApp() {
       case 'Menú':
         return role === 'tutor' ? renderWeeklyMenu() : null;
       case 'Gestión':
-        return role === 'tutor' && authUser ? <DatabaseManagement userId={authUser.id} /> : null;
+        return role === 'tutor' && authUser ? (
+          <DatabaseManagement
+            userId={authUser.id}
+            profiles={profiles.map(profile => ({ progressKey: profile.progressKey, name: profile.name }))}
+            family={{ assignments: familyAssignments, rewardRequests, mealPlans }}
+            actions={familyActions}
+          />
+        ) : null;
       case 'Logros':
         return role === 'child' ? renderAchievements() : null;
       case 'Ajustes':
@@ -3932,6 +4314,7 @@ export default function UnifiedApp() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.fondoInicio }]}>
+    <ThemeModeContext.Provider value={themeMode}>
     <IconWeightContext.Provider value={role === 'child' ? 'duotone' : 'regular'}>
     <SoundEffectsProvider enabled={data.soundEnabled ?? false}>
       <SoundCue cue={soundCue} onPlayed={clearSoundCue} />
@@ -4010,7 +4393,7 @@ export default function UnifiedApp() {
           <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.fondoInicio }]}>
             {transition.visible ? (
               <LoadingScreen variant="perfil" theme={theme} name={selectedProfile.name}
-                points={getProgress(data, selectedProfile).points} avatar={renderAvatar(selectedProfile)} />
+                points={pointsFor(selectedProfile)} avatar={renderAvatar(selectedProfile)} />
             ) : null}
           </View>
         ) : null}
@@ -4036,6 +4419,7 @@ export default function UnifiedApp() {
       {renderChildProfilePickerModal()}
     </SoundEffectsProvider>
     </IconWeightContext.Provider>
+    </ThemeModeContext.Provider>
     </SafeAreaView>
   );
 }

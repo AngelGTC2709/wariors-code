@@ -1,25 +1,37 @@
 import type { AppIconName } from './ui';
 import { PLAN_DIETA } from '@/constants/family-wellness';
-import { SHARED, THEMES } from '@/features/unified/tokens';
+import { sharedFor, themesFor, useThemeMode, type ThemeMode } from '@/features/unified/tokens';
 
-export const COLORS = {
-  navy: THEMES.tutor.hero,
-  blue: THEMES.oli.acento,
-  blueDeep: THEMES.oli.texto,
-  pink: THEMES.lia.acento,
-  green: SHARED.completado,
-  orange: SHARED.puntos,
-  purple: SHARED.logros,
-  background: THEMES.tutor.fondoInicio,
-  white: SHARED.tarjeta,
-  ink: THEMES.tutor.texto,
-  muted: SHARED.textoSecundario,
-  line: SHARED.bordeSutil,
-  error: SHARED.error,
-  paleBlue: THEMES.oli.acentoSuave,
-  paleGreen: SHARED.exitoFondo,
-  paleOrange: THEMES.tutor.acentoSuave,
-} as const;
+export function colorsFor(mode: ThemeMode) {
+  const THEMES = themesFor(mode);
+  const SHARED = sharedFor(mode);
+  return {
+    navy: THEMES.tutor.hero,
+    blue: THEMES.oli.acento,
+    blueDeep: THEMES.oli.texto,
+    pink: THEMES.lia.bordeAvatar,
+    green: SHARED.completado,
+    orange: SHARED.puntos,
+    purple: SHARED.logros,
+    background: THEMES.tutor.fondoInicio,
+    white: SHARED.tarjeta,
+    ink: THEMES.tutor.texto,
+    muted: SHARED.textoSecundario,
+    line: SHARED.bordeSutil,
+    error: SHARED.error,
+    paleBlue: THEMES.oli.acentoSuave,
+    paleGreen: SHARED.exitoFondo,
+    paleOrange: THEMES.tutor.acentoSuave,
+  };
+}
+
+/** Colores del tema claro, para código fuera de componentes (acentos que no cambian). */
+export const COLORS = colorsFor('light');
+
+/** Colores del modo actual (claro u oscuro). */
+export function useColors() {
+  return colorsFor(useThemeMode());
+}
 
 // Ánimos del selector (en orden). `ink` es el color del texto e ícono sobre `color`.
 // Los que tienen `retired` ya no se ofrecen, pero se conservan para leer días registrados antes.

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 
 import { getEvidenceUrl } from '@/features/unified/cloud-data';
-import { COLORS } from '@/features/unified/constants';
-import { RADIUS, SPACE } from '@/features/unified/tokens';
+import { colorsFor, useColors } from '@/features/unified/constants';
+import { RADIUS, SPACE, type ThemeMode, useThemeMode } from '@/features/unified/tokens';
 import { friendlyError } from '@/features/unified/utils';
 
 type EvidencePhotoProps = {
@@ -11,6 +11,8 @@ type EvidencePhotoProps = {
 };
 
 export function EvidencePhoto({ path }: EvidencePhotoProps) {
+  const styles = EVIDENCE_STYLES[useThemeMode()];
+  const COLORS = useColors();
   const [result, setResult] = useState<{ path: string; uri: string } | { path: string; error: string } | null>(null);
 
   useEffect(() => {
@@ -59,7 +61,10 @@ export function EvidencePhoto({ path }: EvidencePhotoProps) {
   );
 }
 
-const styles = StyleSheet.create({
+// Estilos en versión clara y oscura; los componentes toman la del modo actual.
+function createEvidenceStyles(mode: ThemeMode) {
+  const COLORS = colorsFor(mode);
+  return StyleSheet.create({
   image: { width: '100%', height: 150, borderRadius: RADIUS.sm },
   placeholder: {
     width: '100%',
@@ -71,4 +76,6 @@ const styles = StyleSheet.create({
     padding: SPACE[8],
   },
   error: { color: COLORS.orange, textAlign: 'center' },
-});
+  });
+}
+const EVIDENCE_STYLES = { light: createEvidenceStyles('light'), dark: createEvidenceStyles('dark') };
