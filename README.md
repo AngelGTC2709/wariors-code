@@ -32,7 +32,7 @@ El perfil `preview` genera un APK para Android. La build interna de iOS requiere
 - Preferencia de sonido y música sincronizada; por ahora no reproduce audio.
 - Catálogo de recetas, búsqueda y filtros, menú semanal de desayuno, comida y cena, y plan educativo del Plato del Buen Comer.
 - Buscador y filtros al asignar recetas al menú; los ingredientes relacionados con alergias registradas se destacan de forma orientativa.
-- Avisos orientativos de alergias y alimentos que gustan o se prefieren evitar, preguntas frecuentes y respuestas predefinidas de NutriBot. El dictamen no asigna planes automáticamente.
+- Avisos orientativos de alergias y alimentos que gustan o se prefieren evitar, preguntas frecuentes y chat de NutriBot con Gemini. El dictamen no asigna planes automáticamente.
 - Vinculación manual de perfiles de NutriBot Familiar y Warrior Kids. Los valores diferentes y sus fuentes se conservan.
 
 ## Configuración de Supabase
@@ -51,6 +51,16 @@ El perfil `preview` genera un APK para Android. La build interna de iOS requiere
    El flujo de la app verifica ese token como tipo `recovery` antes de permitir el cambio de contraseña. El callback enviado por la app es `warriorkids://reset-password`; para builds instaladas, el esquema `warriorkids` ya está configurado en `app.json`.
 6. Ejecuta `npx expo start` para volver a cargar la configuración.
 
+### Configurar NutriBot con Gemini
+
+NutriBot llama a Gemini desde la función autenticada `supabase/functions/nutribot-chat/index.ts`; la app no recibe la clave de Gemini.
+
+1. En Supabase, abre **Edge Functions → Secrets** y agrega `GEMINI_API_KEY` con la clave creada en Google AI Studio. No la pongas en una variable `EXPO_PUBLIC_*`, en variables de EAS ni en archivos que se suban al repositorio.
+2. Despliega la función `nutribot-chat` desde Supabase CLI o desde el editor de Edge Functions del Dashboard. Mantén activada la verificación JWT: la función solo acepta solicitudes de una sesión iniciada.
+3. Quita la clave de Gemini de `.env.local`; la app solo necesita `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_ANON_KEY`. Reinicia Expo después de cambiar `.env.local`. Cambiar el secreto del backend no requiere generar otro APK.
+
+El chat envía a Google el texto escrito y el contexto reciente de esa conversación para generar cada respuesta. No se guarda el historial en la app y las solicitudes usan `store: false` para no guardar interacciones en Gemini. Aun así, evita compartir datos personales; el bot es una herramienta educativa, no un servicio médico.
+
 La app usa Supabase Auth para las cuentas de tutor. Los perfiles infantiles no tienen credenciales propias: cada tutor inicia sesión y cambia entre los perfiles de su familia. Por privacidad, la sesión no se conserva al cerrar la app. Los hábitos, avances, puntos, menús semanales y preferencias de la experiencia siguen en `padres.datos_app`, con control de versión y sincronización en tiempo real.
 
 Los cambios se sincronizan en tiempo real. Si dos dispositivos guardan cambios al mismo tiempo, la app detecta el conflicto y evita sobrescribir silenciosamente los datos. Las fotos de evidencia se guardan en el bucket privado `activity-evidence` y se restringen a la cuenta propietaria.
@@ -67,4 +77,4 @@ La pestaña **Gestión** usa las tablas existentes para crear, editar y eliminar
 
 Los planes requieren un perfil de `hijos` ya sincronizado con consentimiento, una meta calórica y fechas que la persona tutora captura porque no se pueden derivar del esquema. La app no calcula ni asigna metas. `puntos_gastados` del canje y el inventario de `cantidad_disponible` se administran como campos de sus tablas; no modifican automáticamente los puntos que permanecen en `padres.datos_app`. No se amplían políticas RLS ni se migran datos de `datos_app` a estos esquemas.
 
-Las recetas y el plan son ideas educativas, no indicaciones médicas ni menús personalizados. Revisa ingredientes, etiquetas y posibles contaminaciones cruzadas; consulta a profesionales de salud ante alergias o dudas. Las actividades físicas son recreativas y deben contar con supervisión adulta. NutriBot utiliza respuestas predefinidas, no es un servicio de IA ni brinda diagnósticos.
+Las recetas y el plan son ideas educativas, no indicaciones médicas ni menús personalizados. Revisa ingredientes, etiquetas y posibles contaminaciones cruzadas; consulta a profesionales de salud ante alergias o dudas. Las actividades físicas son recreativas y deben contar con supervisión adulta. NutriBot usa Gemini para generar respuestas, no brinda diagnósticos y recomienda hablar con una persona adulta de confianza ante una preocupación.

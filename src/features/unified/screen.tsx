@@ -670,6 +670,8 @@ export default function UnifiedApp() {
   const [sleepInput, setSleepInput] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
+  const [chatPending, setChatPending] = useState(false);
+  const [chatError, setChatError] = useState('');
   const [chatMessages, setChatMessages] = useState<{ from: 'bot' | 'child'; text: string }[]>([
     { from: 'bot', text: '¡Hola! Soy NutriBot. Podemos hablar de hábitos, comida y cómo te sientes.' },
   ]);
@@ -1714,19 +1716,60 @@ export default function UnifiedApp() {
     setMenuPicker({ day, meal });
   };
 
-  const sendChatMessage = () => {
+  const sendChatMessage = async () => {
     const text = chatInput.trim();
-    if (!text) return;
-    const lower = cleanText(text);
-    const response = lower.includes('triste') || lower.includes('mal') || lower.includes('cansad')
-      ? 'Gracias por contármelo. Hablar con una persona adulta de confianza puede ayudar; no tienes que resolverlo a solas.'
-      : lower.includes('comida') || lower.includes('comer') || lower.includes('receta')
-        ? '¡Qué buena pregunta! Podemos elegir alimentos de varios colores y disfrutar la comida en familia. ¿Qué ingrediente te gusta?'
-        : lower.includes('agua')
-          ? 'Tomar agua durante el día ayuda a mantener tu cuerpo hidratado. ¡Un vasito a la vez!'
-          : '¡Gracias por compartirlo! Cada familia tiene hábitos distintos. Elige cambios pequeños que se sientan bien para ti.';
-    setChatMessages(current => [...current, { from: 'child', text }, { from: 'bot', text: response }]);
-    setChatInput('');
+    if (!text || chatPending) return;
+    setChatError('');
+    setChatPending(true);
+    const messages = [...chatMessages.slice(-8), { from: 'child' as const, text }].map(message => ({
+      role: message.from === 'child' ? 'user' : 'model',
+      text: message.text,
+    }));
+
+    try {
+      const { data, error } = await getSupabaseClient().functions.invoke<unknown>('nutribot-chat', {
+        body: { messages },
+      });
+      if (error) throw error;
+      if (
+        !data
+        || typeof data !== 'object'
+        || !('reply' in data)
+        || typeof data.reply !== 'string'
+        || !data.reply.trim()
+      ) {
+        throw new Error('La respuesta de NutriBot no tiene un formato válido.');
+      }
+
+      const reply = data.reply.trim();
+      setChatMessages(current => [
+        ...current,
+        { from: 'child', text },
+        { from: 'bot', text: reply },
+      ]);
+      setChatInput(current => current === text ? '' : current);
+    } catch (error) {
+      let message = friendlyError(error, 'No pude conectar con NutriBot. Inténtalo de nuevo.');
+      if (
+        error
+        && typeof error === 'object'
+        && 'context' in error
+        && error.context instanceof Response
+      ) {
+        const payload: unknown = await error.context.clone().json().catch(() => null);
+        if (
+          payload
+          && typeof payload === 'object'
+          && 'error' in payload
+          && typeof payload.error === 'string'
+        ) {
+          message = payload.error;
+        }
+      }
+      setChatError(message);
+    } finally {
+      setChatPending(false);
+    }
   };
 
   const toggleSharing = (value: boolean) => {
@@ -4068,7 +4111,7 @@ export default function UnifiedApp() {
                 <Icon name="leaf" size={18} color={COLORS.green} />
                 <Text role="heading" aria-level={2} style={styles.modalTitle}>NutriBot Familiar</Text>
               </View>
-              <Text style={styles.muted}>Respuestas locales predefinidas</Text>
+              <Text style={styles.muted}>Con IA de Google · no compartas datos personales</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setChatOpen(false)} style={styles.close}>
               <Icon name="close" size={18} color={COLORS.ink} />
@@ -4091,7 +4134,14 @@ export default function UnifiedApp() {
                 <Text style={styles.body}>{message.text}</Text>
               </View>
             ))}
+            {chatPending ? (
+              <View style={styles.horizontal}>
+                <ActivityIndicator size="small" color={COLORS.green} />
+                <Text style={styles.muted}>NutriBot está pensando…</Text>
+              </View>
+            ) : null}
           </ScrollView>
+          {chatError ? <Text accessibilityRole="alert" style={styles.errorText}>{chatError}</Text> : null}
           <View style={styles.horizontal}>
             <Field
               label="Escribe un mensaje"
@@ -4102,9 +4152,14 @@ export default function UnifiedApp() {
               value={chatInput}
               style={styles.flex}
             />
-            <Button title="Enviar" small onPress={sendChatMessage} />
+            <Button
+              title="Enviar"
+              small
+              disabled={!chatInput.trim() || chatPending}
+              onPress={() => { void sendChatMessage(); }}
+            />
           </View>
-          <Text style={styles.footer}>No es una persona ni servicio médico. Si algo te preocupa, platícalo con una persona adulta de confianza.</Text>
+          <Text style={styles.footer}>Tus mensajes se envían a Google para generar respuestas y no se guardan en la app. No compartas datos personales. No es un servicio médico; si algo te preocupa, platícalo con una persona adulta de confianza.</Text>
     </BottomSheet>
   );
 
