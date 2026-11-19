@@ -142,4 +142,4 @@ function createPlateStyles(mode: ThemeMode) {
   centerText: { color: SHARED.textoSecundario, fontSize: 11, fontWeight: '700', textAlign: 'center' },
   });
 }
-const PLATE_STYLES = { light: createPlateStyles('light'), dark: createPlateStyles('dark') };
+const PLATE_STYLES = { light: createPlateStyles('light'), dark: createPlateStyles('dark'), darkNina: createPlateStyles('darkNina') };

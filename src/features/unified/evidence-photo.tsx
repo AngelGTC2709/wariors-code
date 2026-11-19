@@ -78,4 +78,4 @@ function createEvidenceStyles(mode: ThemeMode) {
   error: { color: COLORS.orange, textAlign: 'center' },
   });
 }
-const EVIDENCE_STYLES = { light: createEvidenceStyles('light'), dark: createEvidenceStyles('dark') };
+const EVIDENCE_STYLES = { light: createEvidenceStyles('light'), dark: createEvidenceStyles('dark'), darkNina: createEvidenceStyles('darkNina') };

@@ -29,7 +29,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import type { AccountRole } from './model';
 import { useSoundEffects } from './sound-effects';
-import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SPACE, tint, useAppTheme, sharedFor, type ThemeMode, useFoodGroupColors, useShared, useThemeMode, DARK_SECTION_TONES, type SectionTone } from './tokens';
+import { BORDER, FOOD_GROUP_COLORS, RADIUS, SHADOW, SPACE, tint, useAppTheme, sharedFor, type ThemeMode, useFoodGroupColors, useShared, useThemeMode, sectionTonesFor, type SectionTone } from './tokens';
 import { AnimatedPress, useReduceMotion } from './motion';
 import { Icon, type AppIconName } from './ui';
 
@@ -449,7 +449,7 @@ export function HomeTile({
   const styles = DESIGN_STYLES[mode];
   const SHARED = useShared();
   // En oscuro cada sección usa su fondo y borde de la paleta; en claro, un tinte de su color.
-  const dark = mode === 'dark' && tone ? DARK_SECTION_TONES[tone] : null;
+  const dark = tone ? sectionTonesFor(mode)?.[tone] ?? null : null;
   const iconColor = dark?.icono ?? color;
   return (
     <AnimatedPress
@@ -459,7 +459,7 @@ export function HomeTile({
         ? { backgroundColor: dark.fondo, borderColor: dark.borde }
         : { backgroundColor: tint(color, 0.16), borderColor: tint(color, 0.4) }]}
     >
-      <View style={[styles.homeTileIcon, { backgroundColor: SHARED.tarjeta }]}>
+      <View style={[styles.homeTileIcon, { backgroundColor: dark?.circulo ?? SHARED.tarjeta }]}>
         <Icon name={icon} size={32} color={iconColor} />
       </View>
       <Text style={[theme.type.h3, styles.homeTileText, { color: theme.colors.texto }]}>{title}</Text>
@@ -942,4 +942,4 @@ function createDesignStyles(mode: ThemeMode) {
   sheetHandle: { width: 36, height: 4, borderRadius: RADIUS.pildora, opacity: 0.6 },
   });
 }
-const DESIGN_STYLES = { light: createDesignStyles('light'), dark: createDesignStyles('dark') };
+const DESIGN_STYLES = { light: createDesignStyles('light'), dark: createDesignStyles('dark'), darkNina: createDesignStyles('darkNina') };

@@ -218,4 +218,4 @@ function createLoadingStyles(mode: ThemeMode) {
   fallbackBody: { fontSize: 14, lineHeight: 20 },
   });
 }
-const LOADING_STYLES = { light: createLoadingStyles('light'), dark: createLoadingStyles('dark') };
+const LOADING_STYLES = { light: createLoadingStyles('light'), dark: createLoadingStyles('dark'), darkNina: createLoadingStyles('darkNina') };

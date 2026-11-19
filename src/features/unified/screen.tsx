@@ -191,7 +191,7 @@ function createScreenStyles(mode: ThemeMode) {
   sleepBadge: { width: 72, height: 72, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
   themeChoice: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: SPACE[8], paddingHorizontal: SPACE[14], borderRadius: RADIUS.pildora, borderWidth: BORDER.tarjeta },
   reviewRow: { borderTopWidth: 1, borderTopColor: COLORS.line, paddingTop: SPACE[8], gap: SPACE[8] },
-  allDone: { alignItems: 'center', gap: SPACE[6], padding: SPACE[16], borderRadius: RADIUS.md, backgroundColor: mode === 'dark' ? DARK_SECTION_TONES.revisar.fondo : '#FFF3C4', borderWidth: mode === 'dark' ? 1.5 : 0, borderColor: DARK_SECTION_TONES.revisar.borde },
+  allDone: { alignItems: 'center', gap: SPACE[6], padding: SPACE[16], borderRadius: RADIUS.md, backgroundColor: mode !== 'light' ? DARK_SECTION_TONES.revisar.fondo : '#FFF3C4', borderWidth: mode !== 'light' ? 1.5 : 0, borderColor: DARK_SECTION_TONES.revisar.borde },
   moodGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -SPACE[4] },
   moodCell: { width: '50%', padding: SPACE[4] },
   moodTile: { minHeight: 104, alignItems: 'center', justifyContent: 'center', gap: SPACE[6], padding: SPACE[12], borderRadius: RADIUS.md, borderWidth: 3 },
@@ -229,7 +229,7 @@ function createScreenStyles(mode: ThemeMode) {
   collapsibleContent: { gap: SPACE[12] },
   });
 }
-const SCREEN_STYLES = { light: createScreenStyles('light'), dark: createScreenStyles('dark') };
+const SCREEN_STYLES = { light: createScreenStyles('light'), dark: createScreenStyles('dark'), darkNina: createScreenStyles('darkNina') };
 
 const MEALS: { id: keyof WeeklyMeals; title: string; icon: AppIconName }[] = [
   { id: 'desayuno', title: 'Desayuno', icon: 'menu' },
@@ -576,15 +576,6 @@ export default function UnifiedApp() {
     PlusJakartaSans_700Bold,
   });
   const [data, setData] = useState<UnifiedData | null>(null);
-  // Tema claro u oscuro según la preferencia guardada (Ajustes) o el sistema.
-  const systemScheme = useColorScheme();
-  const themeMode = resolveThemeMode(data?.themeMode, systemScheme);
-  // Versiones del modo actual de los colores y estilos del módulo.
-  const styles = UI_STYLES[themeMode];
-  const screenStyles = SCREEN_STYLES[themeMode];
-  const COLORS = colorsFor(themeMode);
-  const SHARED = sharedFor(themeMode);
-  const FOOD_GROUP_COLORS = foodGroupColorsFor(themeMode);
   const dataRef = useRef<UnifiedData | null>(null);
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
   const [physicalActivities, setPhysicalActivities] = useState<PhysicalActivityCatalog[]>([]);
@@ -603,6 +594,19 @@ export default function UnifiedApp() {
   const authUserId = useRef<string | null>(null);
   const [role, setRole] = useState<AccountRole>('tutor');
   const [selectedProfileKey, setSelectedProfileKey] = useState<string | null>(null);
+  // Tema claro u oscuro según la preferencia guardada (Ajustes) o el sistema.
+  const systemScheme = useColorScheme();
+  const baseThemeMode = resolveThemeMode(data?.themeMode, systemScheme);
+  // En Niñez, una niña ve el oscuro con su paleta ciruela y rosa.
+  const childIsGirl = role === 'child' && data !== null && selectedProfileKey !== null &&
+    buildProfiles(data).find(profile => profile.key === selectedProfileKey)?.theme === 'nina';
+  const themeMode: ThemeMode = baseThemeMode === 'dark' && childIsGirl ? 'darkNina' : baseThemeMode;
+  // Versiones del modo actual de los colores y estilos del módulo.
+  const styles = UI_STYLES[themeMode];
+  const screenStyles = SCREEN_STYLES[themeMode];
+  const COLORS = colorsFor(themeMode);
+  const SHARED = sharedFor(themeMode);
+  const FOOD_GROUP_COLORS = foodGroupColorsFor(themeMode);
   const [showChildProfilePicker, setShowChildProfilePicker] = useState(false);
   const [tab, setTab] = useState<AppTab>('Familia');
   // null = mosaicos del inicio de Niñez; si no, la sección abierta.

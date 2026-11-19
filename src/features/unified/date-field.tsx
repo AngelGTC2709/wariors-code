@@ -270,4 +270,4 @@ function createDateStyles(mode: ThemeMode) {
   footerText: { color: COLORS.blue, fontSize: 13, fontWeight: '700' },
   });
 }
-const DATE_STYLES = { light: createDateStyles('light'), dark: createDateStyles('dark') };
+const DATE_STYLES = { light: createDateStyles('light'), dark: createDateStyles('dark'), darkNina: createDateStyles('darkNina') };

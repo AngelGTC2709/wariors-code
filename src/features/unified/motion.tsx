@@ -107,4 +107,4 @@ function createMotionStyles(mode: ThemeMode) {
   pressedOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: SHARED.presionado },
   });
 }
-const MOTION_STYLES = { light: createMotionStyles('light'), dark: createMotionStyles('dark') };
+const MOTION_STYLES = { light: createMotionStyles('light'), dark: createMotionStyles('dark'), darkNina: createMotionStyles('darkNina') };

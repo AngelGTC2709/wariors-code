@@ -2,8 +2,12 @@ import { createContext, useContext } from 'react';
 
 import type { AccountRole, ChildTheme } from '@/features/unified/model';
 
-/** Modo de color resuelto ('light' o 'dark'). La preferencia guardada puede ser 'system'. */
-export type ThemeMode = 'light' | 'dark';
+/**
+ * Modo de color resuelto. 'darkNina' es el oscuro con la paleta ciruela y rosa que se usa en
+ * Niñez con un perfil de niña. La preferencia guardada puede ser 'system'.
+ */
+export type ThemeMode = 'light' | 'dark' | 'darkNina';
+export const isDarkMode = (mode: ThemeMode) => mode !== 'light';
 
 export const THEMES = {
   oli: {
@@ -154,15 +158,77 @@ const SHARED_DARK = {
   grafica: { agua: NIGHT.cian, alimentacion: NIGHT.verde, estudio: '#14B8A6', descanso: NIGHT.dorado },
 } as const;
 
+// Tema oscuro Niña ("Paleta de colores – Modo Niña").
+const NINA = {
+  fondo: '#170F24', // Ciruela oscuro: fondo principal
+  fondoSecundario: '#21152F', // Morado berenjena
+  tarjeta: '#30203D', // Vino morado
+  panel: '#3B2948', // Malva oscuro
+  bordePrincipal: '#E879B9', // Rosa pastel
+  bordeSecundario: '#A78BFA', // Lila
+  boton: '#F472B6', // Rosa vibrante
+  botonSecundario: '#EC4899', // Fucsia
+  logros: '#A78BFA', // Lila brillante
+  premios: '#FACC15', // Dorado suave
+  iconoActivo: '#FDA4D5', // Rosa claro
+  texto: '#FFF1F7', // Blanco rosado
+  textoSecundario: '#C4B5D0', // Lavanda grisáceo
+} as const;
+
+const NINA_THEME = {
+  fondoInicio: NINA.fondo,
+  fondoFin: NINA.fondoSecundario,
+  hero: NINA.tarjeta,
+  heroSecundario: NINA.panel,
+  acento: NINA.boton,
+  acentoSuave: NINA.panel,
+  texto: NINA.texto,
+  bordeAvatar: NINA.bordePrincipal,
+} as const;
+
+// En 'darkNina' todos los temas usan la paleta de niña: solo se activa en Niñez con perfil de niña.
+const THEMES_DARK_NINA = { oli: NINA_THEME, lia: NINA_THEME, tutor: NINA_THEME } as const;
+
+const SHARED_DARK_NINA = {
+  ...SHARED_DARK,
+  tarjeta: NINA.tarjeta,
+  apagada: NINA.panel,
+  textoSecundario: NINA.textoSecundario,
+  textoFuerte: NINA.texto,
+  textoInactivo: NINA.textoSecundario,
+  sobreAcento: NINA.fondo,
+  bordeSutil: 'rgba(232,121,185,0.24)',
+  fondoInferior: 'rgba(33,21,47,0.96)',
+  fondoModal: 'rgba(10,5,18,0.72)',
+  advertenciaBorde: NINA.premios,
+  infoBorde: NINA.bordeSecundario,
+  puntos: NINA.premios,
+  logros: NINA.logros,
+  estrella: NINA.premios,
+  estrellaBorde: NINA.premios,
+} as const;
+
 /** Fondos y bordes teñidos de las tarjetas por sección en el modo oscuro. */
 export const DARK_SECTION_TONES = {
-  habitos: { fondo: '#123347', borde: '#247C9C', icono: NIGHT.cian },
-  logros: { fondo: '#252347', borde: '#6346A5', icono: NIGHT.morado },
-  movimiento: { fondo: '#103538', borde: '#137C6B', icono: NIGHT.verde },
-  nutribot: { fondo: '#342F26', borde: '#946B26', icono: NIGHT.dorado },
-  revisar: { fondo: '#3A2D08', borde: '#A77A16', icono: NIGHT.dorado },
+  habitos: { fondo: '#123347', borde: '#247C9C', icono: NIGHT.cian, circulo: NIGHT.tarjeta },
+  logros: { fondo: '#252347', borde: '#6346A5', icono: NIGHT.morado, circulo: NIGHT.tarjeta },
+  movimiento: { fondo: '#103538', borde: '#137C6B', icono: NIGHT.verde, circulo: NIGHT.tarjeta },
+  nutribot: { fondo: '#342F26', borde: '#946B26', icono: NIGHT.dorado, circulo: NIGHT.tarjeta },
+  revisar: { fondo: '#3A2D08', borde: '#A77A16', icono: NIGHT.dorado, circulo: NIGHT.tarjeta },
 } as const;
 export type SectionTone = keyof typeof DARK_SECTION_TONES;
+
+const DARK_NINA_SECTION_TONES = {
+  habitos: { fondo: NINA.tarjeta, borde: NINA.bordePrincipal, icono: NINA.iconoActivo, circulo: NINA.fondo },
+  logros: { fondo: NINA.tarjeta, borde: NINA.bordeSecundario, icono: NINA.logros, circulo: NINA.fondo },
+  movimiento: { fondo: NINA.tarjeta, borde: NINA.botonSecundario, icono: NINA.iconoActivo, circulo: NINA.fondo },
+  nutribot: { fondo: NINA.tarjeta, borde: NINA.premios, icono: NINA.premios, circulo: NINA.fondo },
+  revisar: DARK_SECTION_TONES.revisar,
+} as const satisfies Record<SectionTone, { fondo: string; borde: string; icono: string; circulo: string }>;
+
+/** Tonos de sección del modo; en claro no hay (se usa un tinte del color de la sección). */
+export const sectionTonesFor = (mode: ThemeMode) =>
+  mode === 'darkNina' ? DARK_NINA_SECTION_TONES : mode === 'dark' ? DARK_SECTION_TONES : null;
 
 export const FOOD_GROUP_COLORS = {
   frutas: { fondo: '#D1F4D9', texto: '#1B5E20' },
@@ -179,9 +245,9 @@ const FOOD_GROUP_COLORS_DARK = {
 } as const;
 
 export type ThemePalette = typeof THEMES | typeof THEMES_DARK;
-export const themesFor = (mode: ThemeMode) => (mode === 'dark' ? THEMES_DARK : THEMES);
-export const sharedFor = (mode: ThemeMode) => (mode === 'dark' ? SHARED_DARK : SHARED);
-export const foodGroupColorsFor = (mode: ThemeMode) => (mode === 'dark' ? FOOD_GROUP_COLORS_DARK : FOOD_GROUP_COLORS);
+export const themesFor = (mode: ThemeMode) => (mode === 'darkNina' ? THEMES_DARK_NINA : mode === 'dark' ? THEMES_DARK : THEMES);
+export const sharedFor = (mode: ThemeMode) => (mode === 'darkNina' ? SHARED_DARK_NINA : mode === 'dark' ? SHARED_DARK : SHARED);
+export const foodGroupColorsFor = (mode: ThemeMode) => (mode === 'light' ? FOOD_GROUP_COLORS : FOOD_GROUP_COLORS_DARK);
 
 /** Modo de color de la pantalla. UnifiedApp lo provee según la preferencia guardada. */
 export const ThemeModeContext = createContext<ThemeMode>('light');
@@ -196,7 +262,7 @@ export function useFoodGroupColors() {
 }
 
 /** Resuelve la preferencia guardada ('system', 'light', 'dark') con el esquema del sistema. */
-export function resolveThemeMode(preference: 'system' | 'light' | 'dark' | undefined, system: string | null | undefined): ThemeMode {
+export function resolveThemeMode(preference: 'system' | 'light' | 'dark' | undefined, system: string | null | undefined): 'light' | 'dark' {
   if (preference === 'dark') return 'dark';
   if (preference === 'system') return system === 'dark' ? 'dark' : 'light';
   return 'light';

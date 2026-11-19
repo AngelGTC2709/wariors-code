@@ -397,7 +397,7 @@ function createUiStyles(mode: ThemeMode) {
   footer: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 9, textAlign: 'center', lineHeight: 14, marginTop: SPACE[4] },
   });
 }
-export const UI_STYLES = { light: createUiStyles('light'), dark: createUiStyles('dark') };
+export const UI_STYLES = { light: createUiStyles('light'), dark: createUiStyles('dark'), darkNina: createUiStyles('darkNina') };
 export function useUiStyles() {
   return UI_STYLES[useThemeMode()];
 }
