@@ -45,10 +45,13 @@ El perfil `preview` genera un APK para Android. La build interna de iOS requiere
 5. En **Authentication → Email Templates → Reset Password**, ajusta el enlace para entregar a la app el token hash de recuperación:
 
    ```html
-   <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&amp;type=recovery">Restablecer contraseña</a>
+   <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&amp;type=recovery"
+     >Restablecer contraseña</a
+   >
    ```
 
    El flujo de la app verifica ese token como tipo `recovery` antes de permitir el cambio de contraseña. El callback enviado por la app es `warriorkids://reset-password`; para builds instaladas, el esquema `warriorkids` ya está configurado en `app.json`.
+
 6. Ejecuta `npx expo start` para volver a cargar la configuración.
 
 ### Configurar NutriBot con Gemini
