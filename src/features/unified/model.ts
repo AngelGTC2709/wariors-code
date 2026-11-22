@@ -13,15 +13,20 @@ export type NutriUser = {
 
 export type NutriChild = {
   id: string;
+  databaseChildId?: number;
   nombre: string;
   genero: ChildTheme;
   peso: string;
   altura: string;
   edad?: string;
+  nacimiento?: string;
   alergias: string[];
   noGusta: string[];
   otrasAlergias: string;
   otrosNoGusta: string;
+  gusta?: string[];
+  otrosGusta?: string;
+  dictamen?: 'sano' | 'sobrepeso' | 'obesidad' | 'prediabetes' | 'diabetes2';
 };
 
 export type NutriData = {
@@ -106,6 +111,39 @@ export type WeeklyMeals = {
   cena: string | null;
 };
 
+// Gestión por perfil (todos los perfiles del tutor, sin depender de la tabla `hijos`).
+// Los retos y recompensas se definen en Supabase; aquí se guarda a quién aplican y su avance.
+export type FamilyAssignmentStatus = 'asignado' | 'completado' | 'verificado' | 'rechazado';
+export type FamilyAssignment = {
+  id: string;
+  challengeId: number;
+  progressKey: string;
+  status: FamilyAssignmentStatus;
+  assignedAt: string;
+  updatedAt: string;
+  pointsAwarded?: number;
+};
+export type RewardRequestStatus = 'solicitado' | 'entregado' | 'cancelado';
+export type RewardRequest = {
+  id: string;
+  rewardId: number;
+  progressKey: string;
+  cost: number;
+  status: RewardRequestStatus;
+  requestedAt: string;
+  updatedAt: string;
+};
+export type MealPlanMeal = 'desayuno' | 'colacion' | 'comida' | 'cena';
+export type MealPlanRecipe = { date: string; meal: MealPlanMeal; recipeId: number };
+export type FamilyMealPlan = {
+  id: string;
+  progressKey: string;
+  calories: number;
+  starts: string;
+  ends: string;
+  recipes: MealPlanRecipe[];
+};
+
 export type UnifiedData = {
   version: 1;
   nutribot: NutriData;
@@ -120,6 +158,12 @@ export type UnifiedData = {
   missionClaims: Record<string, Record<string, string[]>>;
   tutorPin: string | null;
   progressSharingEnabled: boolean;
+  soundEnabled?: boolean;
+  /** Apariencia: 'light' (por defecto), 'dark' o 'system' (según el teléfono). */
+  themeMode?: 'system' | 'light' | 'dark';
+  familyAssignments?: FamilyAssignment[];
+  rewardRequests?: RewardRequest[];
+  mealPlans?: FamilyMealPlan[];
 };
 
 export const NUTRI_STORAGE_KEY = 'nutribot-familiar-local-v1';
@@ -176,15 +220,22 @@ function isNutriChild(value: unknown): value is NutriChild {
   if (!isRecord(value)) return false;
   return (
     typeof value.id === 'string' &&
+    (value.databaseChildId === undefined ||
+      (typeof value.databaseChildId === 'number' && Number.isSafeInteger(value.databaseChildId) && value.databaseChildId > 0)) &&
     typeof value.nombre === 'string' &&
     (value.genero === 'nina' || value.genero === 'nino') &&
     typeof value.peso === 'string' &&
     typeof value.altura === 'string' &&
     (value.edad === undefined || typeof value.edad === 'string') &&
+    (value.nacimiento === undefined || typeof value.nacimiento === 'string') &&
     isStringArray(value.alergias) &&
     isStringArray(value.noGusta) &&
     typeof value.otrasAlergias === 'string' &&
-    typeof value.otrosNoGusta === 'string'
+    typeof value.otrosNoGusta === 'string' &&
+    (value.gusta === undefined || isStringArray(value.gusta)) &&
+    (value.otrosGusta === undefined || typeof value.otrosGusta === 'string') &&
+    (value.dictamen === undefined || value.dictamen === 'sano' || value.dictamen === 'sobrepeso' ||
+      value.dictamen === 'obesidad' || value.dictamen === 'prediabetes' || value.dictamen === 'diabetes2')
   );
 }
 
@@ -272,7 +323,8 @@ function isAvatarSelection(value: unknown): value is AvatarSelection {
   if (!isRecord(value)) return false;
   return AVATAR_CATEGORIES.every(category => {
     const index = value[category];
-    return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index <= 5;
+    // El catálogo del avatar (avatar.tsx) crece agregando elementos al final; 15 deja margen.
+    return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index <= 15;
   });
 }
 
@@ -319,6 +371,48 @@ function isChildProgress(value: unknown): value is ChildProgress {
   );
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const isSafeCount = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+function isFamilyAssignment(value: unknown): value is FamilyAssignment {
+  return isRecord(value) &&
+    typeof value.id === 'string' &&
+    isSafeCount(value.challengeId) &&
+    typeof value.progressKey === 'string' &&
+    ['asignado', 'completado', 'verificado', 'rechazado'].includes(value.status as string) &&
+    typeof value.assignedAt === 'string' &&
+    typeof value.updatedAt === 'string' &&
+    (value.pointsAwarded === undefined || isSafeCount(value.pointsAwarded));
+}
+
+function isRewardRequest(value: unknown): value is RewardRequest {
+  return isRecord(value) &&
+    typeof value.id === 'string' &&
+    isSafeCount(value.rewardId) &&
+    typeof value.progressKey === 'string' &&
+    isSafeCount(value.cost) &&
+    ['solicitado', 'entregado', 'cancelado'].includes(value.status as string) &&
+    typeof value.requestedAt === 'string' &&
+    typeof value.updatedAt === 'string';
+}
+
+function isFamilyMealPlan(value: unknown): value is FamilyMealPlan {
+  return isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.progressKey === 'string' &&
+    isSafeCount(value.calories) &&
+    typeof value.starts === 'string' && ISO_DATE.test(value.starts) &&
+    typeof value.ends === 'string' && ISO_DATE.test(value.ends) &&
+    Array.isArray(value.recipes) &&
+    value.recipes.every(recipe => isRecord(recipe) &&
+      typeof recipe.date === 'string' && ISO_DATE.test(recipe.date) &&
+      ['desayuno', 'colacion', 'comida', 'cena'].includes(recipe.meal as string) &&
+      isSafeCount(recipe.recipeId));
+}
+
+const isOptionalList = <T,>(value: unknown, check: (item: unknown) => item is T) =>
+  value === undefined || (Array.isArray(value) && value.every(check));
+
 export function isUnifiedData(value: unknown): value is UnifiedData {
   if (!isRecord(value)) return false;
   if (!(
@@ -346,7 +440,12 @@ export function isUnifiedData(value: unknown): value is UnifiedData {
       dates => isRecord(dates) && Object.values(dates).every(isStringArray),
     ) &&
     (value.tutorPin === null || (typeof value.tutorPin === 'string' && /^\d{4,6}$/.test(value.tutorPin))) &&
-    typeof value.progressSharingEnabled === 'boolean'
+    typeof value.progressSharingEnabled === 'boolean' &&
+    (value.soundEnabled === undefined || typeof value.soundEnabled === 'boolean') &&
+    (value.themeMode === undefined || value.themeMode === 'system' || value.themeMode === 'light' || value.themeMode === 'dark') &&
+    isOptionalList(value.familyAssignments, isFamilyAssignment) &&
+    isOptionalList(value.rewardRequests, isRewardRequest) &&
+    isOptionalList(value.mealPlans, isFamilyMealPlan)
   )) return false;
 
   const nutriIds = new Set(value.nutribot.ninos.map(child => child.id));
@@ -454,6 +553,45 @@ function accountsFromSources(nutri: NutriData, warrior: WarriorData): LocalAccou
   return accounts;
 }
 
+export function createEmptyUnifiedData(account: LocalAccount): UnifiedData {
+  const nutribot: NutriData = {
+    ...EMPTY_NUTRI_DATA,
+    usuarios: [{ nombre: account.name, correo: account.email, rol: 'tutor' }],
+  };
+  const warriorKids: WarriorData = {
+    ...EMPTY_WARRIOR_DATA,
+    tutor: { name: account.name, email: account.email },
+  };
+
+  return {
+    version: 1,
+    nutribot,
+    warriorKids,
+    accounts: [account],
+    profileLinks: [],
+    archivedProfiles: [],
+    weeklyMeals: initialWeeklyMeals(warriorKids),
+    avatarSelections: {},
+    dailyLogs: {},
+    childProgress: {},
+    missionClaims: {},
+    tutorPin: null,
+    progressSharingEnabled: true,
+    soundEnabled: false,
+    familyAssignments: [],
+    rewardRequests: [],
+    mealPlans: [],
+  };
+}
+
+export async function clearLegacyLocalData(): Promise<void> {
+  await AsyncStorage.multiRemove([
+    NUTRI_STORAGE_KEY,
+    WARRIOR_STORAGE_KEY,
+    UNIFIED_STORAGE_KEY,
+  ]);
+}
+
 export async function loadUnifiedData(): Promise<{ data: UnifiedData; migrated: boolean }> {
   const existing = await AsyncStorage.getItem(UNIFIED_STORAGE_KEY);
   if (existing !== null) {
@@ -493,6 +631,7 @@ export async function loadUnifiedData(): Promise<{ data: UnifiedData; migrated: 
       missionClaims: {},
       tutorPin: null,
       progressSharingEnabled: true,
+      soundEnabled: false,
     },
     migrated: true,
   };

@@ -1,9 +1,74 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
+import type { Icon as PhosphorIcon, IconWeight } from 'phosphor-react-native';
+// Cada ícono se importa por su ruta para no meter los ~1,500 de Phosphor al bundle.
+import { ArrowLeftIcon } from 'phosphor-react-native/src/icons/ArrowLeft';
+import { ArrowRightIcon } from 'phosphor-react-native/src/icons/ArrowRight';
+import { BabyIcon } from 'phosphor-react-native/src/icons/Baby';
+import { BarbellIcon } from 'phosphor-react-native/src/icons/Barbell';
+import { BellIcon } from 'phosphor-react-native/src/icons/Bell';
+import { BowlFoodIcon } from 'phosphor-react-native/src/icons/BowlFood';
+import { BreadIcon } from 'phosphor-react-native/src/icons/Bread';
+import { CalendarBlankIcon } from 'phosphor-react-native/src/icons/CalendarBlank';
+import { CaretDoubleLeftIcon } from 'phosphor-react-native/src/icons/CaretDoubleLeft';
+import { CaretDoubleRightIcon } from 'phosphor-react-native/src/icons/CaretDoubleRight';
+import { CaretLeftIcon } from 'phosphor-react-native/src/icons/CaretLeft';
+import { CaretRightIcon } from 'phosphor-react-native/src/icons/CaretRight';
+import { LightningIcon } from 'phosphor-react-native/src/icons/Lightning';
+import { FireIcon } from 'phosphor-react-native/src/icons/Fire';
+import { CloudRainIcon } from 'phosphor-react-native/src/icons/CloudRain';
+import { MoonStarsIcon } from 'phosphor-react-native/src/icons/MoonStars';
+import { ConfettiIcon } from 'phosphor-react-native/src/icons/Confetti';
+import { SunIcon } from 'phosphor-react-native/src/icons/Sun';
+import { CalendarIcon } from 'phosphor-react-native/src/icons/Calendar';
+import { CameraIcon } from 'phosphor-react-native/src/icons/Camera';
+import { CarrotIcon } from 'phosphor-react-native/src/icons/Carrot';
+import { ChartBarIcon } from 'phosphor-react-native/src/icons/ChartBar';
+import { CheckIcon } from 'phosphor-react-native/src/icons/Check';
+import { CheckCircleIcon } from 'phosphor-react-native/src/icons/CheckCircle';
+import { DropIcon } from 'phosphor-react-native/src/icons/Drop';
+import { EggIcon } from 'phosphor-react-native/src/icons/Egg';
+import { ForkKnifeIcon } from 'phosphor-react-native/src/icons/ForkKnife';
+import { GearIcon } from 'phosphor-react-native/src/icons/Gear';
+import { GrainsIcon } from 'phosphor-react-native/src/icons/Grains';
+import { HeartIcon } from 'phosphor-react-native/src/icons/Heart';
+import { HouseIcon } from 'phosphor-react-native/src/icons/House';
+import { ImageIcon } from 'phosphor-react-native/src/icons/Image';
+import { LeafIcon } from 'phosphor-react-native/src/icons/Leaf';
+import { LinkIcon } from 'phosphor-react-native/src/icons/Link';
+import { LockIcon } from 'phosphor-react-native/src/icons/Lock';
+import { MagnifyingGlassIcon } from 'phosphor-react-native/src/icons/MagnifyingGlass';
+import { MoonIcon } from 'phosphor-react-native/src/icons/Moon';
+import { MusicNoteIcon } from 'phosphor-react-native/src/icons/MusicNote';
+import { PackageIcon } from 'phosphor-react-native/src/icons/Package';
+import { PaletteIcon } from 'phosphor-react-native/src/icons/Palette';
+import { PaperPlaneRightIcon } from 'phosphor-react-native/src/icons/PaperPlaneRight';
+import { PauseIcon } from 'phosphor-react-native/src/icons/Pause';
+import { PawPrintIcon } from 'phosphor-react-native/src/icons/PawPrint';
+import { PencilSimpleIcon } from 'phosphor-react-native/src/icons/PencilSimple';
+import { PersonSimpleRunIcon } from 'phosphor-react-native/src/icons/PersonSimpleRun';
+import { PlusIcon } from 'phosphor-react-native/src/icons/Plus';
+import { QuestionIcon } from 'phosphor-react-native/src/icons/Question';
+import { RepeatIcon } from 'phosphor-react-native/src/icons/Repeat';
+import { RulerIcon } from 'phosphor-react-native/src/icons/Ruler';
+import { ScalesIcon } from 'phosphor-react-native/src/icons/Scales';
+import { ShieldIcon } from 'phosphor-react-native/src/icons/Shield';
+import { SmileyIcon } from 'phosphor-react-native/src/icons/Smiley';
+import { SparkleIcon } from 'phosphor-react-native/src/icons/Sparkle';
+import { StarIcon } from 'phosphor-react-native/src/icons/Star';
+import { TreeIcon } from 'phosphor-react-native/src/icons/Tree';
+import { TrophyIcon } from 'phosphor-react-native/src/icons/Trophy';
+import { UserCircleIcon } from 'phosphor-react-native/src/icons/UserCircle';
+import { UsersThreeIcon } from 'phosphor-react-native/src/icons/UsersThree';
+import { WarningIcon } from 'phosphor-react-native/src/icons/Warning';
+import { WavesIcon } from 'phosphor-react-native/src/icons/Waves';
+import { XIcon } from 'phosphor-react-native/src/icons/X';
 
-import { COLORS } from './constants';
+import { AVATAR_BACKGROUNDS, AvatarFigure } from './avatar';
+import { AnimatedPress } from './motion';
+import { COLORS, colorsFor, useColors } from './constants';
+import { BORDER, RADIUS, SHADOW, SPACE, tint, sharedFor, themesFor, type ThemeMode, useShared, useThemeMode } from './tokens';
 
 export type AppIconName =
   | 'home'
@@ -38,45 +103,105 @@ export type AppIconName =
   | 'check'
   | 'scale'
   | 'height'
+  | 'heart'
   | 'sparkles'
-  | 'leaf';
+  | 'leaf'
+  | 'music'
+  | 'paw'
+  | 'forest'
+  | 'dumbbell'
+  | 'waves'
+  | 'pause'
+  | 'repeat'
+  | 'lock'
+  | 'chest'
+  | 'chart'
+  | 'bell'
+  | 'shield'
+  | 'cereal'
+  | 'legume'
+  | 'produce'
+  | 'animal'
+  | 'sun'
+  | 'confetti'
+  | 'moonStars'
+  | 'cloudRain'
+  | 'fire'
+  | 'lightning'
+  | 'calendar'
+  | 'chevronLeft'
+  | 'chevronRight'
+  | 'chevronsLeft'
+  | 'chevronsRight';
 
-const ICON_SYMBOLS = {
-  home: { ios: 'house.fill', android: 'home', web: 'home' },
-  recipes: { ios: 'fork.knife', android: 'restaurant', web: 'restaurant' },
-  menu: { ios: 'calendar', android: 'calendar_month', web: 'calendar_month' },
-  settings: { ios: 'gearshape.fill', android: 'settings', web: 'settings' },
-  help: { ios: 'questionmark.circle', android: 'help', web: 'help' },
-  achievements: { ios: 'trophy.fill', android: 'emoji_events', web: 'emoji_events' },
-  points: { ios: 'star.fill', android: 'stars', web: 'stars' },
-  water: { ios: 'drop.fill', android: 'water_drop', web: 'water_drop' },
-  food: { ios: 'leaf.fill', android: 'nutrition', web: 'nutrition' },
-  mood: { ios: 'face.smiling', android: 'sentiment_satisfied', web: 'sentiment_satisfied' },
-  sleep: { ios: 'bed.double.fill', android: 'bedtime', web: 'bedtime' },
-  activity: { ios: 'figure.run', android: 'directions_run', web: 'directions_run' },
-  avatar: { ios: 'paintpalette.fill', android: 'palette', web: 'palette' },
-  profile: { ios: 'person.crop.circle.fill', android: 'face_3', web: 'face_3' },
-  tutor: { ios: 'person.2.fill', android: 'family_restroom', web: 'family_restroom' },
-  child: { ios: 'figure.child', android: 'child_care', web: 'child_care' },
-  add: { ios: 'plus', android: 'add', web: 'add' },
-  edit: { ios: 'pencil', android: 'edit', web: 'edit' },
-  link: { ios: 'link', android: 'link', web: 'link' },
-  pin: { ios: 'lock.fill', android: 'lock', web: 'lock' },
-  logout: { ios: 'arrow.left', android: 'arrow_back', web: 'arrow_back' },
-  next: { ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' },
-  camera: { ios: 'camera', android: 'photo_camera', web: 'photo_camera' },
-  gallery: { ios: 'photo', android: 'image', web: 'image' },
-  send: { ios: 'paperplane.fill', android: 'send', web: 'send' },
-  save: { ios: 'checkmark', android: 'done', web: 'done' },
-  close: { ios: 'xmark', android: 'close', web: 'close' },
-  warning: { ios: 'exclamationmark.triangle.fill', android: 'warning', web: 'warning' },
-  search: { ios: 'magnifyingglass', android: 'search', web: 'search' },
-  check: { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' },
-  scale: { ios: 'scalemass.fill', android: 'scale', web: 'scale' },
-  height: { ios: 'ruler', android: 'straighten', web: 'straighten' },
-  sparkles: { ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' },
-  leaf: { ios: 'leaf.fill', android: 'nutrition', web: 'nutrition' },
-} as const satisfies Record<AppIconName, SymbolViewProps['name']>;
+// Íconos Phosphor: duotone en el modo Niñez y regular en el modo Tutor (ver IconWeightContext).
+const ICONS: Record<AppIconName, PhosphorIcon> = {
+  home: HouseIcon,
+  recipes: ForkKnifeIcon,
+  menu: CalendarIcon,
+  settings: GearIcon,
+  help: QuestionIcon,
+  achievements: TrophyIcon,
+  points: StarIcon,
+  water: DropIcon,
+  food: BowlFoodIcon,
+  mood: SmileyIcon,
+  sleep: MoonIcon,
+  activity: PersonSimpleRunIcon,
+  avatar: PaletteIcon,
+  profile: UserCircleIcon,
+  tutor: UsersThreeIcon,
+  child: BabyIcon,
+  add: PlusIcon,
+  edit: PencilSimpleIcon,
+  link: LinkIcon,
+  pin: LockIcon,
+  logout: ArrowLeftIcon,
+  next: ArrowRightIcon,
+  camera: CameraIcon,
+  gallery: ImageIcon,
+  send: PaperPlaneRightIcon,
+  save: CheckIcon,
+  close: XIcon,
+  warning: WarningIcon,
+  search: MagnifyingGlassIcon,
+  check: CheckCircleIcon,
+  scale: ScalesIcon,
+  height: RulerIcon,
+  heart: HeartIcon,
+  sparkles: SparkleIcon,
+  leaf: LeafIcon,
+  music: MusicNoteIcon,
+  paw: PawPrintIcon,
+  forest: TreeIcon,
+  dumbbell: BarbellIcon,
+  waves: WavesIcon,
+  pause: PauseIcon,
+  repeat: RepeatIcon,
+  lock: LockIcon,
+  chest: PackageIcon,
+  chart: ChartBarIcon,
+  bell: BellIcon,
+  shield: ShieldIcon,
+  cereal: BreadIcon,
+  legume: GrainsIcon,
+  produce: CarrotIcon,
+  animal: EggIcon,
+  sun: SunIcon,
+  confetti: ConfettiIcon,
+  moonStars: MoonStarsIcon,
+  cloudRain: CloudRainIcon,
+  fire: FireIcon,
+  lightning: LightningIcon,
+  calendar: CalendarBlankIcon,
+  chevronLeft: CaretLeftIcon,
+  chevronRight: CaretRightIcon,
+  chevronsLeft: CaretDoubleLeftIcon,
+  chevronsRight: CaretDoubleRightIcon,
+};
+
+/** Estilo de los íconos de la pantalla: 'duotone' en Niñez, 'regular' en Tutor. */
+export const IconWeightContext = createContext<IconWeight>('regular');
 
 const EMOJI_ICON_PREFIXES: [string, AppIconName][] = [
   ['⚠️', 'warning'],
@@ -116,16 +241,32 @@ const EMOJI_ICON_PREFIXES: [string, AppIconName][] = [
   ['🔗', 'link'],
 ];
 
+/**
+ * Ícono de la app (Phosphor). Sin `label` es decorativo y queda oculto para lectores de pantalla
+ * (el texto de al lado ya lo describe); con `label` se anuncia como imagen.
+ */
 export function Icon({
   name,
   size = 18,
   color = COLORS.blue,
+  label,
 }: {
   name: AppIconName;
   size?: number;
   color?: string;
+  label?: string;
 }) {
-  return <SymbolView name={ICON_SYMBOLS[name]} size={size} tintColor={color} />;
+  const weight = useContext(IconWeightContext);
+  const Glyph = ICONS[name];
+  const glyph = <Glyph size={size} color={color} weight={weight} duotoneColor={color} />;
+  if (label) {
+    return <View accessible accessibilityRole="image" accessibilityLabel={label}>{glyph}</View>;
+  }
+  return (
+    <View aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {glyph}
+    </View>
+  );
 }
 
 export function AvatarIllustration({
@@ -137,116 +278,29 @@ export function AvatarIllustration({
   selection?: { piel: number; cabello: number; ropa: number; accesorio: number; fondo: number };
   size?: 'large' | 'small';
 }) {
-  const scale = size === 'small' ? 0.62 : 1;
-  const skinColors = ['#F8D5B8', '#E6B98E', '#C88C61', '#A96845', '#805137', '#57392E'];
-  const hairColors = ['#6F4939', '#B45D3D', '#302B32', '#D6C49A', '#784AA8', '#1C1B20'];
-  const clothingColors = ['#E66B9A', '#805AD5', '#2B6CB0', '#48A878', '#ED8936', '#344255'];
-  const backgroundColors = ['#FFF0F5', '#F0FAF5', '#EAF4FF', '#F0EEFF', '#FFFBEA', '#F5F0FF'];
-  const skin = skinColors[selection?.piel ?? 0] ?? skinColors[0];
-  const hair = hairColors[selection?.cabello ?? 0] ?? hairColors[0];
-  const clothing = clothingColors[selection?.ropa ?? (theme === 'nina' ? 0 : 2)] ?? clothingColors[0];
-  const background = backgroundColors[selection?.fondo ?? (theme === 'nina' ? 0 : 2)] ?? backgroundColors[0];
+  const fallback = { piel: 0, cabello: theme === 'nina' ? 1 : 0, ropa: theme === 'nina' ? 0 : 2, accesorio: 0, fondo: theme === 'nina' ? 0 : 2 };
+  const current = selection ?? fallback;
+  const background = AVATAR_BACKGROUNDS[current.fondo] ?? AVATAR_BACKGROUNDS[0];
   const dimension = size === 'small' ? 52 : 88;
 
   return (
     <View
+      accessible
+      accessibilityRole="image"
       accessibilityLabel="Avatar ilustrado"
       style={{
         width: dimension,
         height: dimension,
         borderRadius: dimension / 2,
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'flex-end',
         backgroundColor: background,
         borderWidth: 2,
         borderColor: theme === 'nina' ? '#F4A0B8' : '#8BBFE8',
         overflow: 'hidden',
       }}
     >
-      <View
-        style={{
-          position: 'absolute',
-          bottom: -5 * scale,
-          width: 52 * scale,
-          height: 36 * scale,
-          borderTopLeftRadius: 28 * scale,
-          borderTopRightRadius: 28 * scale,
-          backgroundColor: clothing,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          top: 17 * scale,
-          width: 8 * scale,
-          height: 12 * scale,
-          borderRadius: 6 * scale,
-          backgroundColor: skin,
-          left: 17 * scale,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          top: 17 * scale,
-          width: 8 * scale,
-          height: 12 * scale,
-          borderRadius: 6 * scale,
-          backgroundColor: skin,
-          right: 17 * scale,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          top: 8 * scale,
-          width: 41 * scale,
-          height: 45 * scale,
-          borderRadius: 22 * scale,
-          backgroundColor: skin,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          top: 7 * scale,
-          width: 44 * scale,
-          height: 23 * scale,
-          borderTopLeftRadius: 24 * scale,
-          borderTopRightRadius: 24 * scale,
-          borderBottomRightRadius: 12 * scale,
-          borderBottomLeftRadius: 12 * scale,
-          backgroundColor: hair,
-        }}
-      />
-      <View style={{ position: 'absolute', top: 33 * scale, flexDirection: 'row', gap: 12 * scale }}>
-        <View style={{ width: 3 * scale, height: 3 * scale, borderRadius: 2 * scale, backgroundColor: '#302B32' }} />
-        <View style={{ width: 3 * scale, height: 3 * scale, borderRadius: 2 * scale, backgroundColor: '#302B32' }} />
-      </View>
-      <View
-        style={{
-          position: 'absolute',
-          top: 42 * scale,
-          width: 9 * scale,
-          height: 4 * scale,
-          borderBottomWidth: 1.5 * scale,
-          borderColor: '#9B514D',
-          borderRadius: 8 * scale,
-        }}
-      />
-      {selection ? (
-        <View
-          style={{
-            position: 'absolute',
-            right: 8 * scale,
-            top: 7 * scale,
-            width: 10 * scale,
-            height: 10 * scale,
-            borderRadius: 5 * scale,
-            backgroundColor: theme === 'nina' ? COLORS.pink : COLORS.yellow,
-          }}
-        />
-      ) : null}
+      <AvatarFigure selection={current} variant="bust" width={dimension - 4} />
     </View>
   );
 }
@@ -257,120 +311,96 @@ export const TYPE = {
   body: 'PlusJakartaSans_400Regular',
   medium: 'PlusJakartaSans_600SemiBold',
   bold: 'PlusJakartaSans_700Bold',
-  extraBold: 'PlusJakartaSans_800ExtraBold',
 } as const;
 
-export const styles = StyleSheet.create({
+// Estilos en versión clara y oscura; los componentes toman la del modo actual.
+function createUiStyles(mode: ThemeMode) {
+  const COLORS = colorsFor(mode);
+  const SHARED = sharedFor(mode);
+  const THEMES = themesFor(mode);
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
-  page: { flex: 1, backgroundColor: COLORS.background },
   shell: { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', backgroundColor: COLORS.background },
   authRoot: { flex: 1, backgroundColor: COLORS.navy, justifyContent: 'center' },
-  authScroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 22, paddingVertical: 36 },
-  brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 26 },
-  brandMark: { width: 52, height: 52, borderRadius: 16, backgroundColor: COLORS.blue, alignItems: 'center', justifyContent: 'center' },
+  authScroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: SPACE[20], paddingVertical: SPACE[36] },
+  brandLockup: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12], marginBottom: SPACE[24] },
+  brandMark: { width: 52, height: 52, borderRadius: RADIUS.md, backgroundColor: COLORS.blue, alignItems: 'center', justifyContent: 'center' },
   brandTitle: { color: COLORS.white, fontFamily: TYPE.display, fontSize: 25, lineHeight: 30 },
-  brandCaption: { color: '#A8B4C7', fontFamily: TYPE.medium, fontSize: 10, letterSpacing: 1.4, marginTop: 2 },
+  brandCaption: { color: tint(COLORS.white, 0.66), fontFamily: TYPE.medium, fontSize: 10, letterSpacing: 1.4, marginTop: SPACE[4] },
   authTitle: { color: COLORS.white, fontFamily: TYPE.display, fontSize: 32, lineHeight: 38 },
-  authSubtitle: { color: '#B8C2D3', fontFamily: TYPE.body, fontSize: 13, lineHeight: 20, marginTop: 7, marginBottom: 22 },
-  authCard: { backgroundColor: COLORS.white, borderRadius: 24, padding: 18, gap: 14 },
-  authNotice: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 15 },
-  roleRow: { flexDirection: 'row', backgroundColor: '#EDF2F7', padding: 4, borderRadius: 17, gap: 4 },
-  roleChoice: { flex: 1, minHeight: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  authSubtitle: { color: tint(COLORS.white, 0.72), fontFamily: TYPE.body, fontSize: 13, lineHeight: 20, marginTop: SPACE[8], marginBottom: SPACE[20] },
+  authCard: { backgroundColor: COLORS.white, borderRadius: RADIUS.tarjeta, padding: SPACE[16], gap: SPACE[14] },
+  authNotice: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: SPACE[16] },
+  roleRow: { flexDirection: 'row', backgroundColor: SHARED.apagada, padding: SPACE[4], borderRadius: RADIUS.md, gap: SPACE[4] },
+  roleChoice: { flex: 1, minHeight: 44, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: SPACE[4] },
   roleChoiceActive: { backgroundColor: COLORS.white, shadowColor: COLORS.navy, shadowOpacity: 0.09, shadowRadius: 8, elevation: 2 },
   roleChoiceText: { color: COLORS.muted, fontFamily: TYPE.medium, fontSize: 12 },
   roleChoiceTextActive: { color: COLORS.ink, fontFamily: TYPE.bold },
-  inputGroup: { gap: 6 },
+  inputGroup: { gap: SPACE[4] },
   inputLabel: { color: COLORS.ink, fontFamily: TYPE.bold, fontSize: 11 },
-  input: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.white, paddingHorizontal: 13, color: COLORS.ink, fontFamily: TYPE.body, fontSize: 13 },
-  inputFocused: { borderColor: COLORS.blue },
-  inputError: { borderColor: COLORS.error },
+  input: { minHeight: 48, borderRadius: RADIUS.sm, borderWidth: BORDER.fino, borderColor: COLORS.line, backgroundColor: COLORS.white, paddingHorizontal: SPACE[14], color: COLORS.ink, fontFamily: TYPE.body, fontSize: 13 },
+  inputError: { borderColor: SHARED.error },
   fieldHint: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 10, lineHeight: 15 },
-  errorText: { color: COLORS.error, fontFamily: TYPE.medium, fontSize: 11, lineHeight: 16 },
-  button: { minHeight: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15, paddingVertical: 11, flexDirection: 'row', gap: 8 },
+  errorText: { color: SHARED.error, fontFamily: TYPE.medium, fontSize: 11, lineHeight: 16 },
+  button: { minHeight: 44, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACE[16], paddingVertical: SPACE[12], flexDirection: 'row', gap: SPACE[8] },
   buttonPrimary: { backgroundColor: COLORS.blue },
-  buttonSecondary: { backgroundColor: COLORS.paleBlue, borderWidth: 1, borderColor: '#C6D9F0' },
-  buttonOutline: { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.line },
-  buttonDanger: { backgroundColor: '#FFF5F5', borderWidth: 1, borderColor: '#FED7D7' },
+  buttonSecondary: { backgroundColor: COLORS.paleBlue, borderWidth: BORDER.fino, borderColor: SHARED.infoBorde },
+  buttonOutline: { backgroundColor: COLORS.white, borderWidth: BORDER.fino, borderColor: COLORS.line },
+  buttonDanger: { backgroundColor: SHARED.errorFondo, borderWidth: BORDER.fino, borderColor: SHARED.errorBorde },
   buttonSuccess: { backgroundColor: COLORS.green },
   buttonDisabled: { opacity: 0.45 },
-  buttonPressed: { opacity: 0.82, transform: [{ scale: 0.99 }] },
   buttonText: { color: COLORS.white, fontFamily: TYPE.bold, fontSize: 12, textAlign: 'center' },
   buttonTextSecondary: { color: COLORS.blueDeep },
   buttonTextOutline: { color: COLORS.ink },
   buttonTextDanger: { color: COLORS.error },
-  buttonSmall: { minHeight: 34, borderRadius: 11, paddingVertical: 7, paddingHorizontal: 10 },
+  buttonSmall: { minHeight: 44, minWidth: 44, borderRadius: RADIUS.sm, paddingVertical: SPACE[4], paddingHorizontal: SPACE[8] },
   buttonSmallText: { fontSize: 10 },
-  linkButton: { paddingVertical: 8, alignItems: 'center' },
+  linkButton: { minHeight: 44, paddingVertical: SPACE[8], alignItems: 'center', justifyContent: 'center' },
   linkText: { color: COLORS.blue, fontFamily: TYPE.bold, fontSize: 11 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.line },
-  headerBrand: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
-  headerMark: { width: 36, height: 36, borderRadius: 12, backgroundColor: COLORS.paleBlue, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { color: COLORS.ink, fontFamily: TYPE.heading, fontSize: 15 },
-  headerSub: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 9, marginTop: 1 },
-  roleSwitch: { flexDirection: 'row', backgroundColor: '#EDF2F7', padding: 3, borderRadius: 13 },
-  roleSwitchItem: { minWidth: 58, minHeight: 33, paddingHorizontal: 7, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  roleSwitchActive: { backgroundColor: COLORS.white, shadowColor: COLORS.navy, shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 },
-  roleSwitchText: { color: COLORS.muted, fontFamily: TYPE.medium, fontSize: 10 },
-  roleSwitchTextActive: { color: COLORS.blueDeep, fontFamily: TYPE.bold },
-  profileStrip: { backgroundColor: COLORS.white, paddingHorizontal: 16, paddingTop: 9, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: COLORS.line, flexDirection: 'row', gap: 8 },
-  profileChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 11, borderRadius: 16, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.white },
+  profileStripScroll: { flexGrow: 0, flexShrink: 0, backgroundColor: COLORS.white, borderBottomWidth: BORDER.fino, borderBottomColor: COLORS.line },
+  profileStrip: { paddingHorizontal: SPACE[16], paddingTop: SPACE[8], paddingBottom: SPACE[8], flexDirection: 'row', gap: SPACE[8] },
+  profileChip: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: SPACE[4], paddingVertical: SPACE[8], paddingHorizontal: SPACE[12], borderRadius: RADIUS.md, borderWidth: BORDER.fino, borderColor: COLORS.line, backgroundColor: COLORS.white },
   profileChipActive: { borderColor: COLORS.blue, backgroundColor: COLORS.paleBlue },
   profileChipText: { color: COLORS.ink, fontFamily: TYPE.medium, fontSize: 10 },
-  content: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 22, gap: 13 },
-  pageIntro: { marginBottom: 2 },
-  eyebrow: { color: COLORS.blue, fontFamily: TYPE.extraBold, fontSize: 9, letterSpacing: 1.4, textTransform: 'uppercase' },
-  title: { color: COLORS.ink, fontFamily: TYPE.display, fontSize: 27, lineHeight: 32, marginTop: 3 },
-  subtitle: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 12, lineHeight: 18, marginTop: 4 },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  content: { paddingHorizontal: SPACE[16], paddingTop: SPACE[16], paddingBottom: SPACE[24], gap: SPACE[12] },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACE[4] },
   sectionTitle: { color: COLORS.ink, fontFamily: TYPE.heading, fontSize: 17, lineHeight: 22 },
-  sectionHint: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 10, lineHeight: 15, marginTop: 2 },
-  card: { backgroundColor: COLORS.white, borderRadius: 20, padding: 15, borderWidth: 1, borderColor: COLORS.line, gap: 10, shadowColor: '#203047', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.035, shadowRadius: 10, elevation: 1 },
-  cardTight: { padding: 12, gap: 8 },
+  sectionHint: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 10, lineHeight: 15, marginTop: SPACE[4] },
+  card: { backgroundColor: COLORS.white, borderRadius: RADIUS.habito, padding: SPACE[16], borderWidth: BORDER.fino, borderColor: COLORS.line, gap: SPACE[12], ...SHADOW.habito },
+  cardTight: { padding: SPACE[12], gap: SPACE[8] },
   cardTitle: { color: COLORS.ink, fontFamily: TYPE.heading, fontSize: 15, lineHeight: 20 },
   body: { color: COLORS.ink, fontFamily: TYPE.body, fontSize: 12, lineHeight: 19 },
   muted: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 10, lineHeight: 16 },
-  horizontal: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  horizontal: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
+  between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE[8] },
   flex: { flex: 1 },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  pill: { alignSelf: 'flex-start', borderRadius: 30, paddingHorizontal: 9, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[8] },
+  pill: { alignSelf: 'flex-start', borderRadius: RADIUS.pildora, paddingHorizontal: SPACE[8], paddingVertical: SPACE[4], flexDirection: 'row', alignItems: 'center', gap: SPACE[4] },
   pillText: { color: COLORS.ink, fontFamily: TYPE.bold, fontSize: 9 },
-  tabRow: { flexDirection: 'row', gap: 7, paddingVertical: 3 },
-  tabChip: { borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.white, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
-  tabChipActive: { backgroundColor: COLORS.blue, borderColor: COLORS.blue },
-  tabChipText: { color: COLORS.muted, fontFamily: TYPE.medium, fontSize: 10 },
-  tabChipTextActive: { color: COLORS.white, fontFamily: TYPE.bold },
-  meterTrack: { height: 8, backgroundColor: '#EDF2F7', borderRadius: 20, overflow: 'hidden' },
-  meterFill: { height: '100%', borderRadius: 20 },
-  metricCard: { flex: 1, minWidth: '46%', padding: 12, borderRadius: 17, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.white, gap: 5 },
-  metricValue: { color: COLORS.ink, fontFamily: TYPE.heading, fontSize: 19 },
-  metricLabel: { color: COLORS.muted, fontFamily: TYPE.medium, fontSize: 9 },
-  metricIcon: { fontSize: 18 },
-  avatarCircle: { width: 74, height: 74, borderRadius: 37, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.paleBlue, borderWidth: 2, borderColor: '#BEE3F8', overflow: 'hidden' },
-  nav: { flexDirection: 'row', backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.line, paddingTop: 7, paddingBottom: 7, paddingHorizontal: 5 },
-  navItem: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 14 },
-  navItemActive: { backgroundColor: COLORS.paleBlue },
-  navLabel: { color: COLORS.muted, fontFamily: TYPE.medium, fontSize: 8 },
-  navLabelActive: { color: COLORS.blueDeep, fontFamily: TYPE.bold },
-  divider: { height: 1, backgroundColor: COLORS.line, marginVertical: 4 },
-  emptyState: { alignItems: 'center', paddingVertical: 20, gap: 8 },
-  banner: { borderRadius: 14, padding: 11, backgroundColor: COLORS.paleBlue, borderWidth: 1, borderColor: '#C6D9F0', gap: 4 },
+  meterTrack: { height: 8, backgroundColor: SHARED.apagada, borderRadius: RADIUS.pildora, overflow: 'hidden' },
+  meterFill: { height: '100%', borderRadius: RADIUS.pildora },
+  divider: { height: BORDER.fino, backgroundColor: COLORS.line, marginVertical: SPACE[4] },
+  emptyState: { alignItems: 'center', paddingVertical: SPACE[20], gap: SPACE[8] },
+  banner: { borderRadius: RADIUS.sm, padding: SPACE[12], backgroundColor: COLORS.paleBlue, borderWidth: BORDER.fino, borderColor: SHARED.infoBorde, gap: SPACE[4] },
   bannerText: { color: COLORS.blueDeep, fontFamily: TYPE.medium, fontSize: 10, lineHeight: 16 },
-  overlay: { flex: 1, backgroundColor: 'rgba(20, 31, 48, 0.55)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: COLORS.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, paddingBottom: 30, maxHeight: '90%' },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  overlay: { flex: 1, backgroundColor: SHARED.fondoModal, justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: COLORS.background, borderTopLeftRadius: RADIUS.hero, borderTopRightRadius: RADIUS.hero, padding: SPACE[20], paddingBottom: SPACE[24], maxHeight: '90%' },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACE[12] },
   modalTitle: { color: COLORS.ink, fontFamily: TYPE.heading, fontSize: 19, flex: 1 },
-  close: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: COLORS.white },
-  imagePreview: { width: '100%', height: 190, borderRadius: 14, backgroundColor: '#EDF2F7' },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.line },
-  profileAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.paleBlue },
-  statusDot: { width: 9, height: 9, borderRadius: 5 },
-  notice: { padding: 11, borderRadius: 13, backgroundColor: COLORS.paleOrange, borderWidth: 1, borderColor: '#FEEBC8' },
-  noticeText: { color: '#744210', fontFamily: TYPE.medium, fontSize: 10, lineHeight: 16 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
-  spinnerText: { color: COLORS.muted, fontFamily: TYPE.medium, fontSize: 12 },
-  footer: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 9, textAlign: 'center', lineHeight: 14, marginTop: 4 },
-});
+  close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.pildora, backgroundColor: COLORS.white },
+  imagePreview: { width: '100%', height: 190, borderRadius: RADIUS.sm, backgroundColor: SHARED.apagada },
+  profileRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12], paddingVertical: SPACE[8], borderBottomWidth: BORDER.fino, borderBottomColor: COLORS.line },
+  profileAvatar: { width: 38, height: 38, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.paleBlue },
+  notice: { padding: SPACE[12], borderRadius: RADIUS.sm, backgroundColor: COLORS.paleOrange, borderWidth: BORDER.fino, borderColor: tint(THEMES.tutor.acento, 0.3) },
+  noticeText: { color: THEMES.tutor.texto, fontFamily: TYPE.medium, fontSize: 10, lineHeight: 16 },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACE[12], padding: SPACE[24] },
+  footer: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 9, textAlign: 'center', lineHeight: 14, marginTop: SPACE[4] },
+  });
+}
+export const UI_STYLES = { light: createUiStyles('light'), dark: createUiStyles('dark'), darkNina: createUiStyles('darkNina') };
+export function useUiStyles() {
+  return UI_STYLES[useThemeMode()];
+}
 
 export function Card({
   children,
@@ -379,6 +409,7 @@ export function Card({
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
@@ -396,12 +427,15 @@ export function Field({
   error?: string;
   hint?: string;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
+  const SHARED = useShared();
   return (
     <View style={[styles.inputGroup, style]}>
       <Text style={styles.inputLabel}>{label}</Text>
       <TextInput
         {...props}
-        placeholderTextColor="#8A97A8"
+        accessibilityLabel={props.accessibilityLabel ?? label}
+        placeholderTextColor={SHARED.textoInactivo}
         style={[styles.input, error && styles.inputError, inputStyle]}
       />
       {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
@@ -418,6 +452,7 @@ export function Button({
   disabled = false,
   icon,
   style,
+  accessibilityLabel,
 }: {
   title: string;
   onPress: () => void;
@@ -426,7 +461,10 @@ export function Button({
   disabled?: boolean;
   icon?: AppIconName;
   style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
+  const COLORS = useColors();
   const variantStyle = {
     primary: styles.buttonPrimary,
     secondary: styles.buttonSecondary,
@@ -450,23 +488,21 @@ export function Button({
         : COLORS.ink;
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
+    <AnimatedPress
+      label={accessibilityLabel ?? title}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
+      style={[
         styles.button,
         variantStyle,
         small && styles.buttonSmall,
         disabled && styles.buttonDisabled,
-        pressed && !disabled && styles.buttonPressed,
         style,
       ]}
     >
       {icon ? <Icon name={icon} size={small ? 15 : 18} color={iconColor} /> : null}
       <Text style={[textStyle, small && styles.buttonSmallText]}>{title}</Text>
-    </Pressable>
+    </AnimatedPress>
   );
 }
 
@@ -483,6 +519,8 @@ export function Tag({
   onPress?: () => void;
   icon?: AppIconName;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
+  const COLORS = useColors();
   const emojiPrefix = EMOJI_ICON_PREFIXES.find(([prefix]) => title.startsWith(prefix));
   const cleanTitle = emojiPrefix ? title.slice(emojiPrefix[0].length).trimStart() : title;
   const content = (
@@ -498,7 +536,7 @@ export function Tag({
     { backgroundColor: selected ? color : `${color}18`, borderWidth: 1, borderColor: selected ? color : `${color}40` },
   ];
   return onPress ? (
-    <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={style}>
+    <Pressable accessibilityRole="button" aria-selected={selected} onPress={onPress} style={style}>
       {content}
     </Pressable>
   ) : (
@@ -515,10 +553,11 @@ export function SectionTitle({
   subtitle?: string;
   action?: ReactNode;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
   return (
     <View style={styles.sectionRow}>
       <View style={styles.flex}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text role="heading" aria-level={2} style={styles.sectionTitle}>{title}</Text>
         {subtitle ? <Text style={styles.sectionHint}>{subtitle}</Text> : null}
       </View>
       {action}
@@ -535,6 +574,7 @@ export function ProgressMeter({
   max: number;
   color?: string;
 }) {
+  const styles = UI_STYLES[useThemeMode()];
   const percent = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
     <View style={styles.meterTrack}>

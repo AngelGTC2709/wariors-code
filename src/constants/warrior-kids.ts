@@ -9,10 +9,18 @@ export type Activity = {
 
 export type Recipe = {
   id: string;
+  databaseId?: number;
+  catalogCode?: string;
+  mealType?: 'desayuno' | 'colacion' | 'comida' | 'cena';
+  ageGroup?: string;
+  portionsByGroup?: string;
+  preparationTimeMinutes?: number;
+  caloriesPerPortion?: number | null;
   title: string;
   emoji: string;
   groups: string;
   ingredients: string[];
+  ingredientDetails?: { name: string; quantity: string | null }[];
   preparation: string;
   note: string;
 };
@@ -85,7 +93,7 @@ export const RECIPES: Recipe[] = [
     title: 'Avena con fruta',
     emoji: '🍎',
     groups: 'Cereales + verduras y frutas',
-    ingredients: ['Avena', 'Leche o bebida de tu preferencia', 'Manzana o plátano', 'Canela opcional'],
+    ingredients: ['Avena', 'Leche o bebida de tu preferencia', 'Manzana o plátano', 'Canela'],
     preparation: 'Cocina la avena con la leche siguiendo las instrucciones del empaque. Agrega fruta lavada y picada; una persona adulta puede ayudar.',
     note: 'La avena es un cereal y la fruta aporta color y variedad.',
   },
