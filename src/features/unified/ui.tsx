@@ -330,18 +330,20 @@ function createUiStyles(mode: ThemeMode) {
   authTitle: { color: COLORS.white, fontFamily: TYPE.display, fontSize: 32, lineHeight: 38 },
   authSubtitle: { color: tint(COLORS.white, 0.72), fontFamily: TYPE.body, fontSize: 13, lineHeight: 20, marginTop: SPACE[8], marginBottom: SPACE[20] },
   authCard: { backgroundColor: COLORS.white, borderRadius: RADIUS.tarjeta, padding: SPACE[16], gap: SPACE[14] },
-  authNotice: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: SPACE[16] },
+  authNotice: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: SPACE[16] },
   roleRow: { flexDirection: 'row', backgroundColor: SHARED.apagada, padding: SPACE[4], borderRadius: RADIUS.md, gap: SPACE[4] },
   roleChoice: { flex: 1, minHeight: 44, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: SPACE[4] },
   roleChoiceActive: { backgroundColor: COLORS.white, shadowColor: COLORS.navy, shadowOpacity: 0.09, shadowRadius: 8, elevation: 2 },
   roleChoiceText: { color: COLORS.muted, fontFamily: TYPE.medium, fontSize: 12 },
   roleChoiceTextActive: { color: COLORS.ink, fontFamily: TYPE.bold },
+  // Va sobre un recuadro de color, también en tema oscuro.
+  roleChoiceTextOnColor: { color: '#000000', fontFamily: TYPE.bold },
   inputGroup: { gap: SPACE[4] },
-  inputLabel: { color: COLORS.ink, fontFamily: TYPE.bold, fontSize: 11 },
+  inputLabel: { color: COLORS.ink, fontFamily: TYPE.bold, fontSize: 13 },
   input: { minHeight: 48, borderRadius: RADIUS.sm, borderWidth: BORDER.fino, borderColor: COLORS.line, backgroundColor: COLORS.white, paddingHorizontal: SPACE[14], color: COLORS.ink, fontFamily: TYPE.body, fontSize: 13 },
   inputError: { borderColor: SHARED.error },
-  fieldHint: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 10, lineHeight: 15 },
-  errorText: { color: SHARED.error, fontFamily: TYPE.medium, fontSize: 11, lineHeight: 16 },
+  fieldHint: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 12, lineHeight: 17 },
+  errorText: { color: SHARED.error, fontFamily: TYPE.medium, fontSize: 13, lineHeight: 18 },
   button: { minHeight: 44, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACE[16], paddingVertical: SPACE[12], flexDirection: 'row', gap: SPACE[8] },
   buttonPrimary: { backgroundColor: COLORS.blue },
   buttonSecondary: { backgroundColor: COLORS.paleBlue, borderWidth: BORDER.fino, borderColor: SHARED.infoBorde },
@@ -349,40 +351,40 @@ function createUiStyles(mode: ThemeMode) {
   buttonDanger: { backgroundColor: SHARED.errorFondo, borderWidth: BORDER.fino, borderColor: SHARED.errorBorde },
   buttonSuccess: { backgroundColor: COLORS.green },
   buttonDisabled: { opacity: 0.45 },
-  buttonText: { color: COLORS.white, fontFamily: TYPE.bold, fontSize: 12, textAlign: 'center' },
+  buttonText: { color: SHARED.sobreAcento, fontFamily: TYPE.bold, fontSize: 13, textAlign: 'center' },
   buttonTextSecondary: { color: COLORS.blueDeep },
   buttonTextOutline: { color: COLORS.ink },
   buttonTextDanger: { color: COLORS.error },
   buttonSmall: { minHeight: 44, minWidth: 44, borderRadius: RADIUS.sm, paddingVertical: SPACE[4], paddingHorizontal: SPACE[8] },
-  buttonSmallText: { fontSize: 10 },
+  buttonSmallText: { fontSize: 12 },
   linkButton: { minHeight: 44, paddingVertical: SPACE[8], alignItems: 'center', justifyContent: 'center' },
-  linkText: { color: COLORS.blue, fontFamily: TYPE.bold, fontSize: 11 },
+  linkText: { color: COLORS.blue, fontFamily: TYPE.bold, fontSize: 13 },
   profileStripScroll: { flexGrow: 0, flexShrink: 0, backgroundColor: COLORS.white, borderBottomWidth: BORDER.fino, borderBottomColor: COLORS.line },
   profileStrip: { paddingHorizontal: SPACE[16], paddingTop: SPACE[8], paddingBottom: SPACE[8], flexDirection: 'row', gap: SPACE[8] },
   profileChip: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: SPACE[4], paddingVertical: SPACE[8], paddingHorizontal: SPACE[12], borderRadius: RADIUS.md, borderWidth: BORDER.fino, borderColor: COLORS.line, backgroundColor: COLORS.white },
   profileChipActive: { borderColor: COLORS.blue, backgroundColor: COLORS.paleBlue },
-  profileChipText: { color: COLORS.ink, fontFamily: TYPE.medium, fontSize: 10 },
+  profileChipText: { color: COLORS.ink, fontFamily: TYPE.medium, fontSize: 12 },
   content: { paddingHorizontal: SPACE[16], paddingTop: SPACE[16], paddingBottom: SPACE[24], gap: SPACE[12] },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACE[4] },
   sectionTitle: { color: COLORS.ink, fontFamily: TYPE.heading, fontSize: 17, lineHeight: 22 },
-  sectionHint: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 10, lineHeight: 15, marginTop: SPACE[4] },
+  sectionHint: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 12, lineHeight: 17, marginTop: SPACE[4] },
   card: { backgroundColor: COLORS.white, borderRadius: RADIUS.habito, padding: SPACE[16], borderWidth: BORDER.fino, borderColor: COLORS.line, gap: SPACE[12], ...SHADOW.habito },
   cardTight: { padding: SPACE[12], gap: SPACE[8] },
   cardTitle: { color: COLORS.ink, fontFamily: TYPE.heading, fontSize: 15, lineHeight: 20 },
   body: { color: COLORS.ink, fontFamily: TYPE.body, fontSize: 12, lineHeight: 19 },
-  muted: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 10, lineHeight: 16 },
+  muted: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 12, lineHeight: 18 },
   horizontal: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
   between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE[8] },
   flex: { flex: 1 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[8] },
   pill: { alignSelf: 'flex-start', borderRadius: RADIUS.pildora, paddingHorizontal: SPACE[8], paddingVertical: SPACE[4], flexDirection: 'row', alignItems: 'center', gap: SPACE[4] },
-  pillText: { color: COLORS.ink, fontFamily: TYPE.bold, fontSize: 9 },
+  pillText: { color: COLORS.ink, fontFamily: TYPE.bold, fontSize: 12 },
   meterTrack: { height: 8, backgroundColor: SHARED.apagada, borderRadius: RADIUS.pildora, overflow: 'hidden' },
   meterFill: { height: '100%', borderRadius: RADIUS.pildora },
   divider: { height: BORDER.fino, backgroundColor: COLORS.line, marginVertical: SPACE[4] },
   emptyState: { alignItems: 'center', paddingVertical: SPACE[20], gap: SPACE[8] },
   banner: { borderRadius: RADIUS.sm, padding: SPACE[12], backgroundColor: COLORS.paleBlue, borderWidth: BORDER.fino, borderColor: SHARED.infoBorde, gap: SPACE[4] },
-  bannerText: { color: COLORS.blueDeep, fontFamily: TYPE.medium, fontSize: 10, lineHeight: 16 },
+  bannerText: { color: COLORS.blueDeep, fontFamily: TYPE.medium, fontSize: 12, lineHeight: 18 },
   overlay: { flex: 1, backgroundColor: SHARED.fondoModal, justifyContent: 'flex-end' },
   modalCard: { backgroundColor: COLORS.background, borderTopLeftRadius: RADIUS.hero, borderTopRightRadius: RADIUS.hero, padding: SPACE[20], paddingBottom: SPACE[24], maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACE[12] },
@@ -392,7 +394,7 @@ function createUiStyles(mode: ThemeMode) {
   profileRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12], paddingVertical: SPACE[8], borderBottomWidth: BORDER.fino, borderBottomColor: COLORS.line },
   profileAvatar: { width: 38, height: 38, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.paleBlue },
   notice: { padding: SPACE[12], borderRadius: RADIUS.sm, backgroundColor: COLORS.paleOrange, borderWidth: BORDER.fino, borderColor: tint(THEMES.tutor.acento, 0.3) },
-  noticeText: { color: THEMES.tutor.texto, fontFamily: TYPE.medium, fontSize: 10, lineHeight: 16 },
+  noticeText: { color: THEMES.tutor.texto, fontFamily: TYPE.medium, fontSize: 12, lineHeight: 18 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACE[12], padding: SPACE[24] },
   footer: { color: COLORS.muted, fontFamily: TYPE.body, fontSize: 9, textAlign: 'center', lineHeight: 14, marginTop: SPACE[4] },
   });
@@ -435,7 +437,7 @@ export function Field({
       <TextInput
         {...props}
         accessibilityLabel={props.accessibilityLabel ?? label}
-        placeholderTextColor={SHARED.textoInactivo}
+        placeholderTextColor={SHARED.textoSecundario}
         style={[styles.input, error && styles.inputError, inputStyle]}
       />
       {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
@@ -463,6 +465,7 @@ export function Button({
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
 }) {
+  const SHARED = useShared();
   const styles = UI_STYLES[useThemeMode()];
   const COLORS = useColors();
   const variantStyle = {
@@ -480,7 +483,7 @@ export function Button({
     success: styles.buttonText,
   }[variant];
   const iconColor = variant === 'primary' || variant === 'success'
-    ? COLORS.white
+    ? SHARED.sobreAcento
     : variant === 'secondary'
       ? COLORS.blueDeep
       : variant === 'danger'
@@ -519,16 +522,16 @@ export function Tag({
   onPress?: () => void;
   icon?: AppIconName;
 }) {
+  const SHARED = useShared();
   const styles = UI_STYLES[useThemeMode()];
-  const COLORS = useColors();
   const emojiPrefix = EMOJI_ICON_PREFIXES.find(([prefix]) => title.startsWith(prefix));
   const cleanTitle = emojiPrefix ? title.slice(emojiPrefix[0].length).trimStart() : title;
   const content = (
     <View style={styles.horizontal}>
       {emojiPrefix || icon ? (
-        <Icon name={emojiPrefix?.[1] ?? icon ?? 'food'} size={13} color={selected ? COLORS.white : color} />
+        <Icon name={emojiPrefix?.[1] ?? icon ?? 'food'} size={13} color={selected ? SHARED.sobreAcento : color} />
       ) : null}
-      <Text style={[styles.pillText, selected && { color: COLORS.white }]}>{cleanTitle}</Text>
+      <Text style={[styles.pillText, selected && { color: SHARED.sobreAcento }]}>{cleanTitle}</Text>
     </View>
   );
   const style = [

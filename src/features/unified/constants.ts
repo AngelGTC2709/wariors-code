@@ -160,8 +160,8 @@ export const EXERCISE_CATEGORIES = [
 
 export const FAQ_ITEMS = [
   {
-    question: '¿Los datos de mis hijos son privados?',
-    answer: 'Los datos se guardan en el espacio privado de tu cuenta en la nube y no se comparten públicamente.',
+    question: '¿Quién puede ver los datos de mis hijas e hijos?',
+    answer: 'Se guardan en la nube, en el espacio de tu cuenta, y no se publican. La app no agrega cifrado propio. Los mensajes del chat de NutriBot sí se envían a Google para generar la respuesta.',
   },
   {
     question: '¿Quién puede revisar los avances?',

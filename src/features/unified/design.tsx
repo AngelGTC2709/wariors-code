@@ -238,9 +238,9 @@ function BottomBarTab({
     >
       <Animated.View style={[styles.bottomTabContent, animatedStyle]}>
         <View style={[styles.tabIcon, selected && { backgroundColor: theme.colors.acentoSuave }]}>
-          <Icon name={item.icon} size={22} color={selected ? theme.colors.acento : theme.colors.textoInactivo} />
+          <Icon name={item.icon} size={22} color={selected ? theme.colors.acento : theme.colors.textoSecundario} />
         </View>
-        <Text numberOfLines={1} style={[selected ? theme.type.tabActive : theme.type.tab, { color: selected ? theme.colors.texto : theme.colors.textoInactivo }]}>
+        <Text numberOfLines={1} style={[selected ? theme.type.tabActive : theme.type.tab, { color: selected ? theme.colors.texto : theme.colors.textoSecundario }]}>
           {item.label}
         </Text>
       </Animated.View>
@@ -409,14 +409,17 @@ export function ChallengeRow({
         <Text style={[theme.type.tab, { color: theme.colors.textoSecundario }]}>{detail}</Text>
       </View>
       {claimed ? (
-        <View accessible accessibilityLabel={`${title}: completado`} style={[styles.challengeCheck, { backgroundColor: SHARED.completado }]}>
-          <Icon name="check" size={22} color={SHARED.sobreAcento} />
+        <View accessible accessibilityLabel={`${title}: completado`} style={{ alignItems: 'center', gap: 2 }}>
+          <View style={[styles.challengeCheck, { backgroundColor: SHARED.completado }]}>
+            <Icon name="check" size={22} color={SHARED.sobreAcento} />
+          </View>
+          <Text style={[theme.type.tabActive, { color: theme.colors.texto }]}>Listo</Text>
         </View>
       ) : ready ? (
         <PillButton theme={theme} label={`Reclamar +${points}`} onPress={onClaim} style={styles.challengeClaim} />
       ) : (
         <View accessible accessibilityLabel={`${title}: ${points} puntos al completarlo`} style={[styles.pointsPill, { backgroundColor: SHARED.apagada }]}>
-          <Text style={[theme.type.caption, { color: theme.colors.textoSecundario }]}>+{points}</Text>
+          <Text style={[theme.type.caption, { color: theme.colors.texto }]}>+{points} pts</Text>
         </View>
       )}
     </View>
@@ -432,6 +435,54 @@ export function SectionCard({
       <Text role="heading" aria-level={3} style={[theme.type.h2, { color: theme.colors.texto }]}>{title}</Text>
       {subtitle ? <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{subtitle}</Text> : null}
       {children}
+    </View>
+  );
+}
+
+/** Una sola acción recomendada para hoy, con su botón. */
+export function NextStepCard({
+  theme, title, detail, icon, actionLabel, onAction,
+}: Themed & { title: string; detail: string; icon: AppIconName; actionLabel: string; onAction: () => void }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
+  return (
+    <View style={[styles.nextStep, { backgroundColor: theme.colors.acentoSuave, borderColor: theme.colors.acento }]}>
+      <View style={styles.nextStepHeader}>
+        <View style={[styles.homeTileIcon, { backgroundColor: theme.colors.tarjeta }]}>
+          <Icon name={icon} size={30} color={theme.colors.acento} />
+        </View>
+        <View style={styles.flex}>
+          <Text style={[theme.type.caption, { color: theme.colors.texto }]}>Tu siguiente paso</Text>
+          <Text role="heading" aria-level={2} style={[theme.type.h2, { color: theme.colors.texto }]}>{title}</Text>
+        </View>
+      </View>
+      <Text style={[theme.type.body, { color: theme.colors.texto }]}>{detail}</Text>
+      <PillButton theme={theme} label={actionLabel} onPress={onAction} />
+    </View>
+  );
+}
+
+/** Pasos del día con ícono y texto: el estado no depende solo del color. */
+export function DaySteps({
+  theme, steps, message,
+}: Themed & { steps: readonly { label: string; icon: AppIconName; done: boolean }[]; message: string }) {
+  const styles = DESIGN_STYLES[useThemeMode()];
+  return (
+    <View style={{ gap: SPACE[8] }}>
+      <Text accessibilityLiveRegion="polite" style={[theme.type.body, { color: theme.colors.texto }]}>{message}</Text>
+      <View style={styles.daySteps}>
+        {steps.map(step => (
+          <View
+            key={step.label}
+            accessible
+            accessibilityLabel={`${step.label}: ${step.done ? 'listo' : 'cuando quieras'}`}
+            style={[styles.dayStep, { backgroundColor: step.done ? tint(theme.colors.completado, 0.16) : theme.colors.tarjeta, borderColor: step.done ? theme.colors.completado : theme.colors.bordeSutil }]}
+          >
+            <Icon name={step.done ? 'check' : step.icon} size={20} color={step.done ? theme.colors.completado : theme.colors.textoSecundario} />
+            <Text style={[theme.type.tabActive, { color: theme.colors.texto, textAlign: 'center' }]}>{step.label}</Text>
+            <Text style={[theme.type.tab, { color: theme.colors.textoSecundario, textAlign: 'center' }]}>{step.done ? 'Listo' : 'Cuando quieras'}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -909,6 +960,10 @@ function createDesignStyles(mode: ThemeMode) {
   challengeEmoji: { width: 48, height: 48, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
   challengeCheck: { width: 44, height: 44, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },
   challengeClaim: { minHeight: 44, paddingHorizontal: SPACE[12] },
+  nextStep: { borderRadius: RADIUS.habito, borderWidth: BORDER.tarjeta, padding: SPACE[16], gap: SPACE[12] },
+  nextStepHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACE[12] },
+  daySteps: { flexDirection: 'row', gap: SPACE[8] },
+  dayStep: { flex: 1, minHeight: 76, alignItems: 'center', justifyContent: 'center', gap: SPACE[4], padding: SPACE[8], borderRadius: RADIUS.md, borderWidth: BORDER.tarjeta },
   homeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE[12] },
   homeTile: { flexGrow: 1, flexBasis: '45%', minHeight: 156, borderRadius: RADIUS.habito, borderWidth: BORDER.tarjeta, padding: SPACE[16], gap: SPACE[8] },
   homeTileIcon: { width: 60, height: 60, borderRadius: RADIUS.pildora, alignItems: 'center', justifyContent: 'center' },

@@ -55,6 +55,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "test": "node --test \"tests/**/*.test.ts\"",
     "build:android:apk": "eas build --platform android --profile preview"
   },
   "private": true,

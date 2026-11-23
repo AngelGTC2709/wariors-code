@@ -1,3 +1,4 @@
+import { validateHeight, validateWeight } from '@/features/unified/child-profile-validation';
 import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import type { RealtimeChannel, User } from '@supabase/supabase-js';
@@ -167,24 +168,14 @@ function parseRecipeIngredients(value: string): { name: string; quantity: string
   });
 }
 
+// Solo retos y recompensas: las asignaciones, los pedidos y los planes viven en datos_app.
 export type NormalizedManagementSnapshot = {
-  children: { id_hijo: number; nombre: string }[];
   challenges: {
     id_reto: number;
     descripcion_reto: string;
     puntos_de_recompensa: number;
     fecha_inicio: string;
     fecha_limite: string;
-  }[];
-  assignments: {
-    id_hijo_reto: number;
-    id_hijo: number;
-    id_reto: number;
-    estado: 'asignado' | 'en_progreso' | 'completado' | 'verificado' | 'rechazado';
-    fecha_asignacion: string;
-    fecha_completado: string | null;
-    fecha_verificacion: string | null;
-    puntos_otorgados: number | null;
   }[];
   rewards: {
     id_recompensa: number;
@@ -193,40 +184,10 @@ export type NormalizedManagementSnapshot = {
     cantidad_disponible: number;
     estado: 'activa' | 'inactiva' | 'agotada';
   }[];
-  redemptions: {
-    id_canje: number;
-    id_hijo: number;
-    id_recompensa: number;
-    fecha_canje: string;
-    puntos_gastados: number;
-    estado: 'solicitado' | 'entregado' | 'cancelado';
-  }[];
-  plans: {
-    id_plan: number;
-    id_hijo: number;
-    meta_calorias_diarias: number;
-    fecha_inicio: string;
-    fecha_fin: string;
-  }[];
-  planRecipes: {
-    id_plan: number;
-    id_receta: number;
-    fecha: string;
-    tipo_comida: 'desayuno' | 'colacion' | 'comida' | 'cena';
-  }[];
 };
 
 export async function loadNormalizedManagement(userId: string): Promise<NormalizedManagementSnapshot> {
   const supabase = getSupabaseClient();
-  const { data: childrenRows, error: childrenError } = await supabase
-    .from('hijos')
-    .select('id_hijo, nombres, apellidos')
-    .eq('id_padre', userId)
-    .order('nombres')
-    .order('apellidos');
-  if (childrenError) throw userError('No se pudieron cargar los perfiles infantiles normalizados.', childrenError);
-
-  const childIds = childrenRows.map(child => child.id_hijo);
   const [challengesResult, rewardsResult] = await Promise.all([
     supabase
       .from('retos')
@@ -242,61 +203,7 @@ export async function loadNormalizedManagement(userId: string): Promise<Normaliz
   if (challengesResult.error) throw userError('No se pudieron cargar los retos.', challengesResult.error);
   if (rewardsResult.error) throw userError('No se pudieron cargar las recompensas.', rewardsResult.error);
 
-  if (!childIds.length) {
-    return {
-      children: [],
-      challenges: challengesResult.data,
-      assignments: [],
-      rewards: rewardsResult.data,
-      redemptions: [],
-      plans: [],
-      planRecipes: [],
-    };
-  }
-
-  const [assignmentsResult, redemptionsResult, plansResult] = await Promise.all([
-    supabase
-      .from('hijo_reto')
-      .select('id_hijo_reto, id_hijo, id_reto, estado, fecha_asignacion, fecha_completado, fecha_verificacion, puntos_otorgados')
-      .in('id_hijo', childIds)
-      .order('fecha_asignacion', { ascending: false }),
-    supabase
-      .from('canjes_recompensa')
-      .select('id_canje, id_hijo, id_recompensa, fecha_canje, puntos_gastados, estado')
-      .in('id_hijo', childIds)
-      .order('fecha_canje', { ascending: false }),
-    supabase
-      .from('planes_alimenticios')
-      .select('id_plan, id_hijo, meta_calorias_diarias, fecha_inicio, fecha_fin')
-      .in('id_hijo', childIds)
-      .order('fecha_inicio', { ascending: false }),
-  ]);
-  if (assignmentsResult.error) throw userError('No se pudieron cargar las asignaciones de retos.', assignmentsResult.error);
-  if (redemptionsResult.error) throw userError('No se pudieron cargar los canjes de recompensas.', redemptionsResult.error);
-  if (plansResult.error) throw userError('No se pudieron cargar los planes alimenticios.', plansResult.error);
-
-  const planIds = plansResult.data.map(plan => plan.id_plan);
-  const planRecipesResult = planIds.length
-    ? await supabase
-        .from('plan_receta')
-        .select('id_plan, id_receta, fecha, tipo_comida')
-        .in('id_plan', planIds)
-        .order('fecha')
-    : { data: [], error: null };
-  if (planRecipesResult.error) throw userError('No se pudieron cargar las recetas de los planes.', planRecipesResult.error);
-
-  return {
-    children: childrenRows.map(child => ({
-      id_hijo: child.id_hijo,
-      nombre: [child.nombres, child.apellidos].filter(Boolean).join(' ').trim(),
-    })),
-    challenges: challengesResult.data,
-    assignments: assignmentsResult.data,
-    rewards: rewardsResult.data,
-    redemptions: redemptionsResult.data,
-    plans: plansResult.data,
-    planRecipes: planRecipesResult.data,
-  };
+  return { challenges: challengesResult.data, rewards: rewardsResult.data };
 }
 
 export type ActivityManagementSnapshot = {
@@ -556,7 +463,7 @@ export async function deleteChallenge(userId: string, challengeId: number): Prom
   if (!data) throw userError('El reto ya no está disponible para esta cuenta.');
 }
 
-export type AssignmentStatus = NormalizedManagementSnapshot['assignments'][number]['estado'];
+export type AssignmentStatus = 'asignado' | 'en_progreso' | 'completado' | 'verificado' | 'rechazado';
 
 export async function createChallengeAssignment(
   userId: string,
@@ -933,8 +840,9 @@ export function mergeDatabaseChildren(data: UnifiedData, children: NutriChild[])
         nombre: match.nombre || child.nombre,
         genero: match.genero || child.genero,
         nacimiento: match.nacimiento || child.nacimiento,
-        peso: match.peso || child.peso,
-        altura: match.altura || child.altura,
+        // Si se decidió no registrar mediciones, no se vuelven a traer de la base de datos.
+        peso: match.sinMediciones ? '' : match.peso || child.peso,
+        altura: match.sinMediciones ? '' : match.altura || child.altura,
         alergias: unique([...match.alergias, ...child.alergias]),
         noGusta: unique([...match.noGusta, ...child.noGusta]),
         gusta: unique([...(match.gusta ?? []), ...(child.gusta ?? [])]),
@@ -975,17 +883,17 @@ export async function saveDatabaseChildProfile(
     throw userError('Se requiere autorización explícita antes de sincronizar datos infantiles de salud.');
   }
   const supabase = getSupabaseClient();
-  const weight = input.weight.trim() ? Number(input.weight) : null;
-  const height = input.height.trim() ? Number(input.height) : null;
-  if ((weight === null) !== (height === null)) {
+  // Misma validación que el formulario: la lógica de guardado no confía solo en la interfaz.
+  const weightCheck = input.weight.trim() ? validateWeight(input.weight) : null;
+  const heightCheck = input.height.trim() ? validateHeight(input.height) : null;
+  if (Boolean(weightCheck) !== Boolean(heightCheck)) {
     throw userError('Para registrar una medición en la base de datos, captura peso y estatura.');
   }
-  if (
-    (weight !== null && (!Number.isFinite(weight) || weight < 10 || weight > 150)) ||
-    (height !== null && (!Number.isFinite(height) || height < 80 || height > 200))
-  ) {
-    throw userError('Revisa el peso (10 a 150 kg) y la estatura (80 a 200 cm).');
+  if (weightCheck?.error || heightCheck?.error) {
+    throw userError(weightCheck?.error ?? heightCheck?.error ?? 'Revisa el peso y la estatura.');
   }
+  const weight = weightCheck?.value ?? null;
+  const height = heightCheck?.value ?? null;
   const nameParts = input.name.trim().split(/\s+/);
   const names = nameParts.shift() ?? '';
   const apellidos = nameParts.join(' ');

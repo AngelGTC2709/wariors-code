@@ -20,12 +20,14 @@ npm start                   # expo start; también regenera .expo/types
 npm run android|ios|web     # inicia en una plataforma
 npm run lint                # expo lint; lento la primera vez (minutos)
 npx tsc --noEmit            # verificación de tipos (modo estricto)
+npx tsc --noEmit -p tests   # verificación de tipos de las pruebas
+npm test                    # pruebas con node --test (Node 24, sin dependencias nuevas)
 npx expo install <pkg>      # USA SIEMPRE esto en vez de npm install para dependencias de Expo/RN
 npx expo-doctor             # diagnóstico de dependencias/configuración
 npm run build:android:apk   # compilación EAS preview -> APK interno
 ```
 
-- **No hay script de pruebas, framework de pruebas ni CI**. No inventes pruebas ni afirmes que se ejecutaron; verifica con `npm run lint` + `npx tsc --noEmit`. La línea base es 0 errores y 2 advertencias (variables sin usar en `use-color-scheme.web.ts`); no las corrijas salvo que la tarea toque ese archivo.
+- **Las pruebas viven en `tests/` y cubren lógica pura** (validación de perfil infantil, reglas de progreso y contraste); no hay pruebas de componentes, end-to-end ni CI. No afirmes que se ejecutaron sin correrlas; verifica con `npm run lint`, `npx tsc --noEmit`, `npx tsc --noEmit -p tests` y `npm test`. La línea base es 0 errores y 2 advertencias (variables sin usar en `use-color-scheme.web.ts`); no las corrijas salvo que la tarea toque ese archivo.
 - **Nunca ejecutes `npm run reset-project`**: el script de plantilla mueve/reemplaza `src` y `scripts`.
 - EAS no es una dependencia del repo. Haz login con `npx eas-cli@latest login` y luego `npm run build:android:apk`; ese script llama directamente a `eas`, así que tenlo en PATH o ejecuta `npx eas-cli@latest build --platform android --profile preview`. `eas.json` solo tiene el perfil `preview` (no hay producción).
 
@@ -34,7 +36,7 @@ npm run build:android:apk   # compilación EAS preview -> APK interno
 - Antes de `npm start`, ejecuta `supabase/setup.sql` en el SQL Editor. El script asume que `public.padres` ya existe con `id_padre uuid` como FK a `auth.users(id)`; agrega `datos_app` y `datos_app_version`, crea perfiles de tutor con un trigger al registrar usuarios y completa los perfiles faltantes. También configura RLS y grants de `padres`, agrega `padres` a Realtime y crea el bucket privado `activity-evidence` con políticas por carpeta de usuario.
 - Crea `.env.local` en la raíz con `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_ANON_KEY`. Nunca uses una `service_role`/`sb_secret_` en la app: las variables `EXPO_PUBLIC_*` terminan en el bundle. `.env.local` ya está ignorado por git; reinicia `npm start` después de cambiarlo.
 - Habilita Email en Supabase Auth. Si la confirmación de correo está activa, el registro no inicia sesión hasta confirmar la dirección.
-- El cliente solo puede leer y actualizar su propia fila de `padres`, identificada por `id_padre = auth.uid()`. El esquema también contiene `hijos`, `cat_tipo_deporte`, `cat_intensidad`, `cat_materia`, `retos`, `actividades_fisicas`, `actividades_didacticas`, `hijo_reto`, `recompensas`, `canjes_recompensa`, `planes_alimenticios`, `recetas` y `plan_receta`; todavía no se usan desde la app cliente. Sus políticas RLS existentes se conservan; no amplíes su acceso sin revisar la propiedad por tutor. Si cambias el esquema, actualiza `supabase/setup.sql` y el tipo `Database` de `src/lib/supabase.ts`.
+- El cliente solo puede leer y actualizar su propia fila de `padres`, identificada por `id_padre = auth.uid()`. Gestión y los perfiles también usan `hijos`, `cat_tipo_deporte`, `cat_intensidad`, `cat_materia`, `retos`, `actividades_fisicas`, `actividades_didacticas`, `recompensas` y `recetas`. `hijo_reto`, `canjes_recompensa`, `planes_alimenticios` y `plan_receta` se conservan, pero la app no las lee: sus equivalentes viven en `datos_app` (`familyAssignments`, `rewardRequests`, `mealPlans`). Sus políticas RLS existentes se conservan; no amplíes su acceso sin revisar la propiedad por tutor. Si cambias el esquema, actualiza `supabase/setup.sql` y el tipo `Database` de `src/lib/supabase.ts`.
 - Sin `.env.local` o sin red, la app no carga datos: no hay modo offline ni respaldo local activo.
 
 ## Arquitectura
@@ -61,7 +63,8 @@ npm run build:android:apk   # compilación EAS preview -> APK interno
 - La autenticación es Supabase Auth con correo y contraseña, solo para tutores; los perfiles infantiles no tienen credenciales. Cambiar de Niñez a Tutor exige verificar la contraseña de la cuenta actual; cambiar a Niñez es libre y fija un único perfil elegido por el tutor. En modo Niñez no se puede cambiar de perfil; si deja de existir por una actualización remota, no selecciones otro automáticamente ni permitas registrar actividad. La verificación usa `signInWithPassword`; el evento de autenticación con el mismo `user.id` no debe reiniciar `loadData` ni Realtime. La contraseña del modal se limpia al cerrar o terminar la verificación y no se persiste. `persistSession: false`: al cerrar la app se cierra la sesión.
 - Los perfiles se derivan con `buildProfiles()` a partir de ambos arreglos fuente más los `profileLinks` manuales. `dailyLogs`, `childProgress` y `missionClaims` usan `progressKey` (`nutribot:<id>`, `warrior-kids:<id>`; los vinculados usan la clave de Warrior Kids); `avatarSelections` usa `profile.key`.
 - La evidencia fotográfica se sube al bucket privado `activity-evidence` en una ruta `${userId}/...`; en `datos_app` solo se guarda la ruta. Se muestra con URL firmada y al rechazar una actividad se borra el objeto remoto.
-- Las respuestas del chat son locales/predefinidas — no hay IA ni API externa.
+- `recompensas.cantidad_disponible` es el total de unidades. Lo que queda se deriva con `rewardStockLeft()`: cada pedido no cancelado de `rewardRequests` aparta una unidad. No lo descuentes también en Supabase.
+- NutriBot usa la Edge Function `supabase/functions/nutribot-chat`, que envía los últimos mensajes del chat a la API de Google Gemini (`GEMINI_API_KEY` solo en el servidor). Es un servicio externo que recibe texto escrito por menores: no amplíes los datos enviados ni afirmes que el chat es local.
 
 ## Configuración y nativo
 

@@ -45,10 +45,11 @@ export const THEMES = {
 export const SHARED = {
   tarjeta: '#FFFFFF',
   apagada: '#EDF2F7',
-  textoSecundario: '#64748B',
+  textoSecundario: '#566377',
   textoFuerte: '#1F2A44',
   textoInactivo: '#94A3B8',
-  sobreAcento: '#FFFFFF',
+  // Texto oscuro sobre botones de color: el blanco no alcanza contraste en cian, rosa o naranja.
+  sobreAcento: '#0F172A',
   /** Texto sobre las tarjetas oscuras de saludo y puntos (igual en ambos temas). */
   sobreHero: '#FFFFFF',
   bordeSutil: 'rgba(0,0,0,0.05)',
@@ -353,8 +354,8 @@ const CHILD_TYPE: AppTextStyles = {
   button: { fontFamily: 'Fredoka_600SemiBold', fontSize: 16, lineHeight: 20 },
   counter: { fontFamily: 'Fredoka_400Regular', fontSize: 13, lineHeight: 18 },
   caption: { fontFamily: 'Fredoka_700Bold', fontSize: 12, lineHeight: 16 },
-  tab: { fontFamily: 'Fredoka_500Medium', fontSize: 11, lineHeight: 14 },
-  tabActive: { fontFamily: 'Fredoka_700Bold', fontSize: 11, lineHeight: 14 },
+  tab: { fontFamily: 'Fredoka_500Medium', fontSize: 12, lineHeight: 16 },
+  tabActive: { fontFamily: 'Fredoka_700Bold', fontSize: 12, lineHeight: 16 },
   metric: undefined,
 };
 
@@ -368,8 +369,8 @@ const TUTOR_TYPE: AppTextStyles = {
   button: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 15, lineHeight: 20 },
   counter: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 13, lineHeight: 18 },
   caption: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, lineHeight: 16 },
-  tab: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 11, lineHeight: 14 },
-  tabActive: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, lineHeight: 14 },
+  tab: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 12, lineHeight: 16 },
+  tabActive: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, lineHeight: 16 },
   metric: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 32, lineHeight: 36 },
 };
 

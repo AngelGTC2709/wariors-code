@@ -27,6 +27,8 @@ export type NutriChild = {
   gusta?: string[];
   otrosGusta?: string;
   dictamen?: 'sano' | 'sobrepeso' | 'obesidad' | 'prediabetes' | 'diabetes2';
+  /** true si la persona tutora decidió no registrar peso ni estatura de este perfil. */
+  sinMediciones?: boolean;
 };
 
 export type NutriData = {
@@ -161,6 +163,8 @@ export type UnifiedData = {
   soundEnabled?: boolean;
   /** Apariencia: 'light' (por defecto), 'dark' o 'system' (según el teléfono). */
   themeMode?: 'system' | 'light' | 'dark';
+  /** Paleta elegida por perfil (clave de progreso). Es independiente del sexo registrado. */
+  profileColors?: Record<string, ChildTheme>;
   familyAssignments?: FamilyAssignment[];
   rewardRequests?: RewardRequest[];
   mealPlans?: FamilyMealPlan[];
@@ -228,6 +232,7 @@ function isNutriChild(value: unknown): value is NutriChild {
     typeof value.altura === 'string' &&
     (value.edad === undefined || typeof value.edad === 'string') &&
     (value.nacimiento === undefined || typeof value.nacimiento === 'string') &&
+    (value.sinMediciones === undefined || typeof value.sinMediciones === 'boolean') &&
     isStringArray(value.alergias) &&
     isStringArray(value.noGusta) &&
     typeof value.otrasAlergias === 'string' &&
@@ -443,6 +448,8 @@ export function isUnifiedData(value: unknown): value is UnifiedData {
     typeof value.progressSharingEnabled === 'boolean' &&
     (value.soundEnabled === undefined || typeof value.soundEnabled === 'boolean') &&
     (value.themeMode === undefined || value.themeMode === 'system' || value.themeMode === 'light' || value.themeMode === 'dark') &&
+    (value.profileColors === undefined || (isRecord(value.profileColors) &&
+      Object.values(value.profileColors).every(color => color === 'nina' || color === 'nino'))) &&
     isOptionalList(value.familyAssignments, isFamilyAssignment) &&
     isOptionalList(value.rewardRequests, isRewardRequest) &&
     isOptionalList(value.mealPlans, isFamilyMealPlan)

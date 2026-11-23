@@ -123,7 +123,7 @@ export function DateField({
           keyboardType="number-pad"
           maxLength={10}
           placeholder="DD/MM/AAAA"
-          placeholderTextColor={SHARED.textoInactivo}
+          placeholderTextColor={SHARED.textoSecundario}
           value={text}
           onChangeText={next => {
             const masked = maskDate(next);

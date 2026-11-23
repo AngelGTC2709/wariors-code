@@ -61,6 +61,7 @@ import {
   accountFromUser,
   deleteDatabaseChild,
   deleteEvidence,
+  loadActivityManagement,
   loadDatabaseRecipes,
   loadPhysicalActivityCatalog,
   loadCloudData,
@@ -70,16 +71,17 @@ import {
   subscribeToCloudData,
   uploadEvidence,
   verifyTutorPassword,
+  type ActivityManagementSnapshot,
   type NormalizedManagementSnapshot,
   type PhysicalActivityCatalog,
 } from '@/features/unified/cloud-data';
-import { AchievementCelebration, BottomBar, BottomSheet, ChallengeRow, FoodChip, HabitCard, HabitProgress, HeroCard, HomeGrid, HomeTile, ListRow, ChartTitle, DonutChart, PillBar, WaterWeekChart, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
+import { AchievementCelebration, BottomBar, BottomSheet, ChallengeRow, FoodChip, HabitCard, HabitProgress, HeroCard, DaySteps, HomeGrid, HomeTile, NextStepCard, ListRow, ChartTitle, DonutChart, PillBar, WaterWeekChart, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
 import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
 import { DatabaseManagement, type FamilyActions } from '@/features/unified/database-management';
 import { PlatoDelBuenComer, SelectedFoodPills } from '@/features/unified/plato';
 import { SoundCue, SoundEffectsProvider, type SoundCueName } from '@/features/unified/sound-effects';
-import { appThemeFor, BORDER, DARK_SECTION_TONES, FOOD_GROUP_COLORS, foodGroupColorsFor, RADIUS, resolveThemeMode, SHADOW, SPACE, ThemeModeContext, tint, sharedFor, type ThemeMode } from '@/features/unified/tokens';
+import { appThemeFor, BORDER, DARK_SECTION_TONES, FOOD_GROUP_COLORS, foodGroupColorsFor, RADIUS, resolveThemeMode, SHADOW, SPACE, THEMES, ThemeModeContext, tint, sharedFor, type ThemeMode } from '@/features/unified/tokens';
 import { getSupabaseClient } from '@/lib/supabase';
 import {
   AvatarIllustration,
@@ -94,7 +96,21 @@ import {
   UI_STYLES,
   type AppIconName,
 } from '@/features/unified/ui';
+import { CHILD_AGE_LIMITS, validateChildProfile, type MeasurementField } from '@/features/unified/child-profile-validation';
 import { DateField } from '@/features/unified/date-field';
+import {
+  assignableProfiles,
+  assignmentPointDelta,
+  canApproveActivity,
+  canChangeRewardRequest,
+  canRegisterActivity,
+  canRequestReward,
+  challengeActivitySteps,
+  claimOnce,
+  nextChildStep,
+  rewardBalance,
+  rewardStockLeft,
+} from '@/features/unified/progress-rules';
 import { formatMinutes, plural } from '@/features/unified/format';
 import { ageFromBirth, cleanText, errorReason, formatBirthDate, parseBirthDate, friendlyError, unique, userError } from '@/features/unified/utils';
 
@@ -117,6 +133,8 @@ type UnifiedProfile = {
   name: string;
   theme: 'nina' | 'nino';
   avatar: string;
+  /** Sexo registrado; `theme` es solo la paleta de colores elegida. */
+  sex: 'nina' | 'nino';
   nutri: NutriChild | null;
   warrior: WarriorChild | null;
   link: ProfileLink | null;
@@ -125,7 +143,11 @@ type ProfileDraft = {
   name: string;
   theme: 'nina' | 'nino';
   avatar: string;
+  colorTheme: 'nina' | 'nino';
   birthDate: string;
+  age: string;
+  collectMeasurements: boolean;
+  confirmedUnusual: Partial<Record<MeasurementField, string>>;
   weight: string;
   height: string;
   allergies: string[];
@@ -366,7 +388,7 @@ function buildProfiles(data: UnifiedData): UnifiedProfile[] {
   const warriorById = new Map(data.warriorKids.children.map(profile => [profile.id, profile]));
   const usedNutri = new Set<string>();
   const usedWarrior = new Set<string>();
-  const result: UnifiedProfile[] = [];
+  const result: Omit<UnifiedProfile, 'sex'>[] = [];
 
   for (const link of data.profileLinks) {
     const nutri = nutriById.get(link.nutriId);
@@ -419,7 +441,12 @@ function buildProfiles(data: UnifiedData): UnifiedProfile[] {
       link: null,
     });
   }
-  return result;
+  // El color es una elección aparte; sin elección se conserva el que el perfil ya tenía.
+  return result.map(profile => ({
+    ...profile,
+    sex: profile.theme,
+    theme: data.profileColors?.[profile.progressKey] ?? profile.theme,
+  }));
 }
 
 function todayKey(): string {
@@ -546,8 +573,12 @@ function emptyProfileDraft(): ProfileDraft {
   return {
     name: '',
     theme: 'nina',
+    colorTheme: 'nina',
     avatar: CHILD_AVATARS[0],
     birthDate: '',
+    age: '',
+    collectMeasurements: true,
+    confirmedUnusual: {},
     weight: '',
     height: '',
     allergies: [],
@@ -559,6 +590,30 @@ function emptyProfileDraft(): ProfileDraft {
     diagnosis: '',
     healthConsent: false,
   };
+}
+
+/** La edad se calcula de la fecha de nacimiento si existe; si no, se usa la que se escribió. */
+function draftAge(draft: ProfileDraft): string {
+  const birthDate = parseBirthDate(draft.birthDate);
+  return birthDate ? String(ageFromBirth(birthDate) ?? '') : draft.age;
+}
+
+function validateProfileDraft(draft: ProfileDraft) {
+  return validateChildProfile({
+    age: draftAge(draft),
+    weight: draft.weight,
+    height: draft.height,
+    collectMeasurements: draft.collectMeasurements,
+    confirmedUnusual: draft.confirmedUnusual,
+  });
+}
+
+/** Edad del perfil: fecha de nacimiento o, si no se registró, la edad escrita. */
+function profileAge(nutri: NutriChild | null | undefined): number | null {
+  const fromBirth = ageFromBirth(nutri?.nacimiento);
+  if (fromBirth !== null) return fromBirth;
+  const written = Number(nutri?.edad);
+  return nutri?.edad && Number.isInteger(written) ? written : null;
 }
 
 function defaultMeals(): WeeklyMeals {
@@ -641,6 +696,7 @@ export default function UnifiedApp() {
   const [editingProfile, setEditingProfile] = useState<UnifiedProfile | null>(null);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(emptyProfileDraft());
   const [profileError, setProfileError] = useState('');
+  const [profileShowErrors, setProfileShowErrors] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileToArchive, setProfileToArchive] = useState<UnifiedProfile | null>(null);
 
@@ -661,6 +717,8 @@ export default function UnifiedApp() {
   const [activityStarted, setActivityStarted] = useState(false);
   const [activityElapsed, setActivityElapsed] = useState(0);
   const [activityDuration, setActivityDuration] = useState('');
+  const [activitySaveFailed, setActivitySaveFailed] = useState(false);
+  const activityUploadRef = useRef<{ uri: string; path: string } | null>(null);
   const [activityPhoto, setActivityPhoto] = useState<PhotoDraft | null>(null);
   const [activityError, setActivityError] = useState('');
   const [activitySubmitting, setActivitySubmitting] = useState(false);
@@ -925,6 +983,7 @@ export default function UnifiedApp() {
   // Retos y recompensas se definen en Supabase (Gestión); a quién aplican, los pedidos y los
   // planes se guardan por perfil en datos_app, así que sirven para todos los perfiles.
   const [family, setFamily] = useState<NormalizedManagementSnapshot | null>(null);
+  const [challengeActivities, setChallengeActivities] = useState<ActivityManagementSnapshot | null>(null);
   const familyUserId = authUser?.id ?? null;
   const refreshFamily = useCallback(async () => {
     if (!familyUserId) return;
@@ -932,6 +991,11 @@ export default function UnifiedApp() {
       setFamily(await loadNormalizedManagement(familyUserId));
     } catch {
       // Si falla, se conservan los últimos datos; el resto de la app sigue funcionando.
+    }
+    try {
+      setChallengeActivities(await loadActivityManagement(familyUserId));
+    } catch {
+      // Los retos se siguen mostrando aunque no carguen sus actividades.
     }
   }, [familyUserId]);
   const hasData = data !== null;
@@ -944,12 +1008,7 @@ export default function UnifiedApp() {
   // Puntos acumulados (desbloquean avatar y logros; los retos verificados ya están sumados).
   const pointsFor = (profile: UnifiedProfile) => (data ? getProgress(data, profile).points : 0);
   // Puntos disponibles para premios: acumulados menos los pedidos que no se cancelaron.
-  const rewardBalanceFor = (profile: UnifiedProfile) => {
-    const spent = rewardRequests
-      .filter(item => item.progressKey === profile.progressKey && item.status !== 'cancelado')
-      .reduce((sum, item) => sum + item.cost, 0);
-    return Math.max(0, pointsFor(profile) - spent);
-  };
+  const rewardBalanceFor = (profile: UnifiedProfile) => rewardBalance(pointsFor(profile), rewardRequests, profile.progressKey);
   const nowIso = () => new Date().toISOString();
   const shortDate = (date: string) =>
     new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' }).format(new Date(`${date.slice(0, 10)}T12:00:00`));
@@ -1074,12 +1133,17 @@ export default function UnifiedApp() {
     setEditingProfile(profile);
     setProfileStep(0);
     setProfileError('');
+    setProfileShowErrors(false);
     setProfileDraft(profile
       ? {
           name: profile.name,
-          theme: profile.theme,
+          theme: profile.sex,
+          colorTheme: profile.theme,
           avatar: profile.avatar,
           birthDate: formatBirthDate(profile.nutri?.nacimiento),
+          age: profile.nutri?.edad ?? '',
+          collectMeasurements: !profile.nutri?.sinMediciones,
+          confirmedUnusual: {},
           weight: profile.nutri?.peso ?? '',
           height: profile.nutri?.altura ?? '',
           allergies: profile.nutri?.alergias ?? [],
@@ -1108,26 +1172,21 @@ export default function UnifiedApp() {
       return;
     }
     if (profileDraft.healthConsent && !birthDate) {
-      setProfileError('Para sincronizar el perfil con la base de datos, registra su fecha de nacimiento.');
+      setProfileStep(1);
+      setProfileError('Para guardar los datos de salud autorizados, registra su fecha de nacimiento.');
       return;
     }
-    if (
-      profileDraft.healthConsent &&
-      Boolean(profileDraft.weight.trim()) !== Boolean(profileDraft.height.trim())
-    ) {
-      setProfileError('Para registrar una medición, captura peso y estatura o deja ambos campos vacíos.');
+    // La validación también corre aquí: ningún dato llega a guardarse sin pasarla.
+    const validation = validateProfileDraft(profileDraft);
+    if (!validation.canSave) {
+      setProfileShowErrors(true);
+      setProfileStep(1);
+      setProfileError('Revisa los datos marcados antes de guardar. Lo demás que escribiste sigue aquí.');
       return;
     }
-    const weight = profileDraft.weight.trim() ? Number(profileDraft.weight) : null;
-    const height = profileDraft.height.trim() ? Number(profileDraft.height) : null;
-    if (
-      profileDraft.healthConsent &&
-      ((weight !== null && (!Number.isFinite(weight) || weight < 10 || weight > 150)) ||
-        (height !== null && (!Number.isFinite(height) || height < 80 || height > 200)))
-    ) {
-      setProfileError('Revisa el peso (10 a 150 kg) y la estatura (80 a 200 cm).');
-      return;
-    }
+    const measurements = validation.normalized;
+    const writtenAge = birthDate ? undefined : String(validation.age);
+    const optedOut = profileDraft.collectMeasurements ? undefined : true;
 
     if (!dataRef.current || !authUser || writesBlocked.current) {
       setProfileError('Los datos todavía no están listos para guardar el perfil.');
@@ -1151,8 +1210,8 @@ export default function UnifiedApp() {
           name: databaseName,
           birthDate,
           theme: databaseTheme,
-          weight: profileDraft.weight,
-          height: profileDraft.height,
+          weight: measurements.weight,
+          height: measurements.height,
           diagnosis: profileDraft.diagnosis,
           allergies: profileDraft.allergies,
           noLikes: profileDraft.noLikes,
@@ -1180,9 +1239,10 @@ export default function UnifiedApp() {
               nombre: existing.link ? existing.nutri.nombre : name,
               genero: existing.link ? existing.nutri.genero : profileDraft.theme,
               nacimiento: birthDate ?? undefined,
-              edad: undefined,
-              peso: profileDraft.weight.trim(),
-              altura: profileDraft.height.trim(),
+              edad: writtenAge,
+              sinMediciones: optedOut,
+              peso: measurements.weight,
+              altura: measurements.height,
               alergias: profileDraft.allergies,
               noGusta: profileDraft.noLikes,
               otrasAlergias: profileDraft.otherAllergies.trim(),
@@ -1197,9 +1257,10 @@ export default function UnifiedApp() {
               nombre: name,
               genero: profileDraft.theme,
               nacimiento: birthDate ?? undefined,
-              edad: undefined,
-              peso: profileDraft.weight.trim(),
-              altura: profileDraft.height.trim(),
+              edad: writtenAge,
+              sinMediciones: optedOut,
+              peso: measurements.weight,
+              altura: measurements.height,
               alergias: profileDraft.allergies,
               noGusta: profileDraft.noLikes,
               otrasAlergias: profileDraft.otherAllergies.trim(),
@@ -1239,8 +1300,25 @@ export default function UnifiedApp() {
           });
         }
         if (!updatedKey) updatedKey = profileReference(existing?.nutri ? 'nutribot' : 'warrior-kids', existing?.nutri?.id ?? existing?.warrior?.id ?? '');
+        const progressKey = shouldLink ? profileReference('warrior-kids', warriorId) : existing?.progressKey ?? updatedKey;
+        // Al vincular un perfil antiguo cambia su clave: se copia su avance para no perderlo.
+        const previousKey = existing?.progressKey;
+        const moved = previousKey && previousKey !== progressKey ? previousKey : null;
+        const copyTo = <T,>(records: Record<string, T>): Record<string, T> => (
+          moved && records[moved] !== undefined && records[progressKey] === undefined
+            ? { ...records, [progressKey]: records[moved] }
+            : records
+        );
+        const previousAvatar = existing ? current.avatarSelections[existing.key] : undefined;
         return {
           ...current,
+          dailyLogs: copyTo(current.dailyLogs),
+          childProgress: copyTo(current.childProgress),
+          missionClaims: copyTo(current.missionClaims),
+          avatarSelections: previousAvatar && updatedKey && !current.avatarSelections[updatedKey]
+            ? { ...current.avatarSelections, [updatedKey]: previousAvatar }
+            : current.avatarSelections,
+          profileColors: { ...(current.profileColors ?? {}), [progressKey]: profileDraft.colorTheme },
           nutribot: {
             ...current.nutribot,
             ninos: existing?.nutri
@@ -1266,8 +1344,8 @@ export default function UnifiedApp() {
       setSelectedProfileKey(updatedKey || null);
       setTab('Familia');
       setNotice(profileDraft.healthConsent
-        ? 'El perfil y sus datos autorizados se están guardando en la base de datos.'
-        : 'El perfil se guardó en tu espacio familiar; los datos de salud no se sincronizaron con la base de datos.');
+        ? `Perfil de ${name} guardado, con sus datos de salud autorizados.`
+        : `Perfil de ${name} guardado en tu espacio familiar.`);
       if (!editingProfile) requestSoundCue('celebracion');
     } catch (error) {
       setProfileError(friendlyError(error, 'No se pudo guardar el perfil en la base de datos.'));
@@ -1351,7 +1429,7 @@ export default function UnifiedApp() {
     date: string,
     update: (log: UnifiedDailyLog) => UnifiedDailyLog,
   ) => {
-    updateData(current => {
+    return updateData(current => {
       const previous = current.dailyLogs[profile.progressKey]?.[date] ?? EMPTY_LOG;
       const nextLog = update(previous);
       const dailyLogs = {
@@ -1423,10 +1501,10 @@ export default function UnifiedApp() {
     }));
   };
 
-  const setMood = (mood: string) => {
+  const setMood = (mood: string | null) => {
     if (!selectedProfile) return;
-    updateDailyLog(selectedProfile, todayKey(), log => ({ ...log, mood }));
-    setNotice('Gracias por compartir cómo te sientes.');
+    const saved = updateDailyLog(selectedProfile, todayKey(), log => ({ ...log, mood }));
+    if (saved) setNotice(mood ? 'Gracias por compartir cómo te sientes.' : 'Listo, quitamos tu respuesta de hoy.');
   };
 
   const saveSleep = () => {
@@ -1454,40 +1532,95 @@ export default function UnifiedApp() {
     return () => { clearInterval(id); flush(); };
   }, [activityPlaying, activityModal]);
 
+  // Borra una foto ya subida que al final no se usó (se canceló el envío o se quitó).
+  const discardActivityUpload = () => {
+    const pending = activityUploadRef.current;
+    activityUploadRef.current = null;
+    if (pending) void deleteEvidence(pending.path).catch(() => undefined);
+  };
+
+  const closeActivity = () => {
+    if (activitySubmittingRef.current) return;
+    discardActivityUpload();
+    setActivitySaveFailed(false);
+    setActivityPlaying(false);
+    setActivityModal(null);
+  };
+
+  const removeActivityPhoto = () => {
+    discardActivityUpload();
+    setActivityPhoto(null);
+  };
+
   const submitActivity = async () => {
-    if (!selectedProfile || !activityModal || !data || activitySubmittingRef.current) return;
+    const current = dataRef.current;
+    if (!selectedProfile || !activityModal || !current || activitySubmittingRef.current) return;
     const duration = Number(activityDuration);
     if (!Number.isInteger(duration) || duration < 1 || duration > 180) {
-      setActivityError('Escribe una duración en minutos entre 1 y 180.');
+      setActivityError('Escribe los minutos con números, de 1 a 180.');
       return;
     }
-    const todayActivity = getDailyLog(data, selectedProfile, todayKey()).activities[activityModal.id];
-    if (todayActivity?.status === 'approved') {
-      setActivityError('Esta actividad ya fue aprobada hoy. Elige otra para registrar.');
+    const todayActivity = getDailyLog(current, selectedProfile, todayKey()).activities[activityModal.id];
+    if (!canRegisterActivity(todayActivity)) {
+      setActivityError(todayActivity?.status === 'approved'
+        ? 'Esta actividad ya fue aprobada hoy. ¡Bien hecho! Puedes elegir otra.'
+        : 'Esta actividad ya está en revisión.');
       return;
     }
     activitySubmittingRef.current = true;
     setActivitySubmitting(true);
+    setActivityError('');
+    setActivitySaveFailed(false);
     try {
-      const evidenceUri = activityPhoto ? await storeEvidence(activityPhoto) : null;
-      updateDailyLog(selectedProfile, todayKey(), log => ({
+      let evidenceUri: string | null = null;
+      if (activityPhoto) {
+        // Si un intento anterior ya subió esta foto, se reutiliza en vez de subirla otra vez.
+        if (activityUploadRef.current?.uri !== activityPhoto.uri) {
+          discardActivityUpload();
+          activityUploadRef.current = { uri: activityPhoto.uri, path: await storeEvidence(activityPhoto) };
+        }
+        evidenceUri = activityUploadRef.current.path;
+      }
+      const queued = updateDailyLog(selectedProfile, todayKey(), log => ({
         ...log,
         activities: {
           ...log.activities,
           [activityModal.id]: { status: 'pending', duration, evidenceUri },
         },
       }));
+      if (!queued) {
+        setActivitySaveFailed(true);
+        setActivityError('No se pudo guardar todavía. Tus minutos y tu foto siguen aquí.');
+        return;
+      }
+      // Espera la confirmación de la nube antes de cerrar para no perder lo capturado.
+      await writeQueue.current;
+      activityUploadRef.current = null;
       setActivityModal(null);
       setActivityPhoto(null);
       setActivityDuration('');
       setActivityError('');
-      setNotice('Actividad enviada a la persona tutora para revisión.');
+      setNotice('¡Actividad enviada! Tu persona tutora la revisará.');
     } catch (error) {
-      setActivityError(friendlyError(error, 'No se pudo guardar la foto de evidencia.'));
+      setActivitySaveFailed(writesBlocked.current);
+      setActivityError(friendlyError(error, 'No se pudo enviar. Tus minutos y tu foto siguen aquí; inténtalo de nuevo.'));
     } finally {
       activitySubmittingRef.current = false;
       setActivitySubmitting(false);
     }
+  };
+
+  // Tras un error de guardado: recarga los datos de la nube y reintenta con lo ya capturado.
+  const retryActivityAfterReload = async () => {
+    if (activitySubmittingRef.current) return;
+    setActivityError('');
+    const loaded = await loadData();
+    if (!loaded) {
+      setActivityError('Sigue sin haber conexión. Tus minutos y tu foto siguen aquí.');
+      return;
+    }
+    setActivitySaveFailed(false);
+    await submitActivity();
   };
 
   const storeEvidence = async (photo: PhotoDraft): Promise<string> => {
@@ -1540,15 +1673,16 @@ export default function UnifiedApp() {
     if (role !== 'tutor') return;
     const reviewKey = `${profile.key}-${date}-${activityId}`;
     if (reviewingActivities.current.has(reviewKey)) return;
-    const log = data?.dailyLogs[profile.progressKey]?.[date];
+    const log = dataRef.current?.dailyLogs[profile.progressKey]?.[date];
     const activity = log?.activities[activityId];
-    if (!activity || activity.status !== 'pending') return;
+    if (!activity || !canApproveActivity(activity)) return;
     if (approve) {
       const catalog = activityFor(activityId);
-      updateDailyLog(profile, date, current => ({
+      const saved = updateDailyLog(profile, date, current => ({
         ...current,
         activities: { ...current.activities, [activityId]: { ...activity, status: 'approved' } },
       }));
+      if (!saved) return;
       updateProfileProgress(profile, current => ({
         ...current,
         points: current.points + (catalog?.points ?? 10),
@@ -1588,17 +1722,17 @@ export default function UnifiedApp() {
     const assignment = (dataRef.current?.familyAssignments ?? []).find(item => item.id === id);
     if (!assignment) return false;
     const profile = profiles.find(item => item.progressKey === assignment.progressKey);
-    const wasVerified = assignment.status === 'verificado';
+    if (assignment.status === status) return true;
     const isVerified = status === 'verificado';
-    const awarded = isVerified ? (wasVerified ? assignment.pointsAwarded ?? points : points) : undefined;
+    const delta = assignmentPointDelta(assignment.status, status, points, assignment.pointsAwarded);
+    const awarded = isVerified ? points : undefined;
     const saved = updateData(current => ({
       ...current,
       familyAssignments: (current.familyAssignments ?? []).map(item => (
         item.id === id ? { ...item, status, updatedAt: nowIso(), pointsAwarded: awarded } : item
       )),
     }));
-    if (saved && profile && wasVerified !== isVerified) {
-      const delta = isVerified ? points : -(assignment.pointsAwarded ?? 0);
+    if (saved && profile && delta !== 0) {
       updateProfileProgress(profile, progress => ({
         ...progress,
         points: Math.max(0, progress.points + delta),
@@ -1613,7 +1747,7 @@ export default function UnifiedApp() {
       ...current,
       familyAssignments: [
         ...(current.familyAssignments ?? []),
-        ...progressKeys.map((progressKey): FamilyAssignment => ({
+        ...assignableProfiles(current.familyAssignments ?? [], challengeId, progressKeys).map((progressKey): FamilyAssignment => ({
           id: createId('reto'),
           challengeId,
           progressKey,
@@ -1628,17 +1762,33 @@ export default function UnifiedApp() {
       ...current,
       familyAssignments: (current.familyAssignments ?? []).filter(item => item.id !== id),
     })),
-    requestReward: (rewardId, progressKey, cost) => updateData(current => ({
-      ...current,
-      rewardRequests: [
-        ...(current.rewardRequests ?? []),
-        { id: createId('premio'), rewardId, progressKey, cost, status: 'solicitado', requestedAt: nowIso(), updatedAt: nowIso() },
-      ],
-    })),
-    setRewardRequestStatus: (id, status) => updateData(current => ({
-      ...current,
-      rewardRequests: (current.rewardRequests ?? []).map(item => (item.id === id ? { ...item, status, updatedAt: nowIso() } : item)),
-    })),
+    requestReward: (rewardId, progressKey, cost, totalStock) => {
+      const current = dataRef.current;
+      const profile = profiles.find(item => item.progressKey === progressKey);
+      if (!current || !profile) return false;
+      if (!canRequestReward(getProgress(current, profile).points, current.rewardRequests ?? [], progressKey, rewardId, cost, totalStock)) return false;
+      return updateData(state => ({
+        ...state,
+        rewardRequests: [
+          ...(state.rewardRequests ?? []),
+          { id: createId('premio'), rewardId, progressKey, cost, status: 'solicitado', requestedAt: nowIso(), updatedAt: nowIso() },
+        ],
+      }));
+    },
+    setRewardRequestStatus: (id, status, totalStock) => {
+      const current = dataRef.current;
+      const requests = current?.rewardRequests ?? [];
+      const request = requests.find(item => item.id === id);
+      if (!current || !request) return false;
+      const profile = profiles.find(item => item.progressKey === request.progressKey);
+      const balance = profile ? rewardBalance(getProgress(current, profile).points, requests, request.progressKey) : 0;
+      const stock = totalStock ?? family?.rewards.find(reward => reward.id_recompensa === request.rewardId)?.cantidad_disponible ?? 0;
+      if (!canChangeRewardRequest(balance, requests, id, status, stock)) return false;
+      return updateData(state => ({
+        ...state,
+        rewardRequests: (state.rewardRequests ?? []).map(item => (item.id === id ? { ...item, status, updatedAt: nowIso() } : item)),
+      }));
+    },
     removeRewardRequest: id => updateData(current => ({
       ...current,
       rewardRequests: (current.rewardRequests ?? []).filter(item => item.id !== id),
@@ -1675,20 +1825,20 @@ export default function UnifiedApp() {
   };
 
   const claimMission = (missionId: string, points: number) => {
-    if (!selectedProfile || !data) return;
+    const latest = dataRef.current;
+    if (!selectedProfile || !latest) return;
     const date = todayKey();
-    const claims = data.missionClaims[selectedProfile.progressKey]?.[date] ?? [];
-    if (claims.includes(missionId)) return;
-    updateData(current => ({
+    const key = selectedProfile.progressKey;
+    const claims = claimOnce(latest.missionClaims[key]?.[date] ?? [], missionId);
+    if (!claims) return;
+    const saved = updateData(current => ({
       ...current,
       missionClaims: {
         ...current.missionClaims,
-        [selectedProfile.progressKey]: {
-          ...(current.missionClaims[selectedProfile.progressKey] ?? {}),
-          [date]: [...(current.missionClaims[selectedProfile.progressKey]?.[date] ?? []), missionId],
-        },
+        [key]: { ...(current.missionClaims[key] ?? {}), [date]: claims },
       },
     }));
+    if (!saved) return;
     updateProfileProgress(selectedProfile, progress => ({
       ...progress,
       points: progress.points + points,
@@ -2097,7 +2247,7 @@ export default function UnifiedApp() {
               </Text>
             </Pressable>
           </View>
-          <Text style={[styles.authNotice, { color: SHARED.textoInactivo }]}>
+          <Text style={[styles.authNotice, { color: SHARED.textoSecundario }]}>
             Cada cuenta tutora tiene su propio espacio familiar. Los datos se guardan en la nube y no se comparten con otras cuentas.
           </Text>
         </ScrollView>
@@ -2112,13 +2262,21 @@ export default function UnifiedApp() {
           {profiles.map(profile => (
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={`Perfil de ${profile.name}${selectedProfile?.key === profile.key ? ', seleccionado' : ''}`}
               aria-selected={selectedProfile?.key === profile.key}
               key={profile.key}
               onPress={() => setSelectedProfileKey(profile.key)}
               style={[
                 styles.profileChip,
                 { borderRadius: RADIUS.pildora },
-                selectedProfile?.key === profile.key && { borderColor: theme.colors.acento, backgroundColor: theme.colors.acentoSuave },
+                // Borde más grueso: la selección no depende solo del color.
+                selectedProfile?.key === profile.key && {
+                  borderWidth: 2,
+                  paddingVertical: SPACE[8] - 1,
+                  paddingHorizontal: SPACE[12] - 1,
+                  borderColor: theme.colors.acento,
+                  backgroundColor: theme.colors.acentoSuave,
+                },
               ]}
             >
               <AvatarIllustration
@@ -2153,13 +2311,20 @@ export default function UnifiedApp() {
   const renderSelectionPill = (label: string, selected: boolean, onPress: () => void) => (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={selected ? `${label}, seleccionado` : label}
       aria-selected={selected}
       onPress={onPress}
       style={[screenStyles.selectionPill, { backgroundColor: selected ? theme.colors.acento : theme.colors.tarjeta }]}
     >
-      <Text style={[selected ? theme.type.tabActive : theme.type.tab, { color: selected ? theme.colors.sobreAcento : theme.colors.texto }]}>{label}</Text>
+      <View style={[styles.horizontal, { gap: SPACE[4] }]}>
+        {selected ? <Icon name="save" size={14} color={theme.colors.sobreAcento} /> : null}
+        <Text style={[selected ? theme.type.tabActive : theme.type.tab, { color: selected ? theme.colors.sobreAcento : theme.colors.texto }]}>{label}</Text>
+      </View>
     </Pressable>
   );
+
+  // Día de la semana con la marca "hoy" para ubicarse rápido.
+  const dayPillLabel = (day: string) => (WEEKDAYS[(new Date().getDay() + 6) % 7] === day ? `${day} (hoy)` : day);
 
   const renderIngredientPills = (ingredients: string[], concerns: string[] = []) => (
     <View style={styles.wrap}>
@@ -2178,24 +2343,39 @@ export default function UnifiedApp() {
     </View>
   );
 
-  const renderFoodPreferences = () => profileAllergies.length || profileNoLikes.length || profileLikes.length ? (
-    <View accessibilityRole="alert" style={styles.notice}>
-      <Text style={styles.noticeText}>
-        {profileAllergies.length ? `Alergias registradas: ${profileAllergies.map(id => FOOD_OPTIONS.find(food => food.id === id)?.name ?? id).join(', ')}. ` : ''}
-        {profileNoLikes.length ? `No le gustan: ${profileNoLikes.map(id => FOOD_OPTIONS.find(food => food.id === id)?.name ?? id).join(', ')}. ` : ''}
-        {profileLikes.length ? `Le gustan: ${profileLikes.map(id => FOOD_OPTIONS.find(food => food.id === id)?.name ?? id).join(', ')}. ` : ''}
-        Revisa ingredientes y etiquetas; estas alertas no detectan contaminación cruzada ni sustituyen indicaciones profesionales.
+  const foodNames = (ids: string[]) => ids.map(id => FOOD_OPTIONS.find(food => food.id === id)?.name ?? id).join(', ');
+
+  // Alergias y gustos son cosas distintas. Las alertas solo orientan: nunca confirman que algo sea seguro.
+  const renderFoodPreferences = () => (
+    <View style={{ gap: SPACE[8] }}>
+      {profileAllergies.length ? (
+        <View accessibilityRole="alert" style={[styles.notice, styles.horizontal, { backgroundColor: SHARED.errorFondo, borderColor: SHARED.errorBorde }]}>
+          <Icon name="warning" size={18} color={COLORS.error} />
+          <Text style={[styles.noticeText, styles.flex]}>Alergias registradas: {foodNames(profileAllergies)}.</Text>
+        </View>
+      ) : null}
+      {profileNoLikes.length || profileLikes.length ? (
+        <View style={[styles.notice, styles.horizontal]}>
+          <Icon name="heart" size={18} color={COLORS.orange} />
+          <Text style={[styles.noticeText, styles.flex]}>
+            Preferencias (no son alergias):{profileNoLikes.length ? ` no le gusta ${foodNames(profileNoLikes)}.` : ''}{profileLikes.length ? ` Le gusta ${foodNames(profileLikes)}.` : ''}
+          </Text>
+        </View>
+      ) : null}
+      <Text style={styles.footer}>
+        Las alertas son orientativas. Que no aparezca una alerta no significa que la receta sea segura: revisa ingredientes, etiquetas y posible contaminación cruzada.
       </Text>
     </View>
-  ) : null;
+  );
 
   const renderRecipeAllergyWarning = (recipe: Recipe) => {
     const warnings = recipeWarnings(recipe, profileAllergies);
     if (!warnings.length) return null;
     return (
-      <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: SHARED.errorFondo, borderColor: SHARED.errorBorde }]}>
-        <Text style={[styles.noticeText, { color: COLORS.error }]}>
-          Revisa estos ingredientes por alergias registradas: {warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.
+      <View accessibilityRole="alert" style={[styles.notice, styles.horizontal, { backgroundColor: SHARED.errorFondo, borderColor: SHARED.errorBorde }]}>
+        <Icon name="warning" size={18} color={COLORS.error} />
+        <Text style={[styles.noticeText, styles.flex, { color: COLORS.error }]}>
+          Posible coincidencia con alergias registradas: {foodNames(warnings)}. Revísala con una persona adulta.
         </Text>
       </View>
     );
@@ -2253,9 +2433,10 @@ export default function UnifiedApp() {
         {items.map(({ item, challenge }) => {
           if (!challenge) return null;
           const points = item.pointsAwarded ?? challenge.puntos_de_recompensa;
+          const steps = challengeActivitySteps(challengeActivities, challenge.id_reto);
           return (
+            <View key={item.id} style={{ gap: SPACE[4] }}>
             <ListRow
-              key={item.id}
               theme={theme}
               icon="achievements"
               iconColor={theme.colors.puntos}
@@ -2280,6 +2461,22 @@ export default function UnifiedApp() {
                 />
               )}
             />
+            {steps.length ? (
+              <View
+                accessible
+                accessibilityLabel={`Para lograrlo: ${steps.map(step => step.text).join('. ')}`}
+                style={{ gap: SPACE[4] }}
+              >
+                <Text style={[theme.type.caption, { color: theme.colors.texto }]}>Para lograrlo:</Text>
+                {steps.map(step => (
+                  <View key={`${step.kind}-${step.text}`} style={styles.horizontal}>
+                    <Icon name={step.kind === 'fisica' ? 'activity' : 'sparkles'} size={16} color={theme.colors.acento} />
+                    <Text style={[theme.type.counter, styles.flex, { color: theme.colors.textoSecundario }]}>{step.text}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            </View>
           );
         })}
       </SectionCard>
@@ -2293,7 +2490,8 @@ export default function UnifiedApp() {
     const mine = rewardRequests.filter(item => item.progressKey === profile.progressKey);
     const isRequested = (rewardId: number) => mine.some(item => item.rewardId === rewardId && item.status === 'solicitado');
     const rewards = family.rewards.filter(reward =>
-      (reward.estado === 'activa' && reward.cantidad_disponible > 0) || isRequested(reward.id_recompensa));
+      (reward.estado === 'activa' && rewardStockLeft(reward.cantidad_disponible, rewardRequests, reward.id_recompensa) > 0)
+      || isRequested(reward.id_recompensa));
     const delivered = mine.filter(item => item.status === 'entregado').slice(-3);
     if (!rewards.length && !delivered.length) return null;
     return (
@@ -2318,7 +2516,7 @@ export default function UnifiedApp() {
                   icon="chest"
                   disabled={role !== 'child'}
                   onPress={() => {
-                    if (familyActions.requestReward(reward.id_recompensa, profile.progressKey, reward.costo_en_puntos)) {
+                    if (familyActions.requestReward(reward.id_recompensa, profile.progressKey, reward.costo_en_puntos, reward.cantidad_disponible)) {
                       setNotice('¡Listo! Tu tutor verá que pediste este premio.');
                     }
                   }}
@@ -2348,6 +2546,30 @@ export default function UnifiedApp() {
     );
   };
 
+  // Explica de forma sencilla cómo se ganan los puntos y para qué sirven.
+  const renderPointsHelp = (profile: UnifiedProfile) => {
+    const points = pointsFor(profile);
+    const nextUnlock = Object.values(AVATAR_CATALOG).flat()
+      .filter(item => item.cost > points)
+      .sort((a, b) => a.cost - b.cost)[0];
+    return (
+      <SectionCard theme={theme} role="child" title="¿Para qué son mis puntos?">
+        <Text style={[theme.type.body, { color: theme.colors.texto }]}>
+          Ganas puntos al reclamar tus retos y cuando tu persona tutora aprueba una actividad. Sirven para desbloquear cosas de tu avatar y pedir premios.
+        </Text>
+        {nextUnlock ? (
+          <View style={styles.horizontal}>
+            <Icon name="avatar" size={18} color={theme.colors.acento} />
+            <Text style={[theme.type.counter, styles.flex, { color: theme.colors.textoSecundario }]}>
+              Con {plural(nextUnlock.cost - points, 'punto')} más desbloqueas: {nextUnlock.label}.
+            </Text>
+          </View>
+        ) : null}
+        <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>No pierdes puntos por saltarte un día.</Text>
+      </SectionCard>
+    );
+  };
+
   const renderChildHome = () => {
     if (!selectedProfile || !data) return renderNoProfile();
     const log = getDailyLog(data, selectedProfile, todayKey());
@@ -2357,18 +2579,56 @@ export default function UnifiedApp() {
     const missions = [
       { id: 'water-goal', title: 'Hidrátate a tu ritmo', detail: 'Llega a tu meta de agua de hoy.', icon: 'water' as const, points: MISSION_POINTS['water-goal'], ready: log.water >= waterGoal },
       { id: 'colorful-plate', title: 'Plato con colores', detail: 'Registra dos grupos de alimentos.', icon: 'food' as const, points: MISSION_POINTS['colorful-plate'], ready: new Set(log.foodGroups.map(canonicalFoodGroup).filter(Boolean)).size >= 2 },
-      { id: 'mood-check', title: 'Cuéntanos cómo estás', detail: 'Elige un ánimo para hoy.', icon: 'mood' as const, points: MISSION_POINTS['mood-check'], ready: Boolean(log.mood) },
+      { id: 'mood-check', title: 'Cuéntanos cómo estás', detail: 'Si quieres, elige cómo te sientes.', icon: 'mood' as const, points: MISSION_POINTS['mood-check'], ready: Boolean(log.mood) },
     ];
     const approvedActivities = Object.values(log.activities).filter(activity => activity.status === 'approved').length;
-    const age = ageFromBirth(selectedProfile.nutri?.nacimiento);
+    const age = profileAge(selectedProfile.nutri);
     const todaysActivities = activitiesForDay(activityCatalog.filter(activity => {
       const catalog = catalogActivityFor(activity.id);
-      if (age === null || !catalog) return true;
+      // Una edad fuera del rango infantil es un dato por corregir: no debe dejar sin actividades.
+      if (age === null || age < CHILD_AGE_LIMITS.min || age > CHILD_AGE_LIMITS.max || !catalog) return true;
       const [minimum, maximum] = catalog.grupo_edad.match(/\d+/g)?.map(Number) ?? [];
       return minimum !== undefined && maximum !== undefined && age >= minimum && age <= maximum;
     }), todayKey());
     const claimedMissions = missions.filter(mission => claimList.includes(mission.id)).length;
     const badgeCount = unique(progress.badges).length;
+    const foodCount = new Set(log.foodGroups.map(canonicalFoodGroup).filter(Boolean)).size;
+    const hasActivityToday = Object.keys(log.activities).length > 0;
+    const today = todayKey();
+    const openFamilyChallenge = family ? familyAssignments
+      .filter(item => item.progressKey === selectedProfile.progressKey && (item.status === 'asignado' || item.status === 'rechazado'))
+      .map(item => family.challenges.find(challenge => challenge.id_reto === item.challengeId))
+      .find(challenge => challenge && challenge.fecha_inicio.slice(0, 10) <= today && challenge.fecha_limite.slice(0, 10) >= today) : undefined;
+    const step = nextChildStep({
+      missions: missions.map(mission => ({ ...mission, claimed: claimList.includes(mission.id) })),
+      familyChallengeTitle: openFamilyChallenge?.descripcion_reto ?? null,
+      water: log.water,
+      waterGoal,
+      hasActivityToday,
+      foodGroups: foodCount,
+    });
+    const stepCard = step.kind === 'claim'
+      ? { title: `¡${step.points} puntos listos!`, detail: `Lograste “${step.title}”. Tócalo para guardarlos.`, icon: 'points' as const, actionLabel: `Reclamar +${step.points}`, onAction: () => claimMission(step.missionId, step.points) }
+      : step.kind === 'family-challenge'
+        ? { title: 'Tienes un reto familiar', detail: step.title, icon: 'achievements' as const, actionLabel: 'Ver mi reto', onAction: () => setChildHomeView('habitos') }
+        : step.kind === 'water'
+          ? { title: 'Toma un vaso de agua', detail: `${step.missing === 1 ? 'Te falta 1 vaso' : `Te faltan ${step.missing} vasos`} para tu meta de hoy. Sin prisa.`, icon: 'water' as const, actionLabel: 'Ya tomé un vaso', onAction: () => addWater(1) }
+          : step.kind === 'movement'
+            ? { title: 'Elige un movimiento', detail: 'Hay actividades nuevas para hoy. Escoge la que te guste.', icon: 'activity' as const, actionLabel: 'Ver actividades', onAction: () => setChildHomeView('movimiento') }
+            : step.kind === 'plate'
+              ? { title: 'Colores en tu plato', detail: 'Marca los grupos de alimentos que probaste hoy.', icon: 'food' as const, actionLabel: 'Marcar mi plato', onAction: () => setChildHomeView('habitos') }
+              : { title: '¡Qué gran día!', detail: 'Ya diste tus pasos de hoy. Descansar también cuenta.', icon: 'sparkles' as const, actionLabel: 'Ver mis logros', onAction: () => setTab('Logros') };
+    const daySteps = [
+      { label: 'Agua', icon: 'water' as const, done: log.water >= waterGoal },
+      { label: 'Plato', icon: 'food' as const, done: foodCount >= 2 },
+      { label: 'Movimiento', icon: 'activity' as const, done: hasActivityToday },
+    ];
+    const doneSteps = daySteps.filter(item => item.done).length;
+    const dayMessage = doneSteps === daySteps.length
+      ? '¡Completaste tus 3 pasos de hoy!'
+      : doneSteps === 0
+        ? 'Hoy es un buen día para empezar, a tu ritmo.'
+        : `¡Vas muy bien! Ya llevas ${doneSteps} de ${daySteps.length} pasos.`;
     // Vista de una sección: botón para volver a los mosaicos y su contenido.
     const section = (id: ChildHomeSection, title: string, children: ReactNode) => (
       childHomeView === id ? (
@@ -2386,11 +2646,13 @@ export default function UnifiedApp() {
             <HeroCard
               theme={theme}
               title={`¡Hola, ${selectedProfile.name}!`}
-              subtitle={`${todayLabel()} · ${approvedActivities} ${approvedActivities === 1 ? 'actividad aprobada' : 'actividades aprobadas'} hoy. Cada pequeño paso cuenta.`}
+              subtitle={`${todayLabel()}${approvedActivities ? ` · ¡${plural(approvedActivities, 'actividad aprobada', 'actividades aprobadas')} hoy!` : ''} Cada pequeño paso cuenta.`}
               points={pointsFor(selectedProfile)}
               actionLabel="Personalizar avatar"
               onAction={openAvatarEditor}
             />
+            <NextStepCard theme={theme} {...stepCard} />
+            <DaySteps theme={theme} steps={daySteps} message={dayMessage} />
             <HomeGrid>
               <HomeTile
                 theme={theme}
@@ -2429,6 +2691,7 @@ export default function UnifiedApp() {
                 onPress={() => setChatOpen(true)}
               />
             </HomeGrid>
+            {renderPointsHelp(selectedProfile)}
           </>
         ) : null}
 
@@ -2484,7 +2747,7 @@ export default function UnifiedApp() {
           </View>
         </SectionCard>
 
-        <SectionCard theme={theme} role="child" title="¿Cómo te sientes?" subtitle="Toca cómo te sientes hoy. Puedes cambiarlo durante el día.">
+        <SectionCard theme={theme} role="child" title="¿Cómo te sientes? (opcional)" subtitle="Si quieres, toca una opción. Puedes cambiarla o quitarla. Solo la ve tu persona tutora.">
           <View style={screenStyles.moodGrid}>
             {CHILD_MOODS.filter(mood => !('retired' in mood)).map(mood => {
               const selected = log.mood === mood.id;
@@ -2514,10 +2777,11 @@ export default function UnifiedApp() {
             <View style={styles.horizontal}>
               <Icon name="heart" size={16} color={theme.colors.puntos} />
               <Text style={[theme.type.counter, styles.flex, { color: theme.colors.textoSecundario }]}>
-                Gracias por contarnos. Si quieres, platícalo con una persona adulta de confianza.
+                Gracias por contarnos. Todas las emociones están bien. Si quieres, platícalo con una persona adulta de confianza.
               </Text>
             </View>
           ) : null}
+          {log.mood ? <Button title="Quitar mi respuesta" small variant="outline" onPress={() => setMood(null)} /> : null}
         </SectionCard>
 
         <SectionCard theme={theme} role="child" title="Mi descanso" subtitle="¿Cuántas horas dormiste anoche?">
@@ -2574,7 +2838,7 @@ export default function UnifiedApp() {
             return (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Ver actividad ${activity.title}`}
+                accessibilityLabel={`Ver actividad ${activity.title}${saved?.status === 'approved' ? ', aprobada' : saved?.status === 'pending' ? ', en revisión' : ''}`}
                 key={activity.id}
                 onPress={() => {
                   setActivityModal(activity);
@@ -2599,17 +2863,21 @@ export default function UnifiedApp() {
                   </View>
                 </View>
                 {saved?.status === 'approved' ? (
-                  <Tag title="Aprobada" color={COLORS.green} />
+                  <Tag title="Aprobada" color={COLORS.green} icon="check" />
                 ) : saved?.status === 'pending' ? (
-                  <Tag title="En revisión" color={COLORS.orange} />
+                  <Tag title="En revisión" color={COLORS.orange} icon="bell" />
                 ) : (
                   <Text style={[theme.type.caption, { color: theme.colors.acento }]}>Ver actividad</Text>
                 )}
               </Pressable>
             );
           })}
-          {activityCatalog.length === 0 ? (
-            <Text style={styles.muted}>El catálogo de actividades todavía no tiene registros.</Text>
+          {todaysActivities.length === 0 ? (
+            <Text style={styles.body}>
+              {activityCatalog.length === 0
+                ? 'Todavía no hay actividades. Vuelve pronto.'
+                : 'Hoy no hay actividades para tu edad. Pide a tu persona tutora una idea para moverte.'}
+            </Text>
           ) : null}
         </SectionCard>
 
@@ -2678,6 +2946,7 @@ export default function UnifiedApp() {
             </View>
           )}
         </SectionCard>
+        {renderPointsHelp(selectedProfile)}
         {renderFamilyRewards(selectedProfile)}
       </>
     );
@@ -2733,7 +3002,7 @@ export default function UnifiedApp() {
       .filter(day => day.log.sleepHours !== null)
       .map(day => ({ label: dayLabel(day.label), hours: day.log.sleepHours ?? 0 }));
     const selectedNutri = selectedProfile?.nutri;
-    const selectedAge = ageFromBirth(selectedNutri?.nacimiento);
+    const selectedAge = profileAge(selectedNutri);
     return (
       <>
         <HeroCard
@@ -2756,6 +3025,161 @@ export default function UnifiedApp() {
           </View>
         </View>
 
+        {!data.progressSharingEnabled ? (
+          <Card style={{ backgroundColor: COLORS.paleOrange, borderColor: SHARED.advertenciaBorde }}>
+            <Text style={styles.cardTitle}>Compartir progreso está desactivado</Text>
+            <Text style={styles.noticeText}>
+              Los detalles de hábitos, ánimo y actividades no se muestran aquí. Puedes cambiar esta preferencia en Ajustes; el cambio se guarda en tu espacio familiar.
+            </Text>
+          </Card>
+        ) : (
+          <SectionCard theme={theme} role="tutor" title={reviewCount ? `Por revisar (${reviewCount})` : 'Por revisar'} subtitle={reviewCount ? 'Actividades, retos y premios que esperan tu respuesta.' : 'Aquí verás lo que necesite tu respuesta.'}>
+            {challengeReviews.map(({ item, challenge, profile }) => {
+              const points = challenge?.puntos_de_recompensa ?? 0;
+              return (
+                <View key={`reto-${item.id}`} style={screenStyles.reviewRow}>
+                  <View style={styles.horizontal}>
+                    <Icon name="achievements" size={22} color={COLORS.orange} />
+                    <View style={styles.flex}>
+                      <Text style={styles.inputLabel}>{profile?.name ?? 'Perfil'} · Reto: {challenge?.descripcion_reto ?? 'Reto'}</Text>
+                      <View style={styles.wrap}><Tag title="Reto · en revisión" color={COLORS.orange} icon="bell" /></View>
+                      <Text style={styles.muted}>Dice que ya lo logró. Al verificar recibe {plural(points, 'punto')}.</Text>
+                    </View>
+                  </View>
+                  <View style={styles.horizontal}>
+                    <Button
+                      title="Pedir de nuevo"
+                      small
+                      variant="outline"
+                      style={styles.flex}
+                      onPress={() => { if (setAssignmentStatus(item.id, 'rechazado', points)) setNotice('Le pediste intentar el reto de nuevo.'); }}
+                    />
+                    <Button
+                      title="Verificar"
+                      small
+                      variant="success"
+                      style={styles.flex}
+                      onPress={() => { if (setAssignmentStatus(item.id, 'verificado', points)) setNotice(`Reto verificado: +${points} puntos.`); }}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+            {rewardReviews.map(({ item, reward, profile }) => (
+              <View key={`premio-${item.id}`} style={screenStyles.reviewRow}>
+                <View style={styles.horizontal}>
+                  <Icon name="chest" size={22} color={COLORS.orange} />
+                  <View style={styles.flex}>
+                    <Text style={styles.inputLabel}>{profile?.name ?? 'Perfil'} · Premio: {reward?.nombre_premio ?? 'Premio'}</Text>
+                    <View style={styles.wrap}><Tag title="Premio · pedido" color={COLORS.orange} icon="bell" /></View>
+                    <Text style={styles.muted}>Usa {plural(item.cost, 'punto')} para premios. Si cancelas, regresan.</Text>
+                  </View>
+                </View>
+                <View style={styles.horizontal}>
+                  <Button
+                    title="Cancelar"
+                    small
+                    variant="outline"
+                    style={styles.flex}
+                    onPress={() => { if (familyActions.setRewardRequestStatus(item.id, 'cancelado')) setNotice('Se canceló el pedido; los puntos regresan.'); }}
+                  />
+                  <Button
+                    title="Entregado"
+                    small
+                    variant="success"
+                    style={styles.flex}
+                    onPress={() => { if (familyActions.setRewardRequestStatus(item.id, 'entregado')) setNotice('Premio marcado como entregado.'); }}
+                  />
+                </View>
+              </View>
+            ))}
+            {pendingActivities.map(item => {
+              const activity = activityFor(item.activityId);
+              return (
+                <View key={`${item.profile.key}-${item.date}-${item.activityId}`} style={{ borderTopWidth: 1, borderTopColor: COLORS.line, paddingTop: SPACE[8], gap: SPACE[8] }}>
+                  <View style={styles.between}>
+                    <View style={[styles.horizontal, styles.flex]}>
+                      <Icon name="activity" size={22} color={COLORS.blue} />
+                      <View style={styles.flex}>
+                        <Text style={styles.inputLabel}>{item.profile.name} · {activity?.title ?? 'Actividad'}</Text>
+                        <View style={styles.wrap}><Tag title="Actividad · en revisión" color={COLORS.orange} icon="bell" /></View>
+                        <Text style={styles.muted}>{new Intl.DateTimeFormat('es-MX', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(`${item.date}T12:00:00`))} · {item.activity.duration} min</Text>
+                      </View>
+                    </View>
+                  </View>
+                  {item.activity.evidenceUri ? (
+                    <EvidencePhoto path={item.activity.evidenceUri} />
+                  ) : <Text style={styles.muted}>Sin foto adjunta.</Text>}
+                  <View style={styles.horizontal}>
+                    <Button
+                      title="Pedir de nuevo"
+                      small
+                      variant="outline"
+                      disabled={reviewingKeys.includes(`${item.profile.key}-${item.date}-${item.activityId}`)}
+                      style={styles.flex}
+                      onPress={() => void reviewActivity(item.profile, item.date, item.activityId, false)}
+                    />
+                    <Button
+                      title={`Aprobar +${activity?.points ?? 10}`}
+                      accessibilityLabel={`Aprobar actividad de ${item.profile.name} y dar ${activity?.points ?? 10} puntos`}
+                      small
+                      variant="success"
+                      disabled={reviewingKeys.includes(`${item.profile.key}-${item.date}-${item.activityId}`)}
+                      style={styles.flex}
+                      onPress={() => void reviewActivity(item.profile, item.date, item.activityId, true)}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+            {allPendingActivities.length > pendingActivities.length ? (
+              <Text style={styles.muted}>Y {plural(allPendingActivities.length - pendingActivities.length, 'actividad más', 'actividades más')}: aparecerán al revisar estas.</Text>
+            ) : null}
+            {reviewCount === 0 ? (
+              <View style={screenStyles.allDone}>
+                <Icon name="achievements" size={40} color={COLORS.orange} />
+                <Text style={[theme.type.h3, { color: theme.colors.texto }]}>¡Todo al día!</Text>
+                <Text style={[styles.body, { textAlign: 'center' }]}>No hay actividades pendientes. ¡Gracias por acompañar!</Text>
+              </View>
+            ) : null}
+          </SectionCard>
+        )}
+        {selectedProfile && data.progressSharingEnabled ? (
+          <SectionCard theme={theme} role="tutor" title={`Resumen semanal de ${selectedProfile.name}`} subtitle="Registros de los últimos 7 días.">
+            {selectedAge !== null || selectedNutri?.peso || selectedNutri?.altura ? (
+              <View style={styles.wrap}>
+                {selectedAge !== null ? <Tag title={ageLabel(selectedAge)} color={COLORS.pink} icon="profile" /> : null}
+                {selectedNutri?.peso ? <Tag title={`${selectedNutri.peso} kg`} color={COLORS.purple} icon="scale" /> : null}
+                {selectedNutri?.altura ? <Tag title={`${selectedNutri.altura} cm`} color={COLORS.blue} icon="height" /> : null}
+              </View>
+            ) : null}
+            <ChartTitle theme={theme} title="Agua por día (vasos)" note={`Meta: ${plural(waterGoal, 'vaso')} al día. La alcanzó ${waterDays} de 7 días.`} />
+            <WaterWeekChart theme={theme} days={weekDays.map(day => ({ label: dayLabel(day.label).slice(0, 2), value: day.log.water }))} goal={waterGoal} />
+
+            <ChartTitle theme={theme} title="Grupos de alimentos (días)" note={`Días en que marcó cada grupo. Registró alimentos ${foodDays} de 7 días.`} />
+            <DonutChart theme={theme} items={foodItems} center={`${foodDays} de 7\ndías`} emptyText="Aún no hay grupos de alimentos registrados." />
+
+            <ChartTitle theme={theme} title="Ánimo (días, opcional)" note={`Lo compartió ${moodDays} de 7 días. No es un diagnóstico: úsalo para platicar en familia.`} />
+            {moodRows.length ? moodRows.map(({ mood, days }) => (
+              <PillBar key={mood.id} theme={theme} icon={mood.icon} color={mood.color} text={`${mood.label}: ${plural(days, 'día')}`} ratio={days / 7} />
+            )) : <Text style={styles.muted}>Aún no hay estados de ánimo registrados.</Text>}
+
+            <ChartTitle theme={theme} title="Descanso por día (horas)" note="Solo los días registrados. Referencia general: 9 a 12 horas." />
+            {sleepRows.length ? (
+              <View style={screenStyles.sleepSummaryRow}>
+                <View style={[screenStyles.sleepBadge, { backgroundColor: '#3E3A7A' }]}>
+                  <Icon name="moonStars" size={36} color="#FFD84D" />
+                </View>
+                <View style={[styles.flex, { gap: SPACE[8] }]}>
+                  {sleepRows.map(row => (
+                    <PillBar key={row.label} theme={theme} icon="sleep" color={COLORS.purple} text={`${row.label}: ${row.hours} h`} ratio={row.hours / 12} />
+                  ))}
+                </View>
+              </View>
+            ) : <Text style={styles.muted}>Aún no hay horas de sueño registradas.</Text>}
+          </SectionCard>
+        ) : null}
+
         {renderTutorIntro('EN FAMILIA', 'Perfiles de la familia', 'Selecciona un perfil para revisar su resumen.')}
         {profiles.map(profile => {
           const log = getDailyLog(data, profile, todayKey());
@@ -2763,13 +3187,23 @@ export default function UnifiedApp() {
           const claims = data.missionClaims[profile.progressKey]?.[todayKey()] ?? [];
           const missionPoints = claims.reduce((total, id) => total + (MISSION_POINTS[id] ?? 0), 0);
           const approvedCount = Object.values(log.activities).filter(item => item.status === 'approved').length;
+          const isSelected = selectedProfile?.key === profile.key;
           return (
-            <SectionCard
+            <Pressable
               key={profile.key}
+              accessibilityRole="button"
+              accessibilityHint={isSelected ? undefined : 'Muestra el resumen de este perfil'}
+              accessibilityState={{ selected: isSelected }}
+              onPress={() => {
+                if (role === 'tutor') setSelectedProfileKey(profile.key);
+              }}
+              style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
+            >
+            <SectionCard
               theme={theme}
               role="tutor"
               title={profile.name}
-              style={selectedProfile?.key === profile.key ? { borderWidth: 2, borderColor: theme.colors.acento } : undefined}
+              style={isSelected ? { borderWidth: 2, borderColor: theme.colors.acento } : undefined}
             >
               <View style={styles.between}>
                 <View style={styles.horizontal}>
@@ -2781,14 +3215,20 @@ export default function UnifiedApp() {
                     </View>
                   </View>
                 </View>
-                <Button
-                  title={selectedProfile?.key === profile.key ? 'Seleccionado' : 'Ver perfil'}
-                  small
-                  variant={selectedProfile?.key === profile.key ? 'secondary' : 'outline'}
-                  onPress={() => {
-                    if (role === 'tutor') setSelectedProfileKey(profile.key);
+                <View
+                  style={{
+                    paddingVertical: SPACE[8],
+                    paddingHorizontal: SPACE[12],
+                    borderRadius: RADIUS.pildora,
+                    borderWidth: BORDER.fino,
+                    borderColor: isSelected ? theme.colors.acento : COLORS.line,
+                    backgroundColor: isSelected ? theme.colors.acento : 'transparent',
                   }}
-                />
+                >
+                  <Text style={[theme.type.caption, { color: isSelected ? '#000000' : theme.colors.texto }]}>
+                    {isSelected ? 'Seleccionado' : 'Ver perfil'}
+                  </Text>
+                </View>
               </View>
               {data.progressSharingEnabled ? (
                 <View style={styles.horizontal}>
@@ -2831,157 +3271,10 @@ export default function UnifiedApp() {
                 );
               })()}
             </SectionCard>
+            </Pressable>
           );
         })}
 
-        {selectedProfile && data.progressSharingEnabled ? (
-          <SectionCard theme={theme} role="tutor" title={`Resumen semanal de ${selectedProfile.name}`} subtitle="Registros de los últimos 7 días.">
-            {selectedAge !== null || selectedNutri?.peso || selectedNutri?.altura ? (
-              <View style={styles.wrap}>
-                {selectedAge !== null ? <Tag title={ageLabel(selectedAge)} color={COLORS.pink} icon="profile" /> : null}
-                {selectedNutri?.peso ? <Tag title={`${selectedNutri.peso} kg`} color={COLORS.purple} icon="scale" /> : null}
-                {selectedNutri?.altura ? <Tag title={`${selectedNutri.altura} cm`} color={COLORS.blue} icon="height" /> : null}
-              </View>
-            ) : null}
-            <ChartTitle theme={theme} title="Agua por día" note={`Llegó a su meta ${waterDays} de 7 días`} />
-            <WaterWeekChart theme={theme} days={weekDays.map(day => ({ label: dayLabel(day.label).slice(0, 2), value: day.log.water }))} goal={waterGoal} />
-
-            <ChartTitle theme={theme} title="Grupos de alimentos" note={`Registró alimentos ${foodDays} de 7 días`} />
-            <DonutChart theme={theme} items={foodItems} center={`${foodDays}/7`} emptyText="Aún no hay grupos de alimentos registrados." />
-
-            <ChartTitle theme={theme} title="Ánimo" note={`Contó cómo se sentía ${moodDays} de 7 días`} />
-            {moodRows.length ? moodRows.map(({ mood, days }) => (
-              <PillBar key={mood.id} theme={theme} icon={mood.icon} color={mood.color} text={`${mood.label}: ${plural(days, 'día')}`} ratio={days / 7} />
-            )) : <Text style={styles.muted}>Aún no hay estados de ánimo registrados.</Text>}
-
-            <ChartTitle theme={theme} title="Descanso por día" note="Recomendado: 9 a 12 horas" />
-            {sleepRows.length ? (
-              <View style={screenStyles.sleepSummaryRow}>
-                <View style={[screenStyles.sleepBadge, { backgroundColor: '#3E3A7A' }]}>
-                  <Icon name="moonStars" size={36} color="#FFD84D" />
-                </View>
-                <View style={[styles.flex, { gap: SPACE[8] }]}>
-                  {sleepRows.map(row => (
-                    <PillBar key={row.label} theme={theme} icon="sleep" color={COLORS.purple} text={`${row.label}: ${row.hours} h`} ratio={row.hours / 12} />
-                  ))}
-                </View>
-              </View>
-            ) : <Text style={styles.muted}>Aún no hay horas de sueño registradas.</Text>}
-          </SectionCard>
-        ) : null}
-
-        {!data.progressSharingEnabled ? (
-          <Card style={{ backgroundColor: COLORS.paleOrange, borderColor: SHARED.advertenciaBorde }}>
-            <Text style={styles.cardTitle}>Compartir progreso está desactivado</Text>
-            <Text style={styles.noticeText}>
-              Los detalles de hábitos, ánimo y actividades no se muestran aquí. Puedes cambiar esta preferencia en Ajustes; el cambio se guarda en tu espacio familiar.
-            </Text>
-          </Card>
-        ) : (
-          <SectionCard theme={theme} role="tutor" title="Por revisar" subtitle="Actividades, retos y premios que esperan tu respuesta.">
-            {challengeReviews.map(({ item, challenge, profile }) => {
-              const points = challenge?.puntos_de_recompensa ?? 0;
-              return (
-                <View key={`reto-${item.id}`} style={screenStyles.reviewRow}>
-                  <View style={styles.horizontal}>
-                    <Icon name="achievements" size={22} color={COLORS.orange} />
-                    <View style={styles.flex}>
-                      <Text style={styles.inputLabel}>{profile?.name ?? 'Perfil'} · Reto: {challenge?.descripcion_reto ?? 'Reto'}</Text>
-                      <Text style={styles.muted}>Dice que ya lo logró · {plural(points, 'punto')}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.horizontal}>
-                    <Button
-                      title="Pedir de nuevo"
-                      small
-                      variant="outline"
-                      style={styles.flex}
-                      onPress={() => { if (setAssignmentStatus(item.id, 'rechazado', points)) setNotice('Le pediste intentar el reto de nuevo.'); }}
-                    />
-                    <Button
-                      title="Verificar"
-                      small
-                      variant="success"
-                      style={styles.flex}
-                      onPress={() => { if (setAssignmentStatus(item.id, 'verificado', points)) setNotice(`Reto verificado: +${points} puntos.`); }}
-                    />
-                  </View>
-                </View>
-              );
-            })}
-            {rewardReviews.map(({ item, reward, profile }) => (
-              <View key={`premio-${item.id}`} style={screenStyles.reviewRow}>
-                <View style={styles.horizontal}>
-                  <Icon name="chest" size={22} color={COLORS.orange} />
-                  <View style={styles.flex}>
-                    <Text style={styles.inputLabel}>{profile?.name ?? 'Perfil'} · Premio: {reward?.nombre_premio ?? 'Premio'}</Text>
-                    <Text style={styles.muted}>Pidió canjearlo · {plural(item.cost, 'punto')}</Text>
-                  </View>
-                </View>
-                <View style={styles.horizontal}>
-                  <Button
-                    title="Cancelar"
-                    small
-                    variant="outline"
-                    style={styles.flex}
-                    onPress={() => { if (familyActions.setRewardRequestStatus(item.id, 'cancelado')) setNotice('Se canceló el pedido; los puntos regresan.'); }}
-                  />
-                  <Button
-                    title="Entregado"
-                    small
-                    variant="success"
-                    style={styles.flex}
-                    onPress={() => { if (familyActions.setRewardRequestStatus(item.id, 'entregado')) setNotice('Premio marcado como entregado.'); }}
-                  />
-                </View>
-              </View>
-            ))}
-            {pendingActivities.map(item => {
-              const activity = activityFor(item.activityId);
-              return (
-                <View key={`${item.profile.key}-${item.date}-${item.activityId}`} style={{ borderTopWidth: 1, borderTopColor: COLORS.line, paddingTop: SPACE[8], gap: SPACE[8] }}>
-                  <View style={styles.between}>
-                    <View style={[styles.horizontal, styles.flex]}>
-                      <Icon name="activity" size={22} color={COLORS.blue} />
-                      <View style={styles.flex}>
-                        <Text style={styles.inputLabel}>{item.profile.name} · {activity?.title ?? 'Actividad'}</Text>
-                        <Text style={styles.muted}>{new Intl.DateTimeFormat('es-MX', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(`${item.date}T12:00:00`))} · {item.activity.duration} min</Text>
-                      </View>
-                    </View>
-                  </View>
-                  {item.activity.evidenceUri ? (
-                    <EvidencePhoto path={item.activity.evidenceUri} />
-                  ) : <Text style={styles.muted}>Sin foto adjunta.</Text>}
-                  <View style={styles.horizontal}>
-                    <Button
-                      title="Pedir de nuevo"
-                      small
-                      variant="outline"
-                      disabled={reviewingKeys.includes(`${item.profile.key}-${item.date}-${item.activityId}`)}
-                      style={styles.flex}
-                      onPress={() => void reviewActivity(item.profile, item.date, item.activityId, false)}
-                    />
-                    <Button
-                      title="Aprobar"
-                      small
-                      variant="success"
-                      disabled={reviewingKeys.includes(`${item.profile.key}-${item.date}-${item.activityId}`)}
-                      style={styles.flex}
-                      onPress={() => void reviewActivity(item.profile, item.date, item.activityId, true)}
-                    />
-                  </View>
-                </View>
-              );
-            })}
-            {reviewCount === 0 ? (
-              <View style={screenStyles.allDone}>
-                <Icon name="achievements" size={40} color={COLORS.orange} />
-                <Text style={[theme.type.h3, { color: theme.colors.texto }]}>¡Todo al día!</Text>
-                <Text style={[styles.body, { textAlign: 'center' }]}>No hay actividades pendientes. ¡Gracias por acompañar!</Text>
-              </View>
-            ) : null}
-          </SectionCard>
-        )}
         <SectionCard theme={theme} role="tutor" title="Accesos rápidos">
           <Button title="Agregar perfil infantil" icon="add" onPress={() => createOrEditProfile(null)} />
           <Button title="Ver recetas" icon="recipes" variant="outline" onPress={() => setTab('Recetas')} />
@@ -3014,7 +3307,7 @@ export default function UnifiedApp() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }}>
           <View style={screenStyles.selectionRow}>
             {WEEKDAYS.map(day => (
-              <View key={day}>{renderSelectionPill(day, day === dietDay, () => setDietDay(day))}</View>
+              <View key={day}>{renderSelectionPill(dayPillLabel(day), day === dietDay, () => setDietDay(day))}</View>
             ))}
           </View>
         </ScrollView>
@@ -3145,7 +3438,7 @@ export default function UnifiedApp() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }}>
           <View style={screenStyles.selectionRow}>
             {WEEKDAYS.map(day => (
-              <View key={day}>{renderSelectionPill(day, selectedDay === day, () => setSelectedDay(day))}</View>
+              <View key={day}>{renderSelectionPill(dayPillLabel(day), selectedDay === day, () => setSelectedDay(day))}</View>
             ))}
           </View>
         </ScrollView>
@@ -3154,7 +3447,6 @@ export default function UnifiedApp() {
         {MEALS.map(meal => {
           const recipe = recipes.find(item => item.id === meals[meal.id]);
           const savedValue = meals[meal.id];
-          const warnings = recipe ? recipeWarnings(recipe, profileAllergies) : [];
           const dislikes = recipe ? recipeWarnings(recipe, profileNoLikes) : [];
           return (
             <SectionCard key={meal.id} theme={theme} role="tutor" title={meal.title}>
@@ -3167,15 +3459,17 @@ export default function UnifiedApp() {
                     ) : savedValue ? (
                       <Text style={styles.body}>{savedValue}</Text>
                     ) : (
-                      <Text style={styles.muted}>Todavía sin receta asignada</Text>
+                      <Text style={styles.body}>Aún no hay receta. Agrega una o déjalo libre.</Text>
                     )}
                   </View>
                 </View>
                 {role === 'tutor' ? (
                   <Button
-                    title={savedValue ? 'Cambiar' : 'Agregar'}
+                    title={savedValue ? 'Cambiar' : 'Agregar receta'}
+                    accessibilityLabel={`${savedValue ? 'Cambiar' : 'Agregar'} receta de ${meal.title} del ${selectedDay}`}
+                    icon={savedValue ? 'edit' : 'add'}
                     small
-                    variant="outline"
+                    variant={savedValue ? 'outline' : 'secondary'}
                     onPress={() => {
                       setSelectedMeal(meal.id);
                       openMenuPicker(selectedDay, meal.id);
@@ -3186,8 +3480,8 @@ export default function UnifiedApp() {
               {recipe ? (
                 <>
                   {renderIngredientPills(recipe.ingredients)}
-                  {warnings.length ? <Text style={styles.errorText}>Revisa estos ingredientes: {warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.</Text> : null}
-                  {dislikes.length ? <Text style={styles.noticeText}>Preferencias para evitar: {dislikes.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.</Text> : null}
+                  {renderRecipeAllergyWarning(recipe)}
+                  {dislikes.length ? <Text style={styles.noticeText}>Preferencia: no le gusta {foodNames(dislikes)}.</Text> : null}
                   <Button title="Ver preparación" small variant="secondary" onPress={() => setRecipeDetails(recipe)} />
                 </>
               ) : null}
@@ -3320,7 +3614,7 @@ export default function UnifiedApp() {
               <View style={styles.flex}>
                 <Text style={styles.inputLabel}>{profile.name}</Text>
                 <Text style={styles.muted}>
-                  {(() => { const age = ageFromBirth(profile.nutri?.nacimiento); return age === null ? 'Sin fecha de nacimiento' : ageLabel(age); })()}
+                  {(() => { const age = profileAge(profile.nutri); return age === null ? 'Falta registrar su edad' : ageLabel(age); })()}
                 </Text>
               </View>
               <Button title="Editar" small variant="outline" onPress={() => createOrEditProfile(profile)} />
@@ -3439,7 +3733,7 @@ export default function UnifiedApp() {
     }
     return (
       <>
-        {renderTutorIntro('TU ESPACIO', 'Ajustes y privacidad', 'Configura tu espacio familiar privado.')}
+        {renderTutorIntro('TU ESPACIO', 'Ajustes y privacidad', 'Configura tu espacio familiar.')}
         {([
           { id: 'parental', title: 'Control parental', subtitle: 'Perfiles, avances y seguridad.', icon: 'shield', color: theme.colors.acento },
           { id: 'notifications', title: 'Metas de hábitos', subtitle: 'Meta diaria de agua para la familia.', icon: 'water', color: theme.colors.agua },
@@ -3459,7 +3753,7 @@ export default function UnifiedApp() {
         {renderAppearance('tutor')}
         <SectionCard theme={theme} role="tutor" title="Tu cuenta">
           <Text style={styles.body}>
-            Tus perfiles y avances se guardan en el espacio privado de tu cuenta.
+            Tus perfiles y avances se guardan en la nube, en el espacio de tu cuenta.
           </Text>
           <Text style={styles.muted}>Correo: {session?.email ?? 'sin sesión'}</Text>
           <Button title="Cerrar sesión" icon="logout" variant="outline" onPress={logout} />
@@ -3563,8 +3857,8 @@ export default function UnifiedApp() {
       {[
         { question: '¿Cómo registro mi agua?', answer: 'Toca +1 cuando tomes un vaso. Puedes corregirlo con el botón −.' },
         { question: '¿Cómo gano puntos?', answer: 'Completa y reclama tus retos. La persona tutora también puede aprobar tus actividades.' },
-        { question: '¿Quién cuida mis datos?', answer: 'Tu cuenta familiar es privada. Si tienes dudas, habla con la persona tutora.' },
-        { question: '¿Qué hace NutriBot?', answer: 'Te comparte respuestas preparadas sobre hábitos. Si algo te preocupa, habla con una persona adulta de confianza.' },
+        { question: '¿Quién ve lo que registro?', answer: 'Tu persona tutora puede ver tus hábitos, tu ánimo, tus actividades y tus fotos. Si tienes dudas, platícalo con esa persona.' },
+        { question: '¿Qué es NutriBot?', answer: 'Es un programa de inteligencia artificial de Google que platica sobre hábitos. No es una persona ni un médico. No le escribas tu nombre, dónde vives ni datos personales. Si algo te preocupa, habla con una persona adulta de confianza.' },
       ].map(item => (
         <SectionCard key={item.question} theme={theme} role="child" title={item.question}>
           <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{item.answer}</Text>
@@ -3581,12 +3875,12 @@ export default function UnifiedApp() {
       ))}
       <SectionCard theme={theme} role="tutor" title="Sobre NutriBot">
         <Text style={styles.body}>
-          NutriBot ofrece respuestas locales predefinidas para conversar sobre hábitos. No usa inteligencia artificial, no recibe mensajes por internet y no reemplaza a una persona profesional.
+          NutriBot usa inteligencia artificial de Google: los mensajes que se escriben en el chat se envían por internet para generar la respuesta y la app no los guarda. No reemplaza a una persona profesional. Pide a tus hijas e hijos que no escriban datos personales.
         </Text>
       </SectionCard>
-      <SectionCard theme={theme} role="tutor" title="¿Qué pasa con mis datos anteriores?">
+      <SectionCard theme={theme} role="tutor" title="¿Dónde se guardan los datos?">
         <Text style={styles.body}>
-          Cada cuenta tutora tiene un espacio privado en la nube. Los perfiles y avances solo son visibles para la cuenta que los creó.
+          Perfiles, avances y fotos se guardan en la nube (Supabase), en el espacio de tu cuenta, y se accede con tu correo y contraseña. La app no agrega cifrado propio a estos datos.
         </Text>
       </SectionCard>
       <Text style={styles.footer}>Warrior Kids · Hecho para acompañar hábitos saludables con cariño.</Text>
@@ -3638,80 +3932,156 @@ export default function UnifiedApp() {
                   placeholder="Nombre del perfil"
                   value={profileDraft.name}
                 />
-                <SectionTitle title="Elige un color y revisa el avatar" subtitle="Podrás personalizar más detalles después." />
+                <SectionTitle title="Elige sus colores" subtitle="Cualquier paleta es para cualquier persona. Podrás personalizar más detalles después." />
                 <View style={[styles.horizontal, { justifyContent: 'center', paddingVertical: SPACE[4] }]}>
                   <AvatarIllustration
-                    theme={profileDraft.theme}
+                    theme={profileDraft.colorTheme}
                     selection={editingProfile ? data?.avatarSelections[editingProfile.key] : undefined}
                   />
                 </View>
-                <View style={styles.roleRow}>
+                <View accessibilityRole="radiogroup" accessibilityLabel="Paleta de colores" style={styles.roleRow}>
                   {([
-                    { id: 'nina' as const, label: 'Lavanda y rosa' },
-                    { id: 'nino' as const, label: 'Azul y verde' },
-                  ]).map(option => (
-                    <Pressable
-                      accessibilityRole="button"
-                      aria-selected={profileDraft.theme === option.id}
-                      key={option.id}
-                      onPress={() => setProfileDraft(current => ({ ...current, theme: option.id }))}
-                      style={[styles.roleChoice, profileDraft.theme === option.id && styles.roleChoiceActive]}
-                    >
-                      <AvatarIllustration theme={option.id} size="small" />
-                      <Text style={[styles.roleChoiceText, profileDraft.theme === option.id && styles.roleChoiceTextActive]}>{option.label}</Text>
-                    </Pressable>
-                  ))}
+                    { id: 'nina' as const, label: 'Lavanda y rosa', fill: THEMES.lia.acento },
+                    { id: 'nino' as const, label: 'Azul y verde', fill: THEMES.oli.acento },
+                  ]).map(option => {
+                    const selected = profileDraft.colorTheme === option.id;
+                    return (
+                      <Pressable
+                        accessibilityRole="radio"
+                        accessibilityLabel={`Paleta ${option.label}`}
+                        aria-checked={selected}
+                        key={option.id}
+                        onPress={() => setProfileDraft(current => ({ ...current, colorTheme: option.id }))}
+                        style={[styles.roleChoice, selected && [styles.roleChoiceActive, { backgroundColor: option.fill }]]}
+                      >
+                        <AvatarIllustration theme={option.id} size="small" />
+                        <Text style={[styles.roleChoiceText, selected && styles.roleChoiceTextOnColor]}>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </>
             ) : null}
 
             {profileStep === 1 ? (
               <>
-                <SectionTitle title="Sexo" subtitle="Elige la opción del perfil." />
-                <View style={styles.roleRow}>
-                  {([{ id: 'nina', label: 'Niña' }, { id: 'nino', label: 'Niño' }] as const).map(option => (
-                    <Pressable key={option.id} accessibilityRole="button"
-                      aria-selected={profileDraft.theme === option.id}
-                      onPress={() => setProfileDraft(current => ({ ...current, theme: option.id }))}
-                      style={[styles.roleChoice, profileDraft.theme === option.id && styles.roleChoiceActive]}>
-                      <Text style={[styles.roleChoiceText, profileDraft.theme === option.id && styles.roleChoiceTextActive]}>{option.label}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <DateField
-                  label="Fecha de nacimiento"
-                  value={parseBirthDate(profileDraft.birthDate) ?? ''}
-                  maxDate={todayKey()}
-                  openTo={dateOffsetKey(365 * 8)}
-                  onChange={iso => setProfileDraft(current => ({ ...current, birthDate: formatBirthDate(iso) }))}
-                />
-                {profileDraft.birthDate ? (
-                  <Text style={styles.muted}>
-                    {parseBirthDate(profileDraft.birthDate) ? `Edad: ${ageLabel(ageFromBirth(parseBirthDate(profileDraft.birthDate) ?? undefined))}` : 'Escribe una fecha válida, por ejemplo 15/03/2016.'}
-                  </Text>
-                ) : null}
-                <View style={styles.horizontal}>
-                  <Field
-                    label="Peso"
-                    keyboardType="decimal-pad"
-                    onChangeText={value => setProfileDraft(current => ({ ...current, weight: value }))}
-                    placeholder="kg"
-                    value={profileDraft.weight}
-                    style={styles.flex}
-                  />
-                  <Field
-                    label="Estatura"
-                    keyboardType="decimal-pad"
-                    onChangeText={value => setProfileDraft(current => ({ ...current, height: value }))}
-                    placeholder="cm"
-                    value={profileDraft.height}
-                    style={styles.flex}
-                  />
+                {(() => {
+                  const validation = validateProfileDraft(profileDraft);
+                  const birthIso = parseBirthDate(profileDraft.birthDate);
+                  const shown = profileShowErrors ? validation.errors : {};
+                  const updateMeasure = (field: MeasurementField, value: string) => {
+                    setProfileError('');
+                    setProfileDraft(current => ({ ...current, [field]: value }));
+                  };
+                  const renderUnusual = (field: MeasurementField) => {
+                    const message = validation.unusual[field];
+                    if (!message) return null;
+                    const confirmed = !validation.needsConfirmation.includes(field);
+                    return (
+                      <View accessibilityLiveRegion="polite" style={[styles.notice, { gap: SPACE[8] }]}>
+                        <View style={styles.horizontal}>
+                          <Icon name={confirmed ? 'check' : 'warning'} size={18} color={confirmed ? COLORS.green : COLORS.orange} />
+                          <Text style={[styles.noticeText, styles.flex]}>
+                            {confirmed ? 'Confirmaste que este dato es correcto.' : message}
+                          </Text>
+                        </View>
+                        {!confirmed ? (
+                          <Button
+                            title="Sí, el dato es correcto"
+                            small
+                            variant="outline"
+                            accessibilityLabel={`Confirmar que ${field === 'weight' ? 'el peso' : 'la estatura'} está bien escrito`}
+                            onPress={() => setProfileDraft(current => ({
+                              ...current,
+                              confirmedUnusual: { ...current.confirmedUnusual, [field]: validation.normalized[field] },
+                            }))}
+                          />
+                        ) : null}
+                      </View>
+                    );
+                  };
+                  return (
+                    <>
+                      <SectionTitle title="Edad" subtitle={`Obligatoria, de ${CHILD_AGE_LIMITS.min} a ${CHILD_AGE_LIMITS.max} años. Ayuda a mostrar actividades y recetas para su edad.`} />
+                      <DateField
+                        label="Fecha de nacimiento (opcional)"
+                        value={birthIso ?? ''}
+                        maxDate={todayKey()}
+                        openTo={dateOffsetKey(365 * 8)}
+                        hint="Si la registras, la edad se calcula sola cada año."
+                        onChange={iso => { setProfileError(''); setProfileDraft(current => ({ ...current, birthDate: formatBirthDate(iso) })); }}
+                      />
+                      <Field
+                        label="Edad (años)"
+                        keyboardType="number-pad"
+                        maxLength={2}
+                        editable={!birthIso}
+                        placeholder={`${CHILD_AGE_LIMITS.min} a ${CHILD_AGE_LIMITS.max}`}
+                        value={draftAge(profileDraft)}
+                        hint={birthIso ? 'Calculada con la fecha de nacimiento.' : undefined}
+                        error={shown.age}
+                        onChangeText={value => { setProfileError(''); setProfileDraft(current => ({ ...current, age: value })); }}
+                      />
+
+                      <SectionTitle title="Peso y estatura" subtitle="Se muestran solo a la persona tutora en el resumen del perfil. La app no evalúa la salud ni da recomendaciones." />
+                      <View style={styles.between}>
+                        <Text style={[styles.body, styles.flex]}>Registrar peso y estatura</Text>
+                        <Switch
+                          accessibilityLabel="Registrar peso y estatura"
+                          value={profileDraft.collectMeasurements}
+                          onValueChange={value => { setProfileError(''); setProfileDraft(current => ({ ...current, collectMeasurements: value })); }}
+                          trackColor={{ true: COLORS.blue }}
+                        />
+                      </View>
+                      {profileDraft.collectMeasurements ? (
+                        <>
+                          <Field
+                            label="Peso (kg)"
+                            keyboardType="decimal-pad"
+                            placeholder="Ej. 28.5"
+                            value={profileDraft.weight}
+                            error={shown.weight}
+                            onChangeText={value => updateMeasure('weight', value)}
+                          />
+                          {renderUnusual('weight')}
+                          <Field
+                            label="Estatura (cm)"
+                            keyboardType="decimal-pad"
+                            placeholder="Ej. 128"
+                            value={profileDraft.height}
+                            error={shown.height}
+                            onChangeText={value => updateMeasure('height', value)}
+                          />
+                          {renderUnusual('height')}
+                        </>
+                      ) : (
+                        <Text style={styles.muted}>
+                          {profileDraft.weight.trim() || profileDraft.height.trim()
+                            ? 'Al guardar se quitarán el peso y la estatura de este perfil en la app. Si estaban sincronizados, las mediciones anteriores siguen en la base de datos.'
+                            : 'No se pedirán peso ni estatura para este perfil.'}
+                        </Text>
+                      )}
+                    </>
+                  );
+                })()}
+                <SectionTitle title="Sexo" subtitle="Se usa solo al guardar los datos de salud autorizados. No cambia los colores del perfil." />
+                <View accessibilityRole="radiogroup" accessibilityLabel="Sexo" style={styles.roleRow}>
+                  {([{ id: 'nina', label: 'Niña' }, { id: 'nino', label: 'Niño' }] as const).map(option => {
+                    const selected = profileDraft.theme === option.id;
+                    return (
+                      <Pressable key={option.id} accessibilityRole="radio" accessibilityLabel={option.label}
+                        aria-checked={selected}
+                        onPress={() => setProfileDraft(current => ({ ...current, theme: option.id }))}
+                        style={[styles.roleChoice, selected && [styles.roleChoiceActive, { backgroundColor: theme.colors.acento }]]}>
+                        <Text style={[styles.roleChoiceText, selected && styles.roleChoiceTextOnColor]}>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
                 <SectionCard theme={theme} role="tutor" title="Consentimiento de datos de salud">
                   <View style={styles.between}>
                     <Text style={[styles.body, styles.flex]}>
-                      Autorizo guardar este perfil y sus datos de salud en las tablas familiares de la base de datos.
+                      Opcional. Autorizo guardar también sus datos de salud en las tablas de la base de datos en la nube.
                     </Text>
                     <Switch
                       accessibilityLabel="Autorizar la sincronización de datos de salud"
@@ -3725,7 +4095,7 @@ export default function UnifiedApp() {
                     Los perfiles anteriores no se migran sin esta autorización. Si no la activas, se conservarán en el espacio familiar actual.
                   </Text>
                 </SectionCard>
-                <SectionTitle title="Dictamen del especialista" subtitle="Selecciona solo un dictamen proporcionado por una persona especialista." />
+                <SectionTitle title="Dictamen del especialista (opcional)" subtitle="Registra solo uno que ya te haya dado una persona especialista. La app no lo calcula." />
                 <View style={screenStyles.selectionRow}>
                   <View>{renderSelectionPill('Sin registrar', !profileDraft.diagnosis, () => setProfileDraft(current => ({ ...current, diagnosis: '' })))}</View>
                   {DIAGNOSES.map(option => (
@@ -3734,7 +4104,7 @@ export default function UnifiedApp() {
                     </View>
                   ))}
                 </View>
-                <Text style={styles.footer}>Estos datos servirán para asignar planes de alimentación y ejercicio; por ahora la app no los asigna automáticamente. No son un diagnóstico médico.</Text>
+                <Text style={styles.footer}>La app no usa este dato para asignar planes ni hace diagnósticos.</Text>
               </>
             ) : null}
 
@@ -3765,18 +4135,19 @@ export default function UnifiedApp() {
                 <Card style={styles.cardTight}>
                   <View style={[styles.horizontal, { alignItems: 'center' }]}>
                     <AvatarIllustration
-                      theme={profileDraft.theme}
+                      theme={profileDraft.colorTheme}
                       selection={editingProfile ? data?.avatarSelections[editingProfile.key] : undefined}
                     />
                     <View style={styles.flex}>
                       <Text style={styles.cardTitle}>{profileDraft.name.trim() || 'Sin nombre'}</Text>
-                      <Text style={styles.muted}>{profileDraft.theme === 'nina' ? 'Lavanda y rosa' : 'Azul y verde'}</Text>
+                      <Text style={styles.muted}>Colores: {profileDraft.colorTheme === 'nina' ? 'lavanda y rosa' : 'azul y verde'}</Text>
                     </View>
                   </View>
                   <View style={styles.divider} />
+                  <Text style={styles.body}>Edad: {draftAge(profileDraft) ? `${draftAge(profileDraft)} años` : 'Falta registrarla'}</Text>
                   <Text style={styles.body}>Fecha de nacimiento: {profileDraft.birthDate || 'No registrada'}</Text>
-                  <Text style={styles.body}>Peso: {profileDraft.weight.trim() ? `${profileDraft.weight.trim()} kg` : 'No registrado'}</Text>
-                  <Text style={styles.body}>Estatura: {profileDraft.height.trim() ? `${profileDraft.height.trim()} cm` : 'No registrada'}</Text>
+                  <Text style={styles.body}>Peso: {!profileDraft.collectMeasurements ? 'No se registra' : profileDraft.weight.trim() ? `${profileDraft.weight.trim()} kg` : 'Falta registrarlo'}</Text>
+                  <Text style={styles.body}>Estatura: {!profileDraft.collectMeasurements ? 'No se registra' : profileDraft.height.trim() ? `${profileDraft.height.trim()} cm` : 'Falta registrarla'}</Text>
                   <Text style={styles.body}>Sexo: {profileDraft.theme === 'nina' ? 'Niña' : 'Niño'}</Text>
                   <Text style={styles.body}>Dictamen: {DIAGNOSES.find(item => item.id === profileDraft.diagnosis)?.label ?? 'No registrado'}</Text>
                   <Text style={styles.body}>Sincronización de salud: {profileDraft.healthConsent ? 'Autorizada' : 'No autorizada'}</Text>
@@ -3789,7 +4160,7 @@ export default function UnifiedApp() {
                   <Text style={styles.inputLabel}>Le gustan</Text>
                   <SelectedFoodPills values={profileDraft.likes} other={profileDraft.otherLikes} />
                 </Card>
-                <Text style={styles.footer}>La información se guarda en el espacio privado de tu cuenta.</Text>
+                <Text style={styles.footer}>Se guarda en la nube, en el espacio de tu cuenta. Solo se accede con tu correo y contraseña.</Text>
               </>
             ) : null}
 
@@ -3813,6 +4184,11 @@ export default function UnifiedApp() {
                     }
                     if (profileStep === 1 && profileDraft.birthDate && !parseBirthDate(profileDraft.birthDate)) {
                       setProfileError('Escribe una fecha de nacimiento válida (DD/MM/AAAA).');
+                      return;
+                    }
+                    if (profileStep === 1 && !validateProfileDraft(profileDraft).canSave) {
+                      setProfileShowErrors(true);
+                      setProfileError('Revisa los datos marcados para continuar. Lo demás que escribiste sigue aquí.');
                       return;
                     }
                     setProfileError('');
@@ -3840,11 +4216,11 @@ export default function UnifiedApp() {
     const activityStatus = activityModal && selectedProfile && data
       ? getDailyLog(data, selectedProfile, todayKey()).activities[activityModal.id]?.status
       : undefined;
-    const canRegister = role === 'child' && Boolean(selectedProfile) && !activityStatus;
+    const canRegister = role === 'child' && Boolean(selectedProfile) && (!activityStatus || activitySaveFailed);
     return (
     <Modal
       animationType="slide"
-      onRequestClose={() => { cancelTransition(); setActivityModal(null); }}
+      onRequestClose={() => { cancelTransition(); closeActivity(); }}
       transparent
       visible={Boolean(activityModal)}
     >
@@ -3857,7 +4233,7 @@ export default function UnifiedApp() {
         <SafeAreaView style={[screenStyles.activityScreen, { backgroundColor: theme.colors.fondoInicio }]}>
           <View style={[screenStyles.sheetHeader, { paddingHorizontal: SPACE[20], paddingTop: SPACE[12] }]}>
             <Text style={[theme.type.h2, styles.flex, { color: theme.colors.texto }]}>{activityModal.title}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setActivityModal(null)}
+            <Pressable accessibilityRole="button" accessibilityLabel="Cerrar actividad" onPress={closeActivity}
               style={[styles.close, { minWidth: 44, minHeight: 44 }]}>
               <Icon name="close" size={18} color={theme.colors.texto} />
             </Pressable>
@@ -3868,14 +4244,38 @@ export default function UnifiedApp() {
               style={[theme.type.metric, { color: theme.colors.texto, textAlign: 'center' }]}>
               {formatElapsed(activityElapsed)}
             </Text>
+            <Text accessibilityLiveRegion="polite" style={[theme.type.counter, { color: theme.colors.textoSecundario, textAlign: 'center' }]}>
+              {!activityStarted ? 'Cuando quieras, toca Empezar.' : activityPlaying ? 'En curso. Ve a tu ritmo.' : 'En pausa. Sigue cuando quieras.'}
+            </Text>
             <View style={styles.horizontal}>
-              <Button title={!activityStarted ? 'Empezar' : activityPlaying ? 'Pausa' : 'Reanudar'}
+              <Button title={!activityStarted ? 'Empezar' : activityPlaying ? 'Pausar' : 'Reanudar'}
                 icon={activityPlaying ? 'pause' : 'activity'}
+                accessibilityLabel={!activityStarted ? 'Empezar cronómetro' : activityPlaying ? 'Pausar cronómetro' : 'Reanudar cronómetro'}
                 variant={activityPlaying ? 'outline' : 'primary'} style={styles.flex}
                 onPress={() => { setActivityStarted(true); setActivityPlaying(current => !current); }} />
-              <Button title="Repetir" icon="repeat" variant="outline" style={styles.flex}
-                onPress={() => { setActivityElapsed(0); setActivityStarted(true); setActivityPlaying(true); }} />
+              {activityStarted ? (
+                <Button title="Reiniciar" icon="repeat" variant="outline" style={styles.flex}
+                  accessibilityLabel="Reiniciar cronómetro a cero"
+                  onPress={() => { setActivityElapsed(0); setActivityPlaying(false); setActivityStarted(false); }} />
+              ) : null}
             </View>
+            {canRegister ? (
+              <PillButton theme={theme} label={activityStarted ? 'Terminé · Registrar' : 'Ya la hice · Registrar'}
+                variant={activityStarted && !activityPlaying ? 'primary' : 'ghost'}
+                onPress={() => {
+                  setActivityPlaying(false);
+                  if (activityElapsed > 0) setActivityDuration(String(minutesFromElapsed(activityElapsed)));
+                  setActivityStage('form');
+                }} />
+            ) : (
+              <View style={styles.horizontal}>
+                <Icon name={activityStatus === 'approved' ? 'check' : 'bell'} size={18} color={activityStatus === 'approved' ? COLORS.green : COLORS.orange} />
+                <Text style={[theme.type.counter, styles.flex, { color: theme.colors.textoSecundario }]}>
+                  {!selectedProfile ? 'Este perfil ya no está disponible. Pide ayuda a la persona tutora.' :
+                    activityStatus === 'approved' ? '¡Ya la aprobaron hoy! Buen trabajo.' : 'Ya la enviaste. Tu persona tutora la revisará.'}
+                </Text>
+              </View>
+            )}
             <View style={styles.wrap}>
               <Tag
                 title={`${formatMinutes(catalogActivity?.minutos_sesion ?? activityModal.minutes)}${catalogActivity ? ' por sesión' : ''}`}
@@ -3905,19 +4305,6 @@ export default function UnifiedApp() {
                 <Text style={[theme.type.body, { color: theme.colors.textoSecundario }]}>{guide.safety}</Text>
               </SectionCard>
             ) : null}
-            <PillButton theme={theme} label="Ya la hice · Registrar" variant="ghost" disabled={!canRegister}
-              onPress={() => {
-                if (!canRegister) return;
-                setActivityPlaying(false);
-                if (activityElapsed > 0) setActivityDuration(String(minutesFromElapsed(activityElapsed)));
-                setActivityStage('form');
-              }} />
-            {!canRegister ? (
-              <Text style={[theme.type.counter, { color: theme.colors.textoSecundario }]}>
-                {!selectedProfile ? 'Este perfil ya no está disponible. Pide ayuda a la persona tutora.' :
-                  activityStatus === 'approved' ? 'Esta actividad ya fue aprobada hoy.' : 'Esta actividad ya está en revisión.'}
-              </Text>
-            ) : null}
           </ScrollView>
         </SafeAreaView>
       ) : (
@@ -3928,7 +4315,7 @@ export default function UnifiedApp() {
               <Icon name="activity" size={20} color={COLORS.blue} />
               <Text role="heading" aria-level={2} style={styles.modalTitle}>Registrar actividad</Text>
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setActivityModal(null)} style={styles.close}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Cancelar registro y cerrar" aria-disabled={activitySubmitting} disabled={activitySubmitting} onPress={closeActivity} style={styles.close}>
               <Icon name="close" size={18} color={COLORS.ink} />
             </Pressable>
           </View>
@@ -3946,46 +4333,53 @@ export default function UnifiedApp() {
                 </Text>
               ) : null}
               <Field
-                label="¿Cuántos minutos?"
+                label="¿Cuántos minutos? (1 a 180)"
                 keyboardType="number-pad"
-                onChangeText={setActivityDuration}
+                onChangeText={value => { setActivityError(''); setActivityDuration(value); }}
                 value={activityDuration}
               />
-              <View style={styles.horizontal}>
-                <Button title="Tomar foto" icon="camera" small variant="outline" style={styles.flex} onPress={() => void pickActivityPhoto('camera')} />
-                <Button title="Elegir foto" icon="gallery" small variant="outline" style={styles.flex} onPress={() => void pickActivityPhoto('library')} />
-              </View>
+              <SectionTitle
+                title="Foto (opcional)"
+                subtitle="Puedes enviar sin foto. Si agregas una, se guarda en la nube de tu cuenta familiar y solo la ve tu persona tutora. Se borra si te pide repetir la actividad."
+              />
               {activityPhoto ? (
                 <>
-                  <Image accessible accessibilityLabel="Foto elegida como evidencia" onError={() => setActivityError('No se pudo mostrar la foto. Elige otra o regístrala sin foto.')} source={{ uri: activityPhoto.uri }} style={styles.imagePreview} resizeMode="cover" />
-                  <View style={styles.between}>
-                    <Text style={styles.muted}>Foto · guardada en el espacio privado de tu cuenta.</Text>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Quitar foto"
-                      hitSlop={{ top: 14, bottom: 12, left: 16, right: 16 }}
-                      onPress={() => setActivityPhoto(null)}
-                    >
-                      <Text style={styles.linkText}>Quitar</Text>
-                    </Pressable>
-                  </View>
+                  <Image accessible accessibilityLabel="Foto elegida como evidencia" onError={() => setActivityError('No se pudo mostrar la foto. Elige otra o envía sin foto.')} source={{ uri: activityPhoto.uri }} style={styles.imagePreview} resizeMode="cover" />
+                  <Button title="Quitar foto" icon="close" small variant="danger" disabled={activitySubmitting} onPress={removeActivityPhoto} />
                 </>
               ) : (
-                <Text style={styles.footer}>Puedes registrar la actividad sin foto como evidencia.</Text>
+                <View style={styles.horizontal}>
+                  <Button title="Tomar foto" icon="camera" small variant="outline" style={styles.flex} disabled={activitySubmitting} onPress={() => void pickActivityPhoto('camera')} />
+                  <Button title="Elegir foto" icon="gallery" small variant="outline" style={styles.flex} disabled={activitySubmitting} onPress={() => void pickActivityPhoto('library')} />
+                </View>
               )}
-              {activityError ? <Text accessibilityRole="alert" style={styles.errorText}>{activityError}</Text> : null}
+              {activityError ? (
+                <View style={styles.horizontal}>
+                  <Icon name="warning" size={16} color={COLORS.error} />
+                  <Text accessibilityRole="alert" style={[styles.errorText, styles.flex]}>{activityError}</Text>
+                </View>
+              ) : null}
               {!canRegister ? (
                 <Text accessibilityRole="alert" style={styles.errorText}>
-                  {!selectedProfile ? 'Este perfil ya no está disponible.' : 'Esta actividad ya fue registrada hoy.'}
+                  {!selectedProfile ? 'Este perfil ya no está disponible.' : 'Esta actividad ya se registró hoy.'}
                 </Text>
               ) : null}
-              <Button
-                title={activitySubmitting ? 'Enviando…' : 'Enviar a revisión'}
-                icon="send"
-                disabled={!canRegister || activitySubmitting}
-                onPress={() => void submitActivity()}
-              />
-              <Button title="Volver a la actividad" variant="outline" onPress={() => setActivityStage('details')} />
+              {activitySaveFailed ? (
+                <Button
+                  title={activitySubmitting ? 'Enviando…' : 'Recargar e intentar de nuevo'}
+                  icon="repeat"
+                  disabled={activitySubmitting}
+                  onPress={() => void retryActivityAfterReload()}
+                />
+              ) : (
+                <Button
+                  title={activitySubmitting ? 'Enviando…' : activityPhoto ? 'Enviar con foto' : 'Enviar sin foto'}
+                  icon="send"
+                  disabled={!canRegister || activitySubmitting}
+                  onPress={() => void submitActivity()}
+                />
+              )}
+              <Button title="Volver a la actividad" variant="outline" disabled={activitySubmitting} onPress={() => setActivityStage('details')} />
             </ScrollView>
           ) : null}
         </View>
@@ -4040,7 +4434,7 @@ export default function UnifiedApp() {
             </>
           ) : null}
           <View style={styles.notice}><Text style={styles.noticeText}>{recipeDetails.note}</Text></View>
-          <Text style={styles.footer}>Una persona adulta debe acompañar la preparación y revisar alergias, etiquetas y seguridad alimentaria.</Text>
+          <Text style={styles.footer}>Una persona adulta debe acompañar la preparación y revisar alergias, etiquetas y posible contaminación cruzada. Que no aparezca una alerta no significa que sea segura.</Text>
         </ScrollView>
       ) : null}
     </BottomSheet>
@@ -4075,7 +4469,7 @@ export default function UnifiedApp() {
           {browsableRecipes.filter(recipe => recipeMatchesFilter(recipe, menuRecipeFilter, menuRecipeSearch)).map(recipe => {
             const warnings = recipeWarnings(recipe, profileAllergies);
             const warningText = warnings.length
-              ? `Revisa estos ingredientes por alergias registradas: ${warnings.map(id => FOOD_OPTIONS.find(item => item.id === id)?.name ?? id).join(', ')}.`
+              ? `Posible coincidencia con alergias registradas: ${foodNames(warnings)}.`
               : '';
             return (
               <Pressable
@@ -4294,7 +4688,7 @@ export default function UnifiedApp() {
         return role === 'tutor' && authUser ? (
           <DatabaseManagement
             userId={authUser.id}
-            profiles={profiles.map(profile => ({ progressKey: profile.progressKey, name: profile.name }))}
+            profiles={profiles.map(profile => ({ progressKey: profile.progressKey, name: profile.name, rewardPoints: rewardBalanceFor(profile) }))}
             family={{ assignments: familyAssignments, rewardRequests, mealPlans }}
             actions={familyActions}
           />
