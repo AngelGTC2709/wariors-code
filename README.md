@@ -14,7 +14,9 @@ Los iconos de aplicación se configuran para iOS y Android en `app.json`; sus re
 Para generar builds de prueba de distribución interna (APK para Android e IPA para iOS):
 
 ```bash
-npx eas-cli@latest login
+npm install --global eas-cli
+eas login
+eas whoami
 npm run build:android:apk
 npm run build:ios:ipa
 ```
