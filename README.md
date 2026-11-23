@@ -11,14 +11,17 @@ npx expo start
 
 Los iconos de aplicación se configuran para iOS y Android en `app.json`; sus recursos están en `assets/images/` (icono cuadrado para iOS, capas adaptativas para Android y logo transparente para la pantalla de inicio).
 
-Para generar builds de distribución interna para Android e iOS:
+Para generar builds de prueba de distribución interna (APK para Android e IPA para iOS):
 
 ```bash
 npx eas-cli@latest login
-npx eas-cli@latest build --platform all --profile preview
+npm run build:android:apk
+npm run build:ios:ipa
 ```
 
-El perfil `preview` genera un APK para Android. La build interna de iOS requiere las credenciales de Apple Developer que solicite Expo.
+También puedes iniciar ambas compilaciones juntas con `npm run build:preview`. El perfil `preview` genera un APK instalable para Android y una IPA de distribución interna para iOS. EAS puede administrar la firma de Android; para iOS necesitarás iniciar sesión con una cuenta del Apple Developer Program y seguir los pasos de firma que solicite EAS. Para instalar la IPA en dispositivos físicos, sigue el registro de dispositivos que indique EAS.
+
+Antes de compilar, configura `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_ANON_KEY` en **expo.dev → proyecto → Settings → Environment variables**, con entorno `preview` y visibilidad **Plain text**. `.env.local` solo sirve para desarrollo local y no se incluye en builds remotas.
 
 ## Experiencia
 

@@ -9,6 +9,7 @@
     "scheme": "warriorkids",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "warrior.kids",
       "icon": "./assets/images/icon.png"
     },
     "android": {
