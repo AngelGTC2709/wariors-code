@@ -96,7 +96,7 @@ import {
   UI_STYLES,
   type AppIconName,
 } from '@/features/unified/ui';
-import { CHILD_AGE_LIMITS, validateChildProfile, type MeasurementField } from '@/features/unified/child-profile-validation';
+import { CHILD_AGE_LIMITS, validateChildProfile, validateInitialHealthSync, type MeasurementField } from '@/features/unified/child-profile-validation';
 import { DateField } from '@/features/unified/date-field';
 import {
   assignableProfiles,
@@ -158,6 +158,7 @@ type ProfileDraft = {
   otherLikes: string;
   diagnosis: NutriChild['dictamen'] | '';
   healthConsent: boolean;
+  didNotVisitSpecialist: boolean;
 };
 
 function activityMinutesFromText(value: string): number {
@@ -589,6 +590,7 @@ function emptyProfileDraft(): ProfileDraft {
     otherLikes: '',
     diagnosis: '',
     healthConsent: false,
+    didNotVisitSpecialist: false,
   };
 }
 
@@ -1154,6 +1156,7 @@ export default function UnifiedApp() {
           otherLikes: profile.nutri?.otrosGusta ?? '',
           diagnosis: profile.nutri?.dictamen ?? '',
           healthConsent: Boolean(profile.nutri?.databaseChildId),
+          didNotVisitSpecialist: false,
         }
       : emptyProfileDraft());
     setShowProfileEditor(true);
@@ -1171,9 +1174,16 @@ export default function UnifiedApp() {
       setProfileError('Escribe una fecha de nacimiento válida (DD/MM/AAAA).');
       return;
     }
-    if (profileDraft.healthConsent && !birthDate) {
+    const syncError = validateInitialHealthSync({
+      required: profileDraft.healthConsent && !editingProfile?.nutri?.databaseChildId,
+      hasBirthDate: Boolean(birthDate),
+      collectMeasurements: profileDraft.collectMeasurements,
+      hasDiagnosis: Boolean(profileDraft.diagnosis),
+      didNotVisitSpecialist: profileDraft.didNotVisitSpecialist,
+    });
+    if (syncError || (profileDraft.healthConsent && !birthDate)) {
       setProfileStep(1);
-      setProfileError('Para guardar los datos de salud autorizados, registra su fecha de nacimiento.');
+      setProfileError(syncError ?? 'Para guardar los datos de salud autorizados, registra su fecha de nacimiento.');
       return;
     }
     // La validación también corre aquí: ningún dato llega a guardarse sin pasarla.
@@ -1213,6 +1223,7 @@ export default function UnifiedApp() {
           weight: measurements.weight,
           height: measurements.height,
           diagnosis: profileDraft.diagnosis,
+          didNotVisitSpecialist: profileDraft.didNotVisitSpecialist,
           allergies: profileDraft.allergies,
           noLikes: profileDraft.noLikes,
           likes: profileDraft.likes,
@@ -4094,13 +4105,19 @@ export default function UnifiedApp() {
                   <Text style={styles.footer}>
                     Los perfiles anteriores no se migran sin esta autorización. Si no la activas, se conservarán en el espacio familiar actual.
                   </Text>
+                  {profileDraft.healthConsent && !editingProfile?.nutri?.databaseChildId ? (
+                    <Text style={styles.footer}>Para sincronizar un perfil nuevo se requieren fecha de nacimiento, peso, estatura y valoración inicial.</Text>
+                  ) : null}
                 </SectionCard>
                 <SectionTitle title="Dictamen del especialista (opcional)" subtitle="Registra solo uno que ya te haya dado una persona especialista. La app no lo calcula." />
                 <View style={screenStyles.selectionRow}>
-                  <View>{renderSelectionPill('Sin registrar', !profileDraft.diagnosis, () => setProfileDraft(current => ({ ...current, diagnosis: '' })))}</View>
+                  <View>{renderSelectionPill('Sin registrar', !profileDraft.diagnosis && !profileDraft.didNotVisitSpecialist, () => setProfileDraft(current => ({ ...current, diagnosis: '', didNotVisitSpecialist: false })))}</View>
+                  {profileDraft.healthConsent && !editingProfile?.nutri?.databaseChildId ? (
+                    <View>{renderSelectionPill('No acudió al especialista', profileDraft.didNotVisitSpecialist, () => setProfileDraft(current => ({ ...current, diagnosis: '', didNotVisitSpecialist: true })))}</View>
+                  ) : null}
                   {DIAGNOSES.map(option => (
                     <View key={option.id}>
-                      {renderSelectionPill(option.label, profileDraft.diagnosis === option.id, () => setProfileDraft(current => ({ ...current, diagnosis: option.id })))}
+                      {renderSelectionPill(option.label, profileDraft.diagnosis === option.id, () => setProfileDraft(current => ({ ...current, diagnosis: option.id, didNotVisitSpecialist: false })))}
                     </View>
                   ))}
                 </View>
@@ -4149,7 +4166,7 @@ export default function UnifiedApp() {
                   <Text style={styles.body}>Peso: {!profileDraft.collectMeasurements ? 'No se registra' : profileDraft.weight.trim() ? `${profileDraft.weight.trim()} kg` : 'Falta registrarlo'}</Text>
                   <Text style={styles.body}>Estatura: {!profileDraft.collectMeasurements ? 'No se registra' : profileDraft.height.trim() ? `${profileDraft.height.trim()} cm` : 'Falta registrarla'}</Text>
                   <Text style={styles.body}>Sexo: {profileDraft.theme === 'nina' ? 'Niña' : 'Niño'}</Text>
-                  <Text style={styles.body}>Dictamen: {DIAGNOSES.find(item => item.id === profileDraft.diagnosis)?.label ?? 'No registrado'}</Text>
+                  <Text style={styles.body}>Dictamen: {profileDraft.didNotVisitSpecialist && profileDraft.healthConsent && !editingProfile?.nutri?.databaseChildId ? 'No acudió al especialista' : DIAGNOSES.find(item => item.id === profileDraft.diagnosis)?.label ?? 'No registrado'}</Text>
                   <Text style={styles.body}>Sincronización de salud: {profileDraft.healthConsent ? 'Autorizada' : 'No autorizada'}</Text>
                 </Card>
                 <Card style={styles.cardTight}>
@@ -4185,6 +4202,19 @@ export default function UnifiedApp() {
                     if (profileStep === 1 && profileDraft.birthDate && !parseBirthDate(profileDraft.birthDate)) {
                       setProfileError('Escribe una fecha de nacimiento válida (DD/MM/AAAA).');
                       return;
+                    }
+                    if (profileStep === 1) {
+                      const syncError = validateInitialHealthSync({
+                        required: profileDraft.healthConsent && !editingProfile?.nutri?.databaseChildId,
+                        hasBirthDate: Boolean(parseBirthDate(profileDraft.birthDate)),
+                        collectMeasurements: profileDraft.collectMeasurements,
+                        hasDiagnosis: Boolean(profileDraft.diagnosis),
+                        didNotVisitSpecialist: profileDraft.didNotVisitSpecialist,
+                      });
+                      if (syncError) {
+                        setProfileError(syncError);
+                        return;
+                      }
                     }
                     if (profileStep === 1 && !validateProfileDraft(profileDraft).canSave) {
                       setProfileShowErrors(true);

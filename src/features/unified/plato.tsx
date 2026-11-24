@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 
 import { FOOD_OPTIONS } from '@/features/unified/constants';
 import { FoodChip } from '@/features/unified/design';
+import PlateSector from '@/features/unified/plate-sector';
 import { FOOD_GROUP_COLORS, RADIUS, SPACE, type useAppTheme, sharedFor, type ThemeMode, useFoodGroupColors, useShared, useThemeMode } from '@/features/unified/tokens';
 import { Button, Field, Icon, type AppIconName, useUiStyles } from '@/features/unified/ui';
 
@@ -98,8 +99,8 @@ export function PlatoDelBuenComer({
         <View style={plateStyles.plate}>
           <Svg width="100%" height="100%" viewBox="0 0 300 300">
             {GROUPS.map(item => (
-              <Path key={item.id} d={sectorPath(item.start, item.end)} fill={FOOD_GROUP_COLORS[item.id].fondo}
-                stroke={SHARED.tarjeta} strokeWidth={2} onPress={() => setGroup(item.id)} />
+              <PlateSector key={item.id} d={sectorPath(item.start, item.end)} fill={FOOD_GROUP_COLORS[item.id].fondo}
+                stroke={SHARED.tarjeta} onPress={() => setGroup(item.id)} />
             ))}
             <Circle cx={150} cy={150} r={55} fill={SHARED.tarjeta} pointerEvents="none" />
           </Svg>

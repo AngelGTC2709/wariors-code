@@ -2,7 +2,7 @@
 // no evalúa salud, no calcula estado nutricional y no recomienda cambios de peso o estatura.
 // Este módulo no importa nada para poder probarse directamente con `npm test`.
 
-export const CHILD_AGE_LIMITS = { min: 3, max: 17 } as const;
+export const CHILD_AGE_LIMITS = { min: 6, max: 12 } as const;
 export const CHILD_WEIGHT_LIMITS_KG = { min: 10, max: 150 } as const;
 export const CHILD_HEIGHT_LIMITS_CM = { min: 80, max: 200 } as const;
 
@@ -55,6 +55,22 @@ export type ChildProfileValidation = {
   needsConfirmation: MeasurementField[];
   canSave: boolean;
 };
+
+export function validateInitialHealthSync(input: {
+  required: boolean;
+  hasBirthDate: boolean;
+  collectMeasurements: boolean;
+  hasDiagnosis: boolean;
+  didNotVisitSpecialist: boolean;
+}): string | null {
+  if (!input.required) return null;
+  if (!input.hasBirthDate) return 'Para sincronizar los datos de salud, registra su fecha de nacimiento.';
+  if (!input.collectMeasurements) return 'Para sincronizar un perfil nuevo, registra peso y estatura.';
+  if (!input.hasDiagnosis && !input.didNotVisitSpecialist) {
+    return 'Para sincronizar un perfil nuevo, registra el dictamen o indica que no acudió a una persona especialista.';
+  }
+  return null;
+}
 
 const DECIMAL_FORMAT = /^\d{1,3}(?:[.,]\d{1,2})?$/;
 

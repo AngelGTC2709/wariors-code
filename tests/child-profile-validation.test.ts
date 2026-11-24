@@ -9,6 +9,7 @@ import {
   USUAL_CAPTURE_RANGES,
   validateAge,
   validateChildProfile,
+  validateInitialHealthSync,
   validateHeight,
   validateWeight,
 } from '../src/features/unified/child-profile-validation.ts';
@@ -30,6 +31,34 @@ describe('edad', () => {
       assert.ok(result.error);
     });
   }
+});
+
+describe('sincronización inicial de salud', () => {
+  const complete = {
+    required: true,
+    hasBirthDate: true,
+    collectMeasurements: true,
+    hasDiagnosis: true,
+    didNotVisitSpecialist: false,
+  };
+
+  it('exige fecha, mediciones y una valoración explícita al sincronizar un perfil nuevo', () => {
+    assert.ok(validateInitialHealthSync({ ...complete, hasBirthDate: false }));
+    assert.ok(validateInitialHealthSync({ ...complete, collectMeasurements: false }));
+    assert.ok(validateInitialHealthSync({ ...complete, hasDiagnosis: false }));
+    assert.equal(validateInitialHealthSync(complete), null);
+    assert.equal(validateInitialHealthSync({ ...complete, hasDiagnosis: false, didNotVisitSpecialist: true }), null);
+  });
+
+  it('no exige esos datos para perfiles sin sincronización inicial', () => {
+    assert.equal(validateInitialHealthSync({
+      required: false,
+      hasBirthDate: false,
+      collectMeasurements: false,
+      hasDiagnosis: false,
+      didNotVisitSpecialist: false,
+    }), null);
+  });
 });
 
 describe('peso', () => {

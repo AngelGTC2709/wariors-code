@@ -867,6 +867,7 @@ export type DatabaseChildProfileInput = {
   weight: string;
   height: string;
   diagnosis: NutriChild['dictamen'] | '';
+  didNotVisitSpecialist: boolean;
   allergies: string[];
   noLikes: string[];
   likes: string[];
@@ -941,20 +942,26 @@ export async function saveDatabaseChildProfile(
       .eq('id_padre', input.userId);
     if (error) throw userError('No se pudo vincular el perfil infantil existente.', error);
   } else if (!childId) {
-    const { data, error } = await supabase
-      .from('hijos')
-      .insert({
-        id_padre: input.userId,
-        nombres: names,
-        apellidos,
-        fecha_nacimiento: input.birthDate,
-        sexo: input.theme === 'nino' ? 'masculino' : 'femenino',
-        consentimiento_salud_en: new Date().toISOString(),
-      })
-      .select('id_hijo')
-      .single();
+    if (weight === null || height === null) {
+      throw userError('Para sincronizar un perfil nuevo, registra peso y estatura.');
+    }
+    if (!input.diagnosis && !input.didNotVisitSpecialist) {
+      throw userError('Para sincronizar un perfil nuevo, registra el dictamen o indica que no acudió a una persona especialista.');
+    }
+    const { data, error } = await supabase.rpc('crear_perfil_infantil', {
+      p_nombres: names,
+      p_apellidos: apellidos,
+      p_fecha_nacimiento: input.birthDate,
+      p_sexo: input.theme === 'nino' ? 'masculino' : 'femenino',
+      p_peso_kg: weight,
+      p_estatura_cm: height,
+      p_acudio_especialista: Boolean(input.diagnosis),
+      p_diagnostico_peso: input.diagnosis === 'sobrepeso' || input.diagnosis === 'obesidad' ? input.diagnosis : 'ninguno',
+      p_diagnostico_glucosa: input.diagnosis === 'prediabetes' ? 'prediabetes' : input.diagnosis === 'diabetes2' ? 'diabetes_tipo_2' : 'ninguno',
+      p_acepta_aviso_salud: input.healthConsent,
+    });
     if (error) throw userError('No se pudo crear el perfil infantil en la base de datos.', error);
-    childId = data.id_hijo;
+    childId = data;
   }
 
   if (weight !== null && height !== null) {

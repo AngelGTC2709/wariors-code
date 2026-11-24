@@ -348,7 +348,23 @@ type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      crear_perfil_infantil: {
+        Args: {
+          p_nombres: string;
+          p_apellidos: string;
+          p_fecha_nacimiento: string;
+          p_sexo: string;
+          p_peso_kg: number;
+          p_estatura_cm: number;
+          p_acudio_especialista: boolean;
+          p_diagnostico_peso: string;
+          p_diagnostico_glucosa: string;
+          p_acepta_aviso_salud: boolean;
+        };
+        Returns: number;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
