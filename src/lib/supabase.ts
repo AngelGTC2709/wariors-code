@@ -2,6 +2,8 @@ import 'react-native-url-polyfill/auto';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+import { encryptedStorage } from '@/lib/encrypted-storage';
+
 export type Json =
   | string
   | number
@@ -382,7 +384,10 @@ export function getSupabaseClient(): SupabaseClient<Database> {
     client = createClient<Database>(url, anonKey, {
       auth: {
         autoRefreshToken: true,
-        persistSession: false,
+        // En el teléfono la sesión se guarda cifrada para poder abrir la app sin internet.
+        // En web no hay almacén seguro, así que al cerrar se cierra la sesión como antes.
+        persistSession: encryptedStorage !== null,
+        storage: encryptedStorage ?? undefined,
         detectSessionInUrl: false,
       },
     });

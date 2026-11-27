@@ -62,6 +62,7 @@ import { TrophyIcon } from 'phosphor-react-native/src/icons/Trophy';
 import { UserCircleIcon } from 'phosphor-react-native/src/icons/UserCircle';
 import { UsersThreeIcon } from 'phosphor-react-native/src/icons/UsersThree';
 import { WarningIcon } from 'phosphor-react-native/src/icons/Warning';
+import { WifiSlashIcon } from 'phosphor-react-native/src/icons/WifiSlash';
 import { WavesIcon } from 'phosphor-react-native/src/icons/Waves';
 import { XIcon } from 'phosphor-react-native/src/icons/X';
 
@@ -99,6 +100,7 @@ export type AppIconName =
   | 'save'
   | 'close'
   | 'warning'
+  | 'offline'
   | 'search'
   | 'check'
   | 'scale'
@@ -164,6 +166,7 @@ const ICONS: Record<AppIconName, PhosphorIcon> = {
   save: CheckIcon,
   close: XIcon,
   warning: WarningIcon,
+  offline: WifiSlashIcon,
   search: MagnifyingGlassIcon,
   check: CheckCircleIcon,
   scale: ScalesIcon,

@@ -1193,9 +1193,17 @@ export async function saveCloudData(
 
   if (error) throw userError('No se pudieron guardar los cambios en tu espacio familiar.', error);
   if (!updated) {
-    throw userError('Los datos cambiaron en otro dispositivo. Vuelve a cargar tu espacio para evitar sobrescribir cambios.');
+    throw Object.assign(
+      userError('Los datos cambiaron en otro dispositivo. Vuelve a cargar tu espacio para evitar sobrescribir cambios.'),
+      { versionConflict: true as const },
+    );
   }
   return updated.datos_app_version;
+}
+
+/** true si el guardado falló porque otro dispositivo guardó una versión más nueva. */
+export function isVersionConflict(error: unknown): boolean {
+  return error instanceof Error && (error as { versionConflict?: boolean }).versionConflict === true;
 }
 
 export function subscribeToCloudData(

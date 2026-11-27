@@ -30,6 +30,7 @@ import {
   PlusJakartaSans_700Bold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import * as Linking from 'expo-linking';
+import { getNetworkStateAsync, useNetworkState } from 'expo-network';
 
 import {
   ACTIVITIES,
@@ -44,6 +45,7 @@ import { AVATAR_BACKGROUNDS, AVATAR_CATALOG, AvatarFigure, isUnlocked, SKIN_TONE
 import { CHILD_MOODS, DIET_INGREDIENTS, EXERCISE_CATEGORIES, FAQ_ITEMS, FAMILY_DIET, FOOD_OPTIONS, colorsFor } from '@/features/unified/constants';
 import {
   clearLegacyLocalData,
+  isUnifiedData,
   type AccountRole,
   type AvatarSelection,
   type ChildProgress,
@@ -71,12 +73,22 @@ import {
   subscribeToCloudData,
   uploadEvidence,
   verifyTutorPassword,
+  isVersionConflict,
   type ActivityManagementSnapshot,
   type NormalizedManagementSnapshot,
   type PhysicalActivityCatalog,
 } from '@/features/unified/cloud-data';
 import { AchievementCelebration, BottomBar, BottomSheet, ChallengeRow, FoodChip, HabitCard, HabitProgress, HeroCard, DaySteps, HomeGrid, HomeTile, NextStepCard, ListRow, ChartTitle, DonutChart, PillBar, WaterWeekChart, PillButton, SectionCard, TopBar, useReduceMotion } from '@/features/unified/design';
 import { EvidencePhoto } from '@/features/unified/evidence-photo';
+import {
+  clearOfflineCache,
+  loadOfflineCache,
+  loadOfflineUser,
+  offlineCacheAvailable,
+  saveOfflineCache,
+  type OfflineCache,
+} from '@/features/unified/offline-cache';
+import { isNetworkFailure, mergeThreeWay } from '@/features/unified/offline-merge';
 import { LoadingScreen, SESSION_START_MS, useLoadingTransition, useLoadingVisibility } from '@/features/unified/loading';
 import { DatabaseManagement, type FamilyActions } from '@/features/unified/database-management';
 import { PlatoDelBuenComer, SelectedFoodPills } from '@/features/unified/plato';
@@ -644,11 +656,32 @@ export default function UnifiedApp() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const dataVersion = useRef(0);
-  const nextWriteVersion = useRef(0);
-  const pendingWrites = useRef(0);
   const writesBlocked = useRef(false);
   const loadGeneration = useRef(0);
   const authUserId = useRef<string | null>(null);
+  // Modo sin conexión: los cambios se aplican aquí al momento, se guardan cifrados en el teléfono
+  // y se suben cuando hay internet. `baseRef` es la última versión confirmada por la nube.
+  const network = useNetworkState();
+  const networkOnline = network.isConnected !== false && network.isInternetReachable !== false;
+  const [connectionLost, setConnectionLost] = useState(false);
+  const offline = !networkOnline || connectionLost;
+  const offlineRef = useRef(false);
+  useEffect(() => {
+    offlineRef.current = offline;
+  }, [offline]);
+  const baseRef = useRef<{ data: UnifiedData; version: number } | null>(null);
+  const dirtyRef = useRef(false);
+  const [pendingSync, setPendingSync] = useState(false);
+  const [syncEpoch, setSyncEpoch] = useState(0);
+  const needsReconnectRef = useRef(false);
+  const lastReconnectAttempt = useRef(0);
+  // La app se abrió sin internet con la cuenta guardada; la sesión se confirma al volver la red.
+  const offlineSessionRef = useRef(false);
+  // Al iniciar sesión con contraseña se entra a Tutor; si no, se restaura el último modo.
+  const freshLoginRef = useRef(false);
+  const restoredDeviceFor = useRef<string | null>(null);
+  const applyAuthUserRef = useRef<((user: User | null) => void) | null>(null);
+  const cacheChain = useRef<Promise<void>>(Promise.resolve());
   const [role, setRole] = useState<AccountRole>('tutor');
   const [selectedProfileKey, setSelectedProfileKey] = useState<string | null>(null);
   // Tema claro u oscuro según la preferencia guardada (Ajustes) o el sistema.
@@ -746,11 +779,83 @@ export default function UnifiedApp() {
   } | null>(null);
   const [notice, setNotice] = useState('');
 
+  // Sube los cambios pendientes. Sin internet no falla: quedan guardados y se reintentan después.
+  // Si otro dispositivo guardó antes, combina ambos cambios y vuelve a intentar.
+  const syncPending = useCallback(async () => {
+    if (!authUser) return;
+    const userId = authUser.id;
+    for (let round = 0; round < 5; round += 1) {
+      const local = dataRef.current;
+      const base = baseRef.current;
+      if (!dirtyRef.current || !local || !base || offlineRef.current || authUserId.current !== userId) return;
+      try {
+        const version = await saveCloudData(userId, local, base.version);
+        if (authUserId.current !== userId) return;
+        baseRef.current = { data: local, version };
+        dataVersion.current = version;
+        if (dataRef.current === local) {
+          dirtyRef.current = false;
+          setPendingSync(false);
+        }
+        setStorageError('');
+      } catch (error) {
+        if (isNetworkFailure(error)) {
+          setConnectionLost(true);
+          return;
+        }
+        if (!isVersionConflict(error)) throw error;
+        let remote: Awaited<ReturnType<typeof loadCloudData>>;
+        try {
+          remote = await loadCloudData(authUser, accountFromUser(authUser));
+        } catch (cause) {
+          if (isNetworkFailure(cause)) {
+            setConnectionLost(true);
+            return;
+          }
+          throw cause;
+        }
+        if (authUserId.current !== userId) return;
+        const current = dataRef.current ?? local;
+        const merged = mergeThreeWay(base.data, current, remote.data);
+        const next = isUnifiedData(merged) ? merged : current;
+        baseRef.current = { data: remote.data, version: remote.version };
+        dataVersion.current = remote.version;
+        dataRef.current = next;
+        setData(next);
+      }
+    }
+  }, [authUser]);
+
+  const scheduleSync = useCallback(() => {
+    const userId = authUser?.id ?? null;
+    const run = writeQueue.current.catch(() => undefined).then(syncPending);
+    writeQueue.current = run;
+    void run.catch(error => {
+      if (authUserId.current === userId) {
+        writesBlocked.current = true;
+        setStorageError(friendlyError(error, 'No se pudieron guardar los cambios en tu espacio familiar.'));
+      }
+    });
+    return run;
+  }, [authUser, syncPending]);
+
   const loadData = useCallback(async () => {
     if (!authUser) return null;
     const generation = ++loadGeneration.current;
+    const account = accountFromUser(authUser);
+    await writeQueue.current.catch(() => undefined);
+    const cached = await loadOfflineCache(authUser.id).catch(() => null);
+    if (generation !== loadGeneration.current) return null;
+    // Al abrir la app se vuelve al modo y perfil de la última vez (en Niñez se queda en Niñez).
+    if (restoredDeviceFor.current !== authUser.id) {
+      restoredDeviceFor.current = authUser.id;
+      if (cached && !freshLoginRef.current) {
+        setRole(cached.role);
+        setSelectedProfileKey(cached.selectedProfileKey);
+      }
+      freshLoginRef.current = false;
+    }
     try {
-      const account = accountFromUser(authUser);
       const [loaded, catalog, recipes] = await Promise.all([
         loadCloudData(authUser, account),
         loadPhysicalActivityCatalog(),
@@ -758,26 +863,55 @@ export default function UnifiedApp() {
       ]);
       await clearLegacyLocalData();
       if (generation !== loadGeneration.current) return null;
+      // Cambios hechos sin conexión (en memoria o en la copia del teléfono) se combinan con la nube.
+      const localDraft = dirtyRef.current && dataRef.current && baseRef.current
+        ? { data: dataRef.current, base: baseRef.current.data }
+        : cached?.pending ? { data: cached.data, base: cached.base } : null;
+      const merged = localDraft ? mergeThreeWay(localDraft.base, localDraft.data, loaded.data) : loaded.data;
+      const current = isUnifiedData(merged) ? merged : localDraft?.data ?? loaded.data;
       setLoadError('');
+      setConnectionLost(false);
+      offlineSessionRef.current = false;
+      baseRef.current = { data: loaded.data, version: loaded.version };
       dataVersion.current = loaded.version;
-      nextWriteVersion.current = loaded.version;
       writesBlocked.current = false;
-      dataRef.current = loaded.data;
-      setData(loaded.data);
+      dirtyRef.current = Boolean(localDraft);
+      setPendingSync(Boolean(localDraft));
+      dataRef.current = current;
+      setData(current);
       setPhysicalActivities(catalog);
       setDatabaseRecipes(recipes);
       setSession(account);
       setStorageError('');
+      if (localDraft) void scheduleSync();
       return loaded;
     } catch (error) {
-      if (generation === loadGeneration.current) {
-        setLoadError(friendlyError(error, 'No se pudieron cargar los datos de tu espacio familiar.'));
+      if (generation !== loadGeneration.current) return null;
+      if ((offlineRef.current || isNetworkFailure(error)) && (cached || dataRef.current)) {
+        // Sin internet: se sigue con lo que ya hay en memoria o con la copia cifrada del teléfono.
+        setConnectionLost(true);
+        setLoadError('');
+        if (!dataRef.current && cached) {
+          baseRef.current = cached.base ? { data: cached.base, version: cached.baseVersion } : null;
+          dataVersion.current = cached.baseVersion;
+          dirtyRef.current = cached.pending;
+          setPendingSync(cached.pending);
+          dataRef.current = cached.data;
+          setData(cached.data);
+          setPhysicalActivities(cached.catalog);
+          setDatabaseRecipes(cached.recipes);
+          setFamily(cached.family);
+          setChallengeActivities(cached.challengeActivities);
+          setSession(account);
+        }
+        return null;
       }
+      setLoadError(friendlyError(error, 'No se pudieron cargar los datos de tu espacio familiar.'));
       return null;
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
-  }, [authUser]);
+  }, [authUser, scheduleSync]);
 
   useEffect(() => {
     let active = true;
@@ -791,7 +925,10 @@ export default function UnifiedApp() {
         setPhysicalActivities([]);
         setDatabaseRecipes([]);
         dataVersion.current = 0;
-        nextWriteVersion.current = 0;
+        baseRef.current = null;
+        dirtyRef.current = false;
+        setPendingSync(false);
+        setConnectionLost(false);
         writesBlocked.current = false;
         setData(null);
         setSession(null);
@@ -814,18 +951,38 @@ export default function UnifiedApp() {
         setLoading(false);
       }
     };
+    applyAuthUserRef.current = applyAuthUser;
     try {
       const supabase = getSupabaseClient();
-      const { data: authListener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-        if (active) applyAuthUser(currentSession?.user ?? null);
+      const { data: authListener } = supabase.auth.onAuthStateChange((event, currentSession) => {
+        if (!active) return;
+        // Abierta sin internet con la cuenta guardada: solo un cierre de sesión real la saca.
+        if (!currentSession && offlineSessionRef.current && event !== 'SIGNED_OUT') return;
+        applyAuthUser(currentSession?.user ?? null);
       });
       unsubscribe = () => authListener.subscription.unsubscribe();
       void Promise.resolve()
         .then(() => supabase.auth.getSession())
-        .then(({ data: sessionData, error }) => {
+        .then(async ({ data: sessionData, error }) => {
           if (!active) return;
-          if (error) throw error;
-          applyAuthUser(sessionData.session?.user ?? null);
+          let user = sessionData.session?.user ?? null;
+          if (!user) {
+            // Sin internet no se puede renovar la sesión: se abre con la cuenta guardada en el
+            // teléfono, que solo existe si no se cerró sesión. Al volver la red se confirma.
+            const cachedUser = await loadOfflineUser().catch(() => null);
+            const noInternet = (error && isNetworkFailure(error)) || await getNetworkStateAsync()
+              .then(state => state.isConnected === false || state.isInternetReachable === false)
+              .catch(() => false);
+            if (cachedUser && noInternet) {
+              user = cachedUser;
+              offlineSessionRef.current = true;
+            } else if (error) {
+              throw error;
+            }
+          }
+          if (!active) return;
+          applyAuthUser(user);
+          if (offlineSessionRef.current) setConnectionLost(true);
           setAuthReady(true);
         })
         .catch(error => {
@@ -870,7 +1027,8 @@ export default function UnifiedApp() {
       loadGeneration.current += 1;
       dataRef.current = null;
       dataVersion.current = 0;
-      nextWriteVersion.current = 0;
+      baseRef.current = null;
+      dirtyRef.current = false;
       writesBlocked.current = false;
       return;
     }
@@ -884,14 +1042,15 @@ export default function UnifiedApp() {
         channel = subscribeToCloudData(
           authUser.id,
           nextSnapshot => {
-            if (!active || pendingWrites.current > 0 || nextSnapshot.version <= dataVersion.current) return;
+            // Con cambios locales pendientes se ignora: se combinarán al subirlos.
+            if (!active || dirtyRef.current || nextSnapshot.version <= dataVersion.current) return;
             dataVersion.current = nextSnapshot.version;
-            nextWriteVersion.current = nextSnapshot.version;
+            baseRef.current = { data: nextSnapshot.data, version: nextSnapshot.version };
             dataRef.current = nextSnapshot.data;
             setData(nextSnapshot.data);
           },
           error => {
-            if (active) setStorageError(error.message);
+            if (active && !offlineRef.current) setStorageError(error.message);
           },
         );
       } catch (error) {
@@ -904,7 +1063,47 @@ export default function UnifiedApp() {
       loadGeneration.current += 1;
       if (channel) void getSupabaseClient().removeChannel(channel);
     };
-  }, [authReady, authUser, loadData]);
+  }, [authReady, authUser, loadData, syncEpoch]);
+
+  // Recuerda si hubo un corte para reconectar cuando vuelva la red.
+  useEffect(() => {
+    if (!networkOnline || connectionLost) needsReconnectRef.current = true;
+  }, [networkOnline, connectionLost]);
+
+  // Al volver internet: confirma la sesión, recarga, combina y sube lo pendiente.
+  // Mientras siga fallando, se reintenta cada 20 segundos.
+  useEffect(() => {
+    if (!authUser || !networkOnline) return;
+    let cancelled = false;
+    const attempt = async () => {
+      // Como mucho un intento cada 15 segundos, aunque el servidor siga sin responder.
+      if (!needsReconnectRef.current || Date.now() - lastReconnectAttempt.current < 15_000) return;
+      lastReconnectAttempt.current = Date.now();
+      const result = await getSupabaseClient().auth.getSession()
+        .catch(error => ({ data: { session: null }, error }));
+      if (cancelled) return;
+      if (result.error && isNetworkFailure(result.error)) return;
+      if (!result.data.session || result.data.session.user.id !== authUser.id) {
+        // La sesión ya no es válida: hay que iniciar sesión otra vez. Lo pendiente sigue
+        // guardado en el teléfono y se subirá al entrar con la misma cuenta.
+        offlineSessionRef.current = false;
+        needsReconnectRef.current = false;
+        applyAuthUserRef.current?.(null);
+        setAuthNotice('Tu sesión venció. Inicia sesión otra vez; tus cambios sin subir siguen guardados en este teléfono.');
+        return;
+      }
+      needsReconnectRef.current = false;
+      offlineSessionRef.current = false;
+      setConnectionLost(false);
+      setSyncEpoch(value => value + 1);
+    };
+    void attempt();
+    const timer = setInterval(() => { void attempt(); }, 20_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [authUser, networkOnline, connectionLost]);
 
   const updateData = (update: (current: UnifiedData) => UnifiedData) => {
     const current = dataRef.current;
@@ -919,28 +1118,10 @@ export default function UnifiedApp() {
     const next = update(current);
     dataRef.current = next;
     setData(next);
-    const userId = authUser.id;
-    const expectedVersion = nextWriteVersion.current;
-    nextWriteVersion.current += 1;
-    pendingWrites.current += 1;
-    const pendingWrite = writeQueue.current.catch(() => undefined).then(async () => {
-      const version = await saveCloudData(userId, next, expectedVersion);
-      if (authUserId.current === userId) dataVersion.current = version;
-    });
-    writeQueue.current = pendingWrite;
-    void pendingWrite.then(
-      () => {
-        if (authUserId.current === userId) setStorageError('');
-      },
-      error => {
-        if (authUserId.current === userId) {
-          writesBlocked.current = true;
-          setStorageError(friendlyError(error, 'No se pudieron guardar los cambios en tu espacio familiar.'));
-        }
-      },
-    ).finally(() => {
-      pendingWrites.current -= 1;
-    });
+    dirtyRef.current = true;
+    setPendingSync(true);
+    // Sin internet el cambio queda en el teléfono y se sube al volver la conexión.
+    if (!offlineRef.current) void scheduleSync();
     return true;
   };
 
@@ -1004,6 +1185,31 @@ export default function UnifiedApp() {
   useEffect(() => {
     if (hasData) void refreshFamily();
   }, [hasData, role, refreshFamily]);
+  // Guarda la copia cifrada del teléfono cada vez que cambian los datos, el modo o los catálogos.
+  useEffect(() => {
+    if (!offlineCacheAvailable || !authUser || !data) return;
+    const snapshot: OfflineCache = {
+      format: 1,
+      userId: authUser.id,
+      data,
+      base: baseRef.current?.data ?? null,
+      baseVersion: baseRef.current?.version ?? dataVersion.current,
+      pending: pendingSync || dirtyRef.current,
+      catalog: physicalActivities,
+      recipes: databaseRecipes,
+      family,
+      challengeActivities,
+      role,
+      selectedProfileKey,
+      savedAt: new Date().toISOString(),
+    };
+    const user = authUser;
+    cacheChain.current = cacheChain.current
+      .then(() => saveOfflineCache(snapshot, user))
+      .catch(error => {
+        if (__DEV__) console.warn('No se pudo guardar la copia local cifrada.', error);
+      });
+  }, [authUser, data, pendingSync, physicalActivities, databaseRecipes, family, challengeActivities, role, selectedProfileKey]);
   const familyAssignments = data?.familyAssignments ?? [];
   const rewardRequests = data?.rewardRequests ?? [];
   const mealPlans = data?.mealPlans ?? [];
@@ -1068,6 +1274,7 @@ export default function UnifiedApp() {
     }
 
     setAuthBusy(true);
+    freshLoginRef.current = true;
     try {
       const supabase = getSupabaseClient();
       if (registerMode) {
@@ -1200,6 +1407,10 @@ export default function UnifiedApp() {
 
     if (!dataRef.current || !authUser || writesBlocked.current) {
       setProfileError('Los datos todavía no están listos para guardar el perfil.');
+      return;
+    }
+    if (offline && profileDraft.healthConsent && birthDate) {
+      setProfileError('Sin conexión no se pueden guardar los datos de salud en la base de datos. Inténtalo cuando vuelva internet; lo que escribiste sigue aquí.');
       return;
     }
 
@@ -1578,6 +1789,10 @@ export default function UnifiedApp() {
         : 'Esta actividad ya está en revisión.');
       return;
     }
+    if (activityPhoto && offline) {
+      setActivityError('Sin conexión no se puede subir la foto. Quítala para enviar sin foto; tus minutos siguen aquí.');
+      return;
+    }
     activitySubmittingRef.current = true;
     setActivitySubmitting(true);
     setActivityError('');
@@ -1605,13 +1820,16 @@ export default function UnifiedApp() {
         return;
       }
       // Espera la confirmación de la nube antes de cerrar para no perder lo capturado.
+      // Sin internet queda guardada en el teléfono y se envía al volver la conexión.
       await writeQueue.current;
       activityUploadRef.current = null;
       setActivityModal(null);
       setActivityPhoto(null);
       setActivityDuration('');
       setActivityError('');
-      setNotice('¡Actividad enviada! Tu persona tutora la revisará.');
+      setNotice(dirtyRef.current
+        ? '¡Actividad guardada en este teléfono! Se enviará a tu persona tutora cuando vuelva internet.'
+        : '¡Actividad enviada! Tu persona tutora la revisará.');
     } catch (error) {
       setActivitySaveFailed(writesBlocked.current);
       setActivityError(friendlyError(error, 'No se pudo enviar. Tus minutos y tu foto siguen aquí; inténtalo de nuevo.'));
@@ -1880,6 +2098,10 @@ export default function UnifiedApp() {
   const sendChatMessage = async () => {
     const text = chatInput.trim();
     if (!text || chatPending) return;
+    if (offline) {
+      setChatError('NutriBot necesita internet. Tu mensaje sigue aquí para cuando vuelva la conexión.');
+      return;
+    }
     setChatError('');
     setChatPending(true);
     const messages = [...chatMessages.slice(-8), { from: 'child' as const, text }].map(message => ({
@@ -2017,9 +2239,21 @@ export default function UnifiedApp() {
   const logout = async () => {
     if (role !== 'tutor') return;
     setAuthError('');
+    if (dirtyRef.current) {
+      setNotice(offlineRef.current
+        ? 'Tienes cambios sin subir. Conéctate a internet para subirlos antes de cerrar sesión.'
+        : 'Se están subiendo tus cambios. Espera un momento y vuelve a intentarlo.');
+      return;
+    }
+    const userId = authUser?.id;
     try {
-      const { error } = await getSupabaseClient().auth.signOut();
+      // Sin internet solo se cierra la sesión en este teléfono.
+      const { error } = await getSupabaseClient().auth.signOut(offlineRef.current ? { scope: 'local' } : undefined);
       if (error) throw error;
+      if (userId) {
+        cacheChain.current = cacheChain.current.then(() => clearOfflineCache(userId)).catch(() => undefined);
+        await cacheChain.current;
+      }
       setLoadError('');
       setRegisterMode(false);
       setAuthName('');
@@ -2059,6 +2293,10 @@ export default function UnifiedApp() {
       return;
     }
 
+    if (offline) {
+      setNotice('Para volver a Tutor se necesita internet, porque así se verifica la contraseña. Mientras tanto puedes seguir en Niñez.');
+      return;
+    }
     if (tutorGateLockUntil !== null && Date.now() < tutorGateLockUntil) {
       setTutorGateLockRemaining(Math.max(1, Math.ceil((tutorGateLockUntil - Date.now()) / 1000)));
       setTutorGateError('');
@@ -4370,9 +4608,11 @@ export default function UnifiedApp() {
               />
               <SectionTitle
                 title="Foto (opcional)"
-                subtitle="Puedes enviar sin foto. Si agregas una, se guarda en la nube de tu cuenta familiar y solo la ve tu persona tutora. Se borra si te pide repetir la actividad."
+                subtitle={offline
+                  ? 'Sin conexión no se pueden subir fotos. Envíala sin foto: tus minutos se guardan en este teléfono y se mandan al volver internet.'
+                  : 'Puedes enviar sin foto. Si agregas una, se guarda en la nube de tu cuenta familiar y solo la ve tu persona tutora. Se borra si te pide repetir la actividad.'}
               />
-              {activityPhoto ? (
+              {offline && !activityPhoto ? null : activityPhoto ? (
                 <>
                   <Image accessible accessibilityLabel="Foto elegida como evidencia" onError={() => setActivityError('No se pudo mostrar la foto. Elige otra o envía sin foto.')} source={{ uri: activityPhoto.uri }} style={styles.imagePreview} resizeMode="cover" />
                   <Button title="Quitar foto" icon="close" small variant="danger" disabled={activitySubmitting} onPress={removeActivityPhoto} />
@@ -4579,7 +4819,7 @@ export default function UnifiedApp() {
             <Button
               title="Enviar"
               small
-              disabled={!chatInput.trim() || chatPending}
+              disabled={!chatInput.trim() || chatPending || offline}
               onPress={() => { void sendChatMessage(); }}
             />
           </View>
@@ -4715,6 +4955,20 @@ export default function UnifiedApp() {
       case 'Menú':
         return role === 'tutor' ? renderWeeklyMenu() : null;
       case 'Gestión':
+        if (role === 'tutor' && offline) {
+          return (
+            <Card>
+              <View style={styles.horizontal}>
+                <Icon name="offline" size={22} color={COLORS.orange} />
+                <Text role="heading" aria-level={2} style={[styles.cardTitle, styles.flex]}>Gestión necesita internet</Text>
+              </View>
+              <Text style={styles.body}>
+                Los retos, recompensas y actividades se guardan en la base de datos. Cuando vuelva la conexión podrás crearlos o editarlos aquí.
+              </Text>
+              <Text style={styles.muted}>Mientras tanto, en Familia puedes revisar y aprobar lo pendiente.</Text>
+            </Card>
+          );
+        }
         return role === 'tutor' && authUser ? (
           <DatabaseManagement
             userId={authUser.id}
@@ -4826,6 +5080,29 @@ export default function UnifiedApp() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {offline ? (
+            <View accessibilityLiveRegion="polite" style={[styles.notice, { gap: SPACE[4] }]}>
+              <View style={styles.horizontal}>
+                <Icon name="offline" size={18} color={COLORS.orange} />
+                <Text style={[styles.cardTitle, styles.flex]}>Sin conexión</Text>
+              </View>
+              <Text style={styles.noticeText}>
+                {role === 'child'
+                  ? 'Puedes seguir jugando. Tu avance se guarda en este teléfono y se envía cuando vuelva internet.'
+                  : offlineCacheAvailable
+                    ? 'Puedes seguir usando la app. Los cambios se guardan cifrados en este teléfono y se suben cuando vuelva internet.'
+                    : 'Puedes seguir usando la app mientras esta pestaña siga abierta. Si la cierras antes de que vuelva internet, se pierden los cambios sin subir.'}
+              </Text>
+              {role === 'tutor' ? (
+                <Text style={styles.muted}>Gestión, fotos, NutriBot y volver a Tutor desde Niñez necesitan internet.</Text>
+              ) : null}
+            </View>
+          ) : pendingSync ? (
+            <View accessibilityLiveRegion="polite" style={[styles.notice, styles.horizontal]}>
+              <ActivityIndicator size="small" color={COLORS.orange} />
+              <Text style={[styles.noticeText, styles.flex]}>Subiendo tus cambios…</Text>
+            </View>
+          ) : null}
           {storageError ? (
             <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: SHARED.errorFondo, borderColor: SHARED.errorBorde, gap: SPACE[8] }]}>
               <Text style={[styles.noticeText, { color: COLORS.error }]}>No se guardó el último cambio: {storageError}</Text>
